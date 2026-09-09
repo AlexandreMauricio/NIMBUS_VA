@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateCodeVerifier, codeChallengeFromVerifier, generateState, buildAuthorizeUrl } from "./spotifyPkce";
+import {
+  generateCodeVerifier,
+  codeChallengeFromVerifier,
+  generateState,
+  buildAuthorizeUrl,
+} from "./spotifyPkce";
 
 test("generateCodeVerifier produces a string within PKCE's required length range", () => {
   const verifier = generateCodeVerifier();

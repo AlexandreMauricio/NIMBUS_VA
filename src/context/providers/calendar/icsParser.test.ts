@@ -153,7 +153,10 @@ test("parses multiple events in one feed, in document order", () => {
 
   const result = parseIcs(raw, TZ);
   assert.equal(result.events.length, 2);
-  assert.deepEqual(result.events.map((e) => e.title), ["First", "Second"]);
+  assert.deepEqual(
+    result.events.map((e) => e.title),
+    ["First", "Second"]
+  );
 });
 
 test("falls back to a placeholder title when SUMMARY is missing", () => {

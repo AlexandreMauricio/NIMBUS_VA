@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("nimbusPopup", {
   },
   acceptSuggestion: (suggestionId: string): Promise<PublicActionResult[]> =>
     ipcRenderer.invoke("nimbus:accept-suggestion", suggestionId),
-  dismissSuggestion: (suggestionId: string): Promise<void> => ipcRenderer.invoke("nimbus:dismiss-suggestion", suggestionId),
+  dismissSuggestion: (suggestionId: string): Promise<void> =>
+    ipcRenderer.invoke("nimbus:dismiss-suggestion", suggestionId),
   close: (): Promise<void> => ipcRenderer.invoke("nimbus:close-suggestion-popup"),
 });

@@ -1,9 +1,19 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { AssistantEvent } from "../common/assistantEvents";
-import { StartupSettings, WeatherSettings, CalendarSettings, RoutineSettings } from "../settings/settingsManager";
+import {
+  StartupSettings,
+  WeatherSettings,
+  CalendarSettings,
+  RoutineSettings,
+} from "../settings/settingsManager";
 import { Routine } from "../routines/types";
 import { SpotifyPlaylistSummary } from "../context/providers/spotify/types";
-import { TaskItem, TaskAccountInfo, TaskWriteRequest, TodoistProjectSummary } from "../context/providers/tasks";
+import {
+  TaskItem,
+  TaskAccountInfo,
+  TaskWriteRequest,
+  TodoistProjectSummary,
+} from "../context/providers/tasks";
 
 /**
  * The renderer-facing shape of an email account — deliberately NOT the
@@ -111,13 +121,11 @@ contextBridge.exposeInMainWorld("nimbus", {
 
   getContext: (): Promise<ContextSnapshot> => ipcRenderer.invoke("nimbus:get-context"),
 
-  getWeatherSettings: (): Promise<WeatherSettings> =>
-    ipcRenderer.invoke("nimbus:get-weather-settings"),
+  getWeatherSettings: (): Promise<WeatherSettings> => ipcRenderer.invoke("nimbus:get-weather-settings"),
   updateWeatherSettings: (partial: Partial<WeatherSettings>): Promise<WeatherSettings> =>
     ipcRenderer.invoke("nimbus:update-weather-settings", partial),
 
-  getCalendarSettings: (): Promise<CalendarSettings> =>
-    ipcRenderer.invoke("nimbus:get-calendar-settings"),
+  getCalendarSettings: (): Promise<CalendarSettings> => ipcRenderer.invoke("nimbus:get-calendar-settings"),
   updateCalendarSettings: (partial: Partial<CalendarSettings>): Promise<CalendarSettings> =>
     ipcRenderer.invoke("nimbus:update-calendar-settings", partial),
 
@@ -139,9 +147,11 @@ contextBridge.exposeInMainWorld("nimbus", {
   // connected) and from whatever task data reaches the Home briefing via
   // nimbus:get-context (a bucketed/capped subset). This is the full
   // active task list, plus create/edit/complete/delete.
-  listTasks: (): Promise<{ tasks: TaskItem[]; accounts: TaskAccountInfo[] }> => ipcRenderer.invoke("nimbus:list-tasks"),
+  listTasks: (): Promise<{ tasks: TaskItem[]; accounts: TaskAccountInfo[] }> =>
+    ipcRenderer.invoke("nimbus:list-tasks"),
   listTaskProjects: (): Promise<TodoistProjectSummary[]> => ipcRenderer.invoke("nimbus:list-task-projects"),
-  createTask: (request: TaskWriteRequest): Promise<TaskItem> => ipcRenderer.invoke("nimbus:create-task", request),
+  createTask: (request: TaskWriteRequest): Promise<TaskItem> =>
+    ipcRenderer.invoke("nimbus:create-task", request),
   updateTask: (taskId: string, request: Partial<TaskWriteRequest>): Promise<TaskItem> =>
     ipcRenderer.invoke("nimbus:update-task", taskId, request),
   completeTask: (taskId: string): Promise<void> => ipcRenderer.invoke("nimbus:complete-task", taskId),
@@ -168,13 +178,15 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:execute-action", actionId, params),
 
   /** Playlist metadata only — never track contents. */
-  listSpotifyPlaylists: (): Promise<SpotifyPlaylistSummary[]> => ipcRenderer.invoke("nimbus:spotify-list-playlists"),
+  listSpotifyPlaylists: (): Promise<SpotifyPlaylistSummary[]> =>
+    ipcRenderer.invoke("nimbus:spotify-list-playlists"),
 
   getRoutineSettings: (): Promise<RoutineSettings> => ipcRenderer.invoke("nimbus:get-routine-settings"),
   updateRoutineSettings: (partial: { enabled?: boolean; routines?: Routine[] }): Promise<RoutineSettings> =>
     ipcRenderer.invoke("nimbus:update-routine-settings", partial),
   /** Runs a routine's actions immediately, bypassing its trigger/cooldown/conditions — for the Settings UI's "Test" button. */
-  testRoutine: (routineId: string): Promise<PublicActionResult[]> => ipcRenderer.invoke("nimbus:test-routine", routineId),
+  testRoutine: (routineId: string): Promise<PublicActionResult[]> =>
+    ipcRenderer.invoke("nimbus:test-routine", routineId),
   /** Debugging aid: the raw process/window/folder data the desktop activity monitor saw on its most recent poll, or null if it isn't running. */
   /** DesktopActivityMonitor's last poll (raw process names/browser window titles/folder paths), or null if it isn't running — surfaced read-only in the Routines tab so a trigger pattern can be checked against reality instead of guessed at. */
   getActivitySnapshot: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-activity-snapshot"),
@@ -182,7 +194,8 @@ contextBridge.exposeInMainWorld("nimbus", {
   getActiveSuggestions: (): Promise<AssistantEvent[]> => ipcRenderer.invoke("nimbus:get-active-suggestions"),
   acceptSuggestion: (suggestionId: string): Promise<PublicActionResult[]> =>
     ipcRenderer.invoke("nimbus:accept-suggestion", suggestionId),
-  dismissSuggestion: (suggestionId: string): Promise<void> => ipcRenderer.invoke("nimbus:dismiss-suggestion", suggestionId),
+  dismissSuggestion: (suggestionId: string): Promise<void> =>
+    ipcRenderer.invoke("nimbus:dismiss-suggestion", suggestionId),
 
   /** Subscribes to events from future assistant subsystems. Returns an unsubscribe function. */
   onAssistantEvent: (callback: (event: AssistantEvent) => void): (() => void) => {
@@ -207,8 +220,7 @@ contextBridge.exposeInMainWorld("nimbus", {
   /** The current briefing, or null if none has been generated yet. Never triggers generation. */
   getBriefing: (): Promise<Briefing | null> => ipcRenderer.invoke("nimbus:get-briefing"),
   /** Explicitly generates a new briefing (e.g. a manual "Regenerate" button). */
-  regenerateBriefing: (): Promise<Briefing | null> =>
-    ipcRenderer.invoke("nimbus:regenerate-briefing"),
+  regenerateBriefing: (): Promise<Briefing | null> => ipcRenderer.invoke("nimbus:regenerate-briefing"),
   /** Fires when the startup (or a manually regenerated) briefing becomes available. */
   onBriefingUpdated: (callback: () => void): (() => void) => {
     const listener = () => callback();

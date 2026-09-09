@@ -33,14 +33,7 @@ export function localTimeZone(): string {
  * `Date.UTC` can target an arbitrary named zone directly.
  */
 export function zonedTimeToUtcMs(parts: DateTimeParts, timeZone: string): number {
-  const utcGuess = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second
-  );
+  const utcGuess = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
   const offsetMs = tzOffsetMsAt(utcGuess, timeZone);
   return utcGuess - offsetMs;
 }

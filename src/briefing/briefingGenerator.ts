@@ -3,7 +3,11 @@ import { ContextSnapshot } from "../context/types";
 import { DateTimeContext } from "../context/providers/dateTimeProvider";
 import { WeatherContext } from "../context/providers/weather/types";
 import { CalendarContext } from "../context/providers/calendar/types";
-import { localCalendarDate, localTime, addDaysToDateString } from "../context/providers/calendar/icsTimeUtils";
+import {
+  localCalendarDate,
+  localTime,
+  addDaysToDateString,
+} from "../context/providers/calendar/icsTimeUtils";
 import { EmailContext } from "../context/providers/email/types";
 import { TaskContext, TaskItem } from "../context/providers/tasks/types";
 import { Briefing, BriefingItem } from "./types";
@@ -62,11 +66,7 @@ export class BriefingGenerator {
       .sort((a, b) => priority(b) - priority(a))
       .slice(0, MAX_CONTENT_ITEMS);
 
-    const items: BriefingItem[] = [
-      buildGreetingItem(dateTime, now),
-      ...prioritized,
-      buildClosingItem(now),
-    ];
+    const items: BriefingItem[] = [buildGreetingItem(dateTime, now), ...prioritized, buildClosingItem(now)];
 
     return {
       id: randomUUID(),
@@ -244,7 +244,19 @@ function buildCalendarItem(calendar: CalendarContext | null, now: Date): Briefin
   };
 }
 
-const SMALL_NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const SMALL_NUMBER_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+];
 
 function spellNumber(n: number): string {
   return SMALL_NUMBER_WORDS[n] ?? String(n);
@@ -328,7 +340,8 @@ function findImminentTask(tasks: TaskContext, now: Date): TaskItem | null {
 
 function formatMinutesUntil(minutes: number): string {
   if (minutes < 1) return "any moment now";
-  if (minutes < 60) return `${spellNumber(Math.round(minutes))} minute${Math.round(minutes) === 1 ? "" : "s"}`;
+  if (minutes < 60)
+    return `${spellNumber(Math.round(minutes))} minute${Math.round(minutes) === 1 ? "" : "s"}`;
   const hours = Math.round(minutes / 60);
   return `${spellNumber(hours)} hour${hours === 1 ? "" : "s"}`;
 }

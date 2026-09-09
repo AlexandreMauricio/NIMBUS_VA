@@ -27,8 +27,7 @@ export class IcsCalendarSource {
   constructor(
     private readonly address: string,
     private readonly fetchFn: typeof fetch = fetch,
-    private readonly readFileFn: (path: string) => Promise<string> = (p) =>
-      fs.promises.readFile(p, "utf-8")
+    private readonly readFileFn: (path: string) => Promise<string> = (p) => fs.promises.readFile(p, "utf-8")
   ) {}
 
   async fetchRaw(): Promise<string> {

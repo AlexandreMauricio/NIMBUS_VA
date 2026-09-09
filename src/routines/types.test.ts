@@ -9,9 +9,19 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     id: "r1",
     name: "Study",
     enabled: true,
-    trigger: { type: "websiteOpened", matchField: "windowTitle", pattern: "skillcert", matchMode: "contains" },
+    trigger: {
+      type: "websiteOpened",
+      matchField: "windowTitle",
+      pattern: "skillcert",
+      matchMode: "contains",
+    },
     conditions: [],
-    suggestion: { title: "Study mode?", message: "Play your study playlist?", primaryLabel: "Play", secondaryLabel: "Not now" },
+    suggestion: {
+      title: "Study mode?",
+      message: "Play your study playlist?",
+      primaryLabel: "Play",
+      secondaryLabel: "Not now",
+    },
     actions: [{ actionId: "spotify.playPlaylist", params: { playlistQuery: "Study" } }],
     cooldownMinutes: 30,
     ...overrides,
@@ -34,7 +44,10 @@ test("a routine with no actions is rejected", () => {
 });
 
 test("a routine referencing an unregistered action id is rejected", () => {
-  const result = validateRoutine(routine({ actions: [{ actionId: "shell.exec", params: {} }] }), KNOWN_ACTION_IDS);
+  const result = validateRoutine(
+    routine({ actions: [{ actionId: "shell.exec", params: {} }] }),
+    KNOWN_ACTION_IDS
+  );
   assert.equal(result.valid, false);
   assert.match(result.error!, /Unknown action/);
 });
@@ -57,7 +70,9 @@ test("an application trigger missing its application field is rejected", () => {
 
 test("a website trigger with an invalid matchField is rejected", () => {
   const result = validateRoutine(
-    routine({ trigger: { type: "websiteOpened", matchField: "bogus" as never, pattern: "x", matchMode: "contains" } }),
+    routine({
+      trigger: { type: "websiteOpened", matchField: "bogus" as never, pattern: "x", matchMode: "contains" },
+    }),
     KNOWN_ACTION_IDS
   );
   assert.equal(result.valid, false);
@@ -73,7 +88,9 @@ test("a folder trigger without a path is rejected", () => {
 
 test("an invalid matchMode is rejected", () => {
   const result = validateRoutine(
-    routine({ trigger: { type: "applicationOpened", application: "steam.exe", matchMode: "fuzzy" as never } }),
+    routine({
+      trigger: { type: "applicationOpened", application: "steam.exe", matchMode: "fuzzy" as never },
+    }),
     KNOWN_ACTION_IDS
   );
   assert.equal(result.valid, false);
@@ -85,12 +102,18 @@ test("a negative cooldown is rejected", () => {
 });
 
 test("an out-of-range timeOfDay condition is rejected", () => {
-  const result = validateRoutine(routine({ conditions: [{ type: "timeOfDay", startHour: 25, endHour: 5 }] }), KNOWN_ACTION_IDS);
+  const result = validateRoutine(
+    routine({ conditions: [{ type: "timeOfDay", startHour: 25, endHour: 5 }] }),
+    KNOWN_ACTION_IDS
+  );
   assert.equal(result.valid, false);
 });
 
 test("a valid timeOfDay condition is accepted", () => {
-  const result = validateRoutine(routine({ conditions: [{ type: "timeOfDay", startHour: 9, endHour: 17 }] }), KNOWN_ACTION_IDS);
+  const result = validateRoutine(
+    routine({ conditions: [{ type: "timeOfDay", startHour: 9, endHour: 17 }] }),
+    KNOWN_ACTION_IDS
+  );
   assert.equal(result.valid, true);
 });
 
@@ -136,5 +159,8 @@ test("a non-boolean autoRun is rejected", () => {
 });
 
 test("actionsNotAlreadyActive is a recognized condition type", () => {
-  assert.equal(validateRoutine(routine({ conditions: [{ type: "actionsNotAlreadyActive" }] }), KNOWN_ACTION_IDS).valid, true);
+  assert.equal(
+    validateRoutine(routine({ conditions: [{ type: "actionsNotAlreadyActive" }] }), KNOWN_ACTION_IDS).valid,
+    true
+  );
 });

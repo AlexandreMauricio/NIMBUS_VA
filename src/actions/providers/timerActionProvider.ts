@@ -30,22 +30,56 @@ export class TimerActionProvider implements ActionProvider {
   readonly id = "timer";
   readonly displayName = "Timer";
 
-  constructor(private readonly timerService: TimerService, private readonly now: () => Date = () => new Date()) {}
+  constructor(
+    private readonly timerService: TimerService,
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
   listActions(): ActionDefinition[] {
     return [
       {
         id: TIMER_ACTIONS.START,
         name: "Start timer",
-        description: "Starts a NIMBUS countdown timer, either a single duration or an automatic Pomodoro study/break cycle.",
+        description:
+          "Starts a NIMBUS countdown timer, either a single duration or an automatic Pomodoro study/break cycle.",
         parameters: [
-          { name: "mode", type: "string", required: false, description: "single | pomodoro — defaults to single" },
-          { name: "duration", type: "number", required: false, description: "Minutes — required when mode is single" },
-          { name: "type", type: "string", required: false, description: "focus | pomodoro | break | custom — defaults to focus (mode: single only)" },
+          {
+            name: "mode",
+            type: "string",
+            required: false,
+            description: "single | pomodoro — defaults to single",
+          },
+          {
+            name: "duration",
+            type: "number",
+            required: false,
+            description: "Minutes — required when mode is single",
+          },
+          {
+            name: "type",
+            type: "string",
+            required: false,
+            description: "focus | pomodoro | break | custom — defaults to focus (mode: single only)",
+          },
           { name: "title", type: "string", required: false, description: "Defaults to the timer type" },
-          { name: "studyMinutes", type: "number", required: false, description: `Per-study length in minutes — mode: pomodoro only, defaults to ${DEFAULT_STUDY_MINUTES}` },
-          { name: "breakMinutes", type: "number", required: false, description: `Break length in minutes between studies — mode: pomodoro only, defaults to ${DEFAULT_BREAK_MINUTES}` },
-          { name: "cycles", type: "number", required: false, description: `Number of study sessions — mode: pomodoro only, defaults to ${DEFAULT_CYCLES}` },
+          {
+            name: "studyMinutes",
+            type: "number",
+            required: false,
+            description: `Per-study length in minutes — mode: pomodoro only, defaults to ${DEFAULT_STUDY_MINUTES}`,
+          },
+          {
+            name: "breakMinutes",
+            type: "number",
+            required: false,
+            description: `Break length in minutes between studies — mode: pomodoro only, defaults to ${DEFAULT_BREAK_MINUTES}`,
+          },
+          {
+            name: "cycles",
+            type: "number",
+            required: false,
+            description: `Number of study sessions — mode: pomodoro only, defaults to ${DEFAULT_CYCLES}`,
+          },
         ],
         readOnly: false,
         changesExternalState: true,
@@ -114,7 +148,13 @@ export class TimerActionProvider implements ActionProvider {
         actionId,
         status: "success",
         message: `Started a Pomodoro plan: ${cycles} × ${formatDuration(studyMinutes)} study with ${formatDuration(breakMinutes)} breaks.`,
-        data: { timerId: state.id, title: state.title, type: state.type, durationMs: state.durationMs, cycles },
+        data: {
+          timerId: state.id,
+          title: state.title,
+          type: state.type,
+          durationMs: state.durationMs,
+          cycles,
+        },
         startedAt: startedAt.toISOString(),
         finishedAt: finishedAt.toISOString(),
         durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -161,7 +201,12 @@ export class TimerActionProvider implements ActionProvider {
  * no break, which still goes through the same `startPlan` path as a
  * multi-cycle one rather than needing a special case.
  */
-function buildPomodoroPhases(baseTitle: string, studyMinutes: number, breakMinutes: number, cycles: number): TimerPlanPhase[] {
+function buildPomodoroPhases(
+  baseTitle: string,
+  studyMinutes: number,
+  breakMinutes: number,
+  cycles: number
+): TimerPlanPhase[] {
   const phases: TimerPlanPhase[] = [];
   for (let i = 1; i <= cycles; i++) {
     phases.push({

@@ -199,9 +199,11 @@ function registerIpcHandlers(): void {
         // a new one. Anything else must keep its existing stored password;
         // otherwise every non-password edit (toggling enabled, renaming...)
         // would silently wipe it.
-        accounts?: Array<Omit<(typeof settings)["userPreferences"]["email"]["accounts"][number], "password"> & {
-          newPassword?: string;
-        }>;
+        accounts?: Array<
+          Omit<(typeof settings)["userPreferences"]["email"]["accounts"][number], "password"> & {
+            newPassword?: string;
+          }
+        >;
       }
     ) => {
       const current = settings.userPreferences.email;
@@ -259,9 +261,11 @@ function registerIpcHandlers(): void {
         // the user actually typed a new one. Anything else must keep its
         // existing stored token; otherwise every non-token edit (toggling
         // enabled, renaming...) would silently wipe it.
-        accounts?: Array<Omit<(typeof settings)["userPreferences"]["tasks"]["accounts"][number], "apiToken"> & {
-          newApiToken?: string;
-        }>;
+        accounts?: Array<
+          Omit<(typeof settings)["userPreferences"]["tasks"]["accounts"][number], "apiToken"> & {
+            newApiToken?: string;
+          }
+        >;
       }
     ) => {
       const current = settings.userPreferences.tasks;
@@ -305,7 +309,9 @@ function registerIpcHandlers(): void {
   // useful.
   ipcMain.handle("nimbus:list-tasks", () => taskProvider.listAllTasks());
   ipcMain.handle("nimbus:list-task-projects", () => taskProvider.listProjects());
-  ipcMain.handle("nimbus:create-task", (_event, request: TaskWriteRequest) => taskProvider.createTask(request));
+  ipcMain.handle("nimbus:create-task", (_event, request: TaskWriteRequest) =>
+    taskProvider.createTask(request)
+  );
   ipcMain.handle("nimbus:update-task", (_event, taskId: string, request: Partial<TaskWriteRequest>) =>
     taskProvider.updateTask(taskId, request)
   );
@@ -363,11 +369,14 @@ function registerIpcHandlers(): void {
   // and params itself; there is no way to reach arbitrary Node/API access
   // through this handler.
   ipcMain.handle("nimbus:list-actions", () => actionService.listActions());
-  ipcMain.handle("nimbus:execute-action", async (_event, actionId: string, params?: Record<string, unknown>) => {
-    const result = await actionService.executeAction(actionId, params ?? {});
-    onActionExecuted(actionId, result);
-    return result;
-  });
+  ipcMain.handle(
+    "nimbus:execute-action",
+    async (_event, actionId: string, params?: Record<string, unknown>) => {
+      const result = await actionService.executeAction(actionId, params ?? {});
+      onActionExecuted(actionId, result);
+      return result;
+    }
+  );
 
   // Playlist metadata only (name/id/artwork/owner/track count) — never
   // downloads a playlist's actual tracks. Lets requests reject naturally
@@ -420,7 +429,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:get-activity-snapshot", () => activityMonitor?.getLastSnapshot() ?? null);
 
   ipcMain.handle("nimbus:get-active-suggestions", () => routineService.getActiveSuggestions());
-  ipcMain.handle("nimbus:accept-suggestion", (_event, suggestionId: string) => routineService.acceptSuggestion(suggestionId));
+  ipcMain.handle("nimbus:accept-suggestion", (_event, suggestionId: string) =>
+    routineService.acceptSuggestion(suggestionId)
+  );
   ipcMain.handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
     routineService.dismissSuggestion(suggestionId);
   });
@@ -542,10 +553,7 @@ export function startApp(): void {
   // after startup via nimbus:update-weather-settings.
   contextService.register(
     new WeatherProvider(
-      new LocationResolver(
-        () => settings.userPreferences.weather,
-        config.weatherManualLocation
-      )
+      new LocationResolver(() => settings.userPreferences.weather, config.weatherManualLocation)
     )
   );
 
@@ -666,7 +674,8 @@ export function startApp(): void {
         } else if (step.actionId === "timer.start") {
           anyCheckable = true;
           const timerState = timerService.getState();
-          if (!timerState || (timerState.status !== "running" && timerState.status !== "paused")) return false;
+          if (!timerState || (timerState.status !== "running" && timerState.status !== "paused"))
+            return false;
         }
       }
       return anyCheckable;
@@ -709,7 +718,10 @@ export function startApp(): void {
       source: "routines",
       createdAt: new Date().toISOString(),
       title: routine.name,
-      body: failed === 0 ? "Ran automatically." : `Ran automatically — ${failed} action${failed === 1 ? "" : "s"} failed.`,
+      body:
+        failed === 0
+          ? "Ran automatically."
+          : `Ran automatically — ${failed} action${failed === 1 ? "" : "s"} failed.`,
     });
   });
 

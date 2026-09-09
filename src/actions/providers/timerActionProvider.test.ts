@@ -30,10 +30,20 @@ function fakeTimers(tickMs: number) {
   };
 }
 
-function providerWithFakeTimers(): { provider: TimerActionProvider; timerService: TimerService; advance: (ms: number) => void } {
+function providerWithFakeTimers(): {
+  provider: TimerActionProvider;
+  timerService: TimerService;
+  advance: (ms: number) => void;
+} {
   const bus = new ContextEventBus();
   const timers = fakeTimers(1000);
-  const timerService = new TimerService(bus, () => new Date(), timers.setIntervalFn, timers.clearIntervalFn, 1000);
+  const timerService = new TimerService(
+    bus,
+    () => new Date(),
+    timers.setIntervalFn,
+    timers.clearIntervalFn,
+    1000
+  );
   return { provider: new TimerActionProvider(timerService), timerService, advance: timers.advance };
 }
 
@@ -118,12 +128,21 @@ test("validate rejects an unknown mode", () => {
 
 test("validate in pomodoro mode does not require duration (single-mode-only param)", () => {
   const p = provider();
-  assert.equal(p.validate(TIMER_ACTIONS.START, { mode: "pomodoro", studyMinutes: 45, breakMinutes: 15, cycles: 2 }).valid, true);
+  assert.equal(
+    p.validate(TIMER_ACTIONS.START, { mode: "pomodoro", studyMinutes: 45, breakMinutes: 15, cycles: 2 })
+      .valid,
+    true
+  );
 });
 
 test("execute with mode: pomodoro starts a plan whose first phase is Study 1 of N", async () => {
   const { provider: p, timerService } = providerWithFakeTimers();
-  const result = await p.execute(TIMER_ACTIONS.START, { mode: "pomodoro", studyMinutes: 45, breakMinutes: 15, cycles: 2 });
+  const result = await p.execute(TIMER_ACTIONS.START, {
+    mode: "pomodoro",
+    studyMinutes: 45,
+    breakMinutes: 15,
+    cycles: 2,
+  });
   assert.equal(result.status, "success");
   const state = timerService.getState();
   assert.equal(state?.title, "Study 1 of 2");
@@ -163,6 +182,12 @@ test("pomodoro mode uses defaults (45/15/1) when studyMinutes/breakMinutes/cycle
 
 test("pomodoro mode's baseTitle (from the title param) is used for study phase names", async () => {
   const { provider: p, timerService } = providerWithFakeTimers();
-  await p.execute(TIMER_ACTIONS.START, { mode: "pomodoro", title: "Deep Work", cycles: 2, studyMinutes: 1, breakMinutes: 1 });
+  await p.execute(TIMER_ACTIONS.START, {
+    mode: "pomodoro",
+    title: "Deep Work",
+    cycles: 2,
+    studyMinutes: 1,
+    breakMinutes: 1,
+  });
   assert.equal(timerService.getState()?.title, "Deep Work 1 of 2");
 });

@@ -187,7 +187,9 @@ export class TodoistTaskSource {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const response = await this.send(pagedUrl(`${API_BASE}/tasks`, cursor), { headers: this.authHeaders() });
+      const response = await this.send(pagedUrl(`${API_BASE}/tasks`, cursor), {
+        headers: this.authHeaders(),
+      });
       if (!response.ok) {
         throw new Error(`Todoist tasks request failed with status ${response.status}`);
       }
@@ -204,7 +206,9 @@ export class TodoistTaskSource {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const response = await this.send(pagedUrl(`${API_BASE}/projects`, cursor), { headers: this.authHeaders() });
+      const response = await this.send(pagedUrl(`${API_BASE}/projects`, cursor), {
+        headers: this.authHeaders(),
+      });
       if (!response.ok) {
         throw new Error(`Todoist projects request failed with status ${response.status}`);
       }

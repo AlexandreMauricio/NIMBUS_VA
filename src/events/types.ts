@@ -86,4 +86,5 @@ export interface TimerCompletedEvent extends ContextEventBase {
   timerType: string;
 }
 
-export type ContextEvent = ApplicationOpenedEvent | WebsiteOpenedEvent | FolderOpenedEvent | TimerCompletedEvent;
+export type ContextEvent =
+  ApplicationOpenedEvent | WebsiteOpenedEvent | FolderOpenedEvent | TimerCompletedEvent;

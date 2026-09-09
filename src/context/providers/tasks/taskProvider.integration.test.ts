@@ -52,7 +52,9 @@ test("a failing TaskProvider degrades to an error result without affecting any o
   const brokenTasks = new TaskProvider(
     () => ({
       enabled: true,
-      accounts: [{ id: "broken", label: "Broken", provider: "todoist", apiToken: "secret-token", enabled: true }],
+      accounts: [
+        { id: "broken", label: "Broken", provider: "todoist", apiToken: "secret-token", enabled: true },
+      ],
     }),
     // A stub source that fails immediately — this test is about failure
     // containment, not real Todoist API behavior (that's

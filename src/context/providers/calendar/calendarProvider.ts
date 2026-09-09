@@ -206,7 +206,10 @@ function overlapsLocalDate(event: CalendarEvent, dateStr: string, timezone: stri
   const dayStartMs = zonedTimeToUtcMs({ year: y, month: m, day: d, hour: 0, minute: 0, second: 0 }, timezone);
   const nextDateStr = addDaysToDateString(dateStr, 1);
   const [ny, nm, nd] = nextDateStr.split("-").map(Number);
-  const dayEndMs = zonedTimeToUtcMs({ year: ny, month: nm, day: nd, hour: 0, minute: 0, second: 0 }, timezone);
+  const dayEndMs = zonedTimeToUtcMs(
+    { year: ny, month: nm, day: nd, hour: 0, minute: 0, second: 0 },
+    timezone
+  );
 
   const eventStartMs = new Date(event.startsAt).getTime();
   const eventEndMs = new Date(event.endsAt).getTime();

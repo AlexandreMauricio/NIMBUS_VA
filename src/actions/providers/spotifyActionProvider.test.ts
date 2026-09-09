@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { SpotifyActionProvider, SPOTIFY_ACTIONS } from "./spotifyActionProvider";
 import { SpotifyApiClient, SpotifyApiError } from "../../context/providers/spotify/spotifyApiClient";
 
-function stubClient(overrides: Partial<Record<keyof SpotifyApiClient, (...args: unknown[]) => unknown>> = {}): SpotifyApiClient {
+function stubClient(
+  overrides: Partial<Record<keyof SpotifyApiClient, (...args: unknown[]) => unknown>> = {}
+): SpotifyApiClient {
   return {
     play: async () => undefined,
     pause: async () => undefined,
@@ -18,7 +20,11 @@ function stubClient(overrides: Partial<Record<keyof SpotifyApiClient, (...args: 
 }
 
 function provider(client: SpotifyApiClient, enabled = true, authenticated = true): SpotifyActionProvider {
-  return new SpotifyActionProvider(client, () => ({ enabled }), () => authenticated);
+  return new SpotifyActionProvider(
+    client,
+    () => ({ enabled }),
+    () => authenticated
+  );
 }
 
 test("isAvailable is false when Spotify actions are disabled", async () => {
@@ -33,7 +39,13 @@ test("isAvailable is false when enabled but not authenticated", async () => {
 
 test("play calls the client and returns a success result", async () => {
   let called = false;
-  const p = provider(stubClient({ play: async () => { called = true; } }));
+  const p = provider(
+    stubClient({
+      play: async () => {
+        called = true;
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.PLAY, {});
   assert.equal(called, true);
   assert.equal(result.status, "success");
@@ -42,7 +54,13 @@ test("play calls the client and returns a success result", async () => {
 
 test("pause calls the client and returns a success result", async () => {
   let called = false;
-  const p = provider(stubClient({ pause: async () => { called = true; } }));
+  const p = provider(
+    stubClient({
+      pause: async () => {
+        called = true;
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.PAUSE, {});
   assert.equal(called, true);
   assert.equal(result.status, "success");
@@ -50,7 +68,13 @@ test("pause calls the client and returns a success result", async () => {
 
 test("next calls the client and returns a success result", async () => {
   let called = false;
-  const p = provider(stubClient({ next: async () => { called = true; } }));
+  const p = provider(
+    stubClient({
+      next: async () => {
+        called = true;
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.NEXT, {});
   assert.equal(called, true);
   assert.equal(result.status, "success");
@@ -58,7 +82,13 @@ test("next calls the client and returns a success result", async () => {
 
 test("previous calls the client and returns a success result", async () => {
   let called = false;
-  const p = provider(stubClient({ previous: async () => { called = true; } }));
+  const p = provider(
+    stubClient({
+      previous: async () => {
+        called = true;
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.PREVIOUS, {});
   assert.equal(called, true);
   assert.equal(result.status, "success");
@@ -84,7 +114,13 @@ test("setVolume validation accepts an in-range value", () => {
 
 test("setVolume executes and reports the volume set", async () => {
   let receivedVolume: number | undefined;
-  const p = provider(stubClient({ setVolume: async (v: unknown) => { receivedVolume = v as number; } }));
+  const p = provider(
+    stubClient({
+      setVolume: async (v: unknown) => {
+        receivedVolume = v as number;
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.SET_VOLUME, { volumePercent: 42 });
   assert.equal(receivedVolume, 42);
   assert.equal(result.status, "success");
@@ -96,7 +132,11 @@ test("playSearch with a track match plays the track and reports its name/artist"
   const p = provider(
     stubClient({
       search: async () => ({
-        tracks: { items: [{ id: "t1", name: "The Trooper", artists: [{ name: "Iron Maiden" }], uri: "spotify:track:t1" }] },
+        tracks: {
+          items: [
+            { id: "t1", name: "The Trooper", artists: [{ name: "Iron Maiden" }], uri: "spotify:track:t1" },
+          ],
+        },
       }),
       play: async (opts: unknown) => {
         playedUris = (opts as { uris?: string[] }).uris;
@@ -186,7 +226,13 @@ test("playPlaylist with no results returns a not_found failure", async () => {
 });
 
 test("an authentication failure from the client maps to a not_authenticated ActionError", async () => {
-  const p = provider(stubClient({ play: async () => { throw new SpotifyApiError("expired", "not_authenticated"); } }));
+  const p = provider(
+    stubClient({
+      play: async () => {
+        throw new SpotifyApiError("expired", "not_authenticated");
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.PLAY, {});
   assert.equal(result.status, "failure");
   assert.equal(result.error?.category, "not_authenticated");
@@ -195,7 +241,13 @@ test("an authentication failure from the client maps to a not_authenticated Acti
 });
 
 test("a no-active-device failure maps to a friendly, specific message", async () => {
-  const p = provider(stubClient({ play: async () => { throw new SpotifyApiError("no device", "no_active_device"); } }));
+  const p = provider(
+    stubClient({
+      play: async () => {
+        throw new SpotifyApiError("no device", "no_active_device");
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.PLAY, {});
   assert.equal(result.error?.category, "no_active_device");
   assert.match(result.error!.message, /no active Spotify device/i);
@@ -395,13 +447,25 @@ test("the device fallback also applies to playPlaylist and playSearch, not just 
 });
 
 test("a rate-limited failure maps to rate_limited", async () => {
-  const p = provider(stubClient({ next: async () => { throw new SpotifyApiError("429", "rate_limited"); } }));
+  const p = provider(
+    stubClient({
+      next: async () => {
+        throw new SpotifyApiError("429", "rate_limited");
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.NEXT, {});
   assert.equal(result.error?.category, "rate_limited");
 });
 
 test("an unexpected error is never leaked raw — it maps to a generic unknown failure", async () => {
-  const p = provider(stubClient({ pause: async () => { throw new Error("some raw stack trace detail"); } }));
+  const p = provider(
+    stubClient({
+      pause: async () => {
+        throw new Error("some raw stack trace detail");
+      },
+    })
+  );
   const result = await p.execute(SPOTIFY_ACTIONS.PAUSE, {});
   assert.equal(result.status, "failure");
   assert.equal(result.error?.category, "unknown");

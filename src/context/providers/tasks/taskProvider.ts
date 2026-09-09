@@ -2,7 +2,13 @@ import { ContextProvider } from "../../types";
 import { TtlCache } from "../../../common/ttlCache";
 import { logger } from "../../../logging/logger";
 import { localTimeZone, localCalendarDate } from "../calendar/icsTimeUtils";
-import { TodoistTaskSource, TodoistAccountConfig, RawTaskItem, TaskWriteInput, TodoistProjectSummary } from "./todoistTaskSource";
+import {
+  TodoistTaskSource,
+  TodoistAccountConfig,
+  RawTaskItem,
+  TaskWriteInput,
+  TodoistProjectSummary,
+} from "./todoistTaskSource";
 import { classifyTaskUrgency } from "./taskRelevance";
 import { TaskContext, TaskItem, TaskAccountInfo, TaskCategory, TaskPriority } from "./types";
 
@@ -172,7 +178,10 @@ export class TaskProvider implements ContextProvider<TaskContext> {
       if (result.status === "fulfilled") {
         tasks.push(...result.value);
       } else {
-        logger.warn(`Task account "${account.label}" failed`, { accountId: account.id, error: String(result.reason) });
+        logger.warn(`Task account "${account.label}" failed`, {
+          accountId: account.id,
+          error: String(result.reason),
+        });
       }
     });
 
@@ -241,7 +250,11 @@ export class TaskProvider implements ContextProvider<TaskContext> {
     return [{ id: "env-default", provider: "todoist", enabled: true, ...this.envFallbackAccount }];
   }
 
-  private async fetchAccountTasks(account: TaskAccountConfig, timezone: string, now: Date): Promise<TaskItem[]> {
+  private async fetchAccountTasks(
+    account: TaskAccountConfig,
+    timezone: string,
+    now: Date
+  ): Promise<TaskItem[]> {
     const source = this.sourceFactory(account);
     const raw = await source.fetchActiveTasks();
     return raw.map((task) => toTaskItem(task, account.id, account.provider, timezone, now));
@@ -264,7 +277,13 @@ function mapPriority(sourcePriority: number | null): TaskPriority {
   return "low"; // Todoist's default/lowest priority is 1
 }
 
-function toTaskItem(raw: RawTaskItem, accountId: string, source: string, timezone: string, now: Date): TaskItem {
+function toTaskItem(
+  raw: RawTaskItem,
+  accountId: string,
+  source: string,
+  timezone: string,
+  now: Date
+): TaskItem {
   const todayDate = localCalendarDate(now.toISOString(), timezone);
 
   const category: TaskCategory = raw.completed
@@ -279,7 +298,9 @@ function toTaskItem(raw: RawTaskItem, accountId: string, source: string, timezon
 
   const minutesUntilDue =
     raw.dueAt && !raw.dueIsDateOnly ? (new Date(raw.dueAt).getTime() - now.getTime()) / 60000 : null;
-  const minutesUntilReminder = raw.reminderAt ? (new Date(raw.reminderAt).getTime() - now.getTime()) / 60000 : null;
+  const minutesUntilReminder = raw.reminderAt
+    ? (new Date(raw.reminderAt).getTime() - now.getTime()) / 60000
+    : null;
   const ageDays = raw.createdAt ? (now.getTime() - new Date(raw.createdAt).getTime()) / DAY_MS : null;
 
   const { urgency, signals } = classifyTaskUrgency({
@@ -311,7 +332,12 @@ function toTaskItem(raw: RawTaskItem, accountId: string, source: string, timezon
   };
 }
 
-function buildContext(tasks: TaskItem[], accounts: TaskAccountInfo[], timezone: string, now: Date): TaskContext {
+function buildContext(
+  tasks: TaskItem[],
+  accounts: TaskAccountInfo[],
+  timezone: string,
+  now: Date
+): TaskContext {
   // Completed tasks should not normally appear in the active briefing/context.
   // Todoist's REST API never returns them in the first place; this filter
   // is what makes that true for any future provider too, even one that does

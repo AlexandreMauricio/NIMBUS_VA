@@ -36,12 +36,18 @@ test("weekdaysOnly passes on a weekday and fails on a weekend", async () => {
 
 test("spotifyNotAlreadyPlaying passes when Spotify is not playing", async () => {
   const conditions: RoutineCondition[] = [{ type: "spotifyNotAlreadyPlaying" }];
-  assert.equal(await evaluateConditions(conditions, { now: new Date(), isSpotifyPlaying: async () => false }), true);
+  assert.equal(
+    await evaluateConditions(conditions, { now: new Date(), isSpotifyPlaying: async () => false }),
+    true
+  );
 });
 
 test("spotifyNotAlreadyPlaying fails when Spotify is already playing", async () => {
   const conditions: RoutineCondition[] = [{ type: "spotifyNotAlreadyPlaying" }];
-  assert.equal(await evaluateConditions(conditions, { now: new Date(), isSpotifyPlaying: async () => true }), false);
+  assert.equal(
+    await evaluateConditions(conditions, { now: new Date(), isSpotifyPlaying: async () => true }),
+    false
+  );
 });
 
 test("spotifyNotAlreadyPlaying passes (fails open) when no playback signal is available", async () => {

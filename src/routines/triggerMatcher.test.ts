@@ -47,7 +47,13 @@ function appTrigger(overrides: Partial<ApplicationTriggerConfig> = {}): Applicat
 }
 
 function websiteTrigger(overrides: Partial<WebsiteTriggerConfig> = {}): WebsiteTriggerConfig {
-  return { type: "websiteOpened", matchField: "windowTitle", pattern: "skillcert", matchMode: "contains", ...overrides };
+  return {
+    type: "websiteOpened",
+    matchField: "windowTitle",
+    pattern: "skillcert",
+    matchMode: "contains",
+    ...overrides,
+  };
 }
 
 function folderTrigger(overrides: Partial<FolderTriggerConfig> = {}): FolderTriggerConfig {
@@ -55,7 +61,10 @@ function folderTrigger(overrides: Partial<FolderTriggerConfig> = {}): FolderTrig
 }
 
 test("an application trigger matches on exact executable name (case-insensitive)", () => {
-  assert.equal(matchesTrigger(appEvent({ executableName: "Steam.exe" }), appTrigger({ application: "steam.exe" })), true);
+  assert.equal(
+    matchesTrigger(appEvent({ executableName: "Steam.exe" }), appTrigger({ application: "steam.exe" })),
+    true
+  );
 });
 
 test("an application trigger with exact mode does not match a different executable", () => {
@@ -64,28 +73,40 @@ test("an application trigger with exact mode does not match a different executab
 
 test("an application trigger with contains mode matches a substring", () => {
   assert.equal(
-    matchesTrigger(appEvent({ executableName: "unityhub.exe" }), appTrigger({ application: "unity", matchMode: "contains" })),
+    matchesTrigger(
+      appEvent({ executableName: "unityhub.exe" }),
+      appTrigger({ application: "unity", matchMode: "contains" })
+    ),
     true
   );
 });
 
 test("a website trigger matches the window title heuristic by contains", () => {
   assert.equal(
-    matchesTrigger(websiteEvent({ windowTitle: "SkillCert - Google Chrome" }), websiteTrigger({ matchField: "windowTitle" })),
+    matchesTrigger(
+      websiteEvent({ windowTitle: "SkillCert - Google Chrome" }),
+      websiteTrigger({ matchField: "windowTitle" })
+    ),
     true
   );
 });
 
 test("a website trigger does not match when the pattern isn't present", () => {
   assert.equal(
-    matchesTrigger(websiteEvent({ windowTitle: "YouTube - Google Chrome" }), websiteTrigger({ matchField: "windowTitle" })),
+    matchesTrigger(
+      websiteEvent({ windowTitle: "YouTube - Google Chrome" }),
+      websiteTrigger({ matchField: "windowTitle" })
+    ),
     false
   );
 });
 
 test("a website trigger matching on domain fails cleanly when the event has no domain (heuristic detector limitation)", () => {
   assert.equal(
-    matchesTrigger(websiteEvent({ domain: null }), websiteTrigger({ matchField: "domain", pattern: "skillcert.com" })),
+    matchesTrigger(
+      websiteEvent({ domain: null }),
+      websiteTrigger({ matchField: "domain", pattern: "skillcert.com" })
+    ),
     false
   );
 });
@@ -106,11 +127,17 @@ test("a folder trigger matches a path substring", () => {
 
 test("a folder trigger with exact mode requires the full path to match", () => {
   assert.equal(
-    matchesTrigger(folderEvent({ path: "C:\\Projects" }), folderTrigger({ path: "C:\\Projects", matchMode: "exact" })),
+    matchesTrigger(
+      folderEvent({ path: "C:\\Projects" }),
+      folderTrigger({ path: "C:\\Projects", matchMode: "exact" })
+    ),
     true
   );
   assert.equal(
-    matchesTrigger(folderEvent({ path: "C:\\Projects\\Sub" }), folderTrigger({ path: "C:\\Projects", matchMode: "exact" })),
+    matchesTrigger(
+      folderEvent({ path: "C:\\Projects\\Sub" }),
+      folderTrigger({ path: "C:\\Projects", matchMode: "exact" })
+    ),
     false
   );
 });

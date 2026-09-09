@@ -1,5 +1,17 @@
-import { ActionDefinition, ActionError, ActionProvider, ActionResult, ActionValidationResult } from "../types";
-import { SpotifyApiClient, SpotifyApiError, SpotifyApiErrorCategory, SpotifySearchType, PlayOptions } from "../../context/providers/spotify/spotifyApiClient";
+import {
+  ActionDefinition,
+  ActionError,
+  ActionProvider,
+  ActionResult,
+  ActionValidationResult,
+} from "../types";
+import {
+  SpotifyApiClient,
+  SpotifyApiError,
+  SpotifyApiErrorCategory,
+  SpotifySearchType,
+  PlayOptions,
+} from "../../context/providers/spotify/spotifyApiClient";
 
 const DEFAULT_DEVICE_WAKE_WAIT_MS = 3000;
 
@@ -50,16 +62,46 @@ export class SpotifyActionProvider implements ActionProvider {
      */
     private readonly openSpotifyApp?: () => Promise<void>,
     private readonly deviceWakeWaitMs: number = DEFAULT_DEVICE_WAKE_WAIT_MS,
-    private readonly wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    private readonly wait: (ms: number) => Promise<void> = (ms) =>
+      new Promise((resolve) => setTimeout(resolve, ms))
   ) {}
 
   listActions(): ActionDefinition[] {
-    const base = { readOnly: false, changesExternalState: true, requiresConfirmation: false, affectsService: "spotify" };
+    const base = {
+      readOnly: false,
+      changesExternalState: true,
+      requiresConfirmation: false,
+      affectsService: "spotify",
+    };
     return [
-      { id: SPOTIFY_ACTIONS.PLAY, name: "Play", description: "Start or resume Spotify playback.", parameters: [], ...base },
-      { id: SPOTIFY_ACTIONS.PAUSE, name: "Pause", description: "Pause Spotify playback.", parameters: [], ...base },
-      { id: SPOTIFY_ACTIONS.NEXT, name: "Next", description: "Skip to the next track.", parameters: [], ...base },
-      { id: SPOTIFY_ACTIONS.PREVIOUS, name: "Previous", description: "Return to the previous track.", parameters: [], ...base },
+      {
+        id: SPOTIFY_ACTIONS.PLAY,
+        name: "Play",
+        description: "Start or resume Spotify playback.",
+        parameters: [],
+        ...base,
+      },
+      {
+        id: SPOTIFY_ACTIONS.PAUSE,
+        name: "Pause",
+        description: "Pause Spotify playback.",
+        parameters: [],
+        ...base,
+      },
+      {
+        id: SPOTIFY_ACTIONS.NEXT,
+        name: "Next",
+        description: "Skip to the next track.",
+        parameters: [],
+        ...base,
+      },
+      {
+        id: SPOTIFY_ACTIONS.PREVIOUS,
+        name: "Previous",
+        description: "Return to the previous track.",
+        parameters: [],
+        ...base,
+      },
       {
         id: SPOTIFY_ACTIONS.SET_VOLUME,
         name: "Set volume",
@@ -73,7 +115,12 @@ export class SpotifyActionProvider implements ActionProvider {
         description: "Search Spotify for a track/artist/album and start playing the best match.",
         parameters: [
           { name: "query", type: "string", required: true },
-          { name: "type", type: "string", required: false, description: "track | artist | album — defaults to track" },
+          {
+            name: "type",
+            type: "string",
+            required: false,
+            description: "track | artist | album — defaults to track",
+          },
         ],
         ...base,
       },
@@ -82,8 +129,18 @@ export class SpotifyActionProvider implements ActionProvider {
         name: "Play playlist",
         description: "Search Spotify for a playlist by name and start playing it.",
         parameters: [
-          { name: "playlistQuery", type: "string", required: false, description: "Search by name — provide this or playlistUri" },
-          { name: "playlistUri", type: "string", required: false, description: "An exact playlist URI, e.g. from a picked playlist — provide this or playlistQuery" },
+          {
+            name: "playlistQuery",
+            type: "string",
+            required: false,
+            description: "Search by name — provide this or playlistUri",
+          },
+          {
+            name: "playlistUri",
+            type: "string",
+            required: false,
+            description: "An exact playlist URI, e.g. from a picked playlist — provide this or playlistQuery",
+          },
         ],
         ...base,
       },
@@ -161,52 +218,90 @@ export class SpotifyActionProvider implements ActionProvider {
         case SPOTIFY_ACTIONS.SET_VOLUME: {
           const volumePercent = params.volumePercent as number;
           await this.client.setVolume(volumePercent);
-          return this.success(actionId, startedAt, `Volume set to ${Math.round(volumePercent)}%.`, { volumePercent });
+          return this.success(actionId, startedAt, `Volume set to ${Math.round(volumePercent)}%.`, {
+            volumePercent,
+          });
         }
 
         case SPOTIFY_ACTIONS.PLAY_SEARCH:
-          return await this.playSearch(actionId, startedAt, params.query as string, (params.type as SpotifySearchType) ?? "track");
+          return await this.playSearch(
+            actionId,
+            startedAt,
+            params.query as string,
+            (params.type as SpotifySearchType) ?? "track"
+          );
 
         case SPOTIFY_ACTIONS.PLAY_PLAYLIST:
-          return await this.playPlaylist(actionId, startedAt, params.playlistQuery as string | undefined, params.playlistUri as string | undefined);
+          return await this.playPlaylist(
+            actionId,
+            startedAt,
+            params.playlistQuery as string | undefined,
+            params.playlistUri as string | undefined
+          );
 
         default:
-          return this.failure(actionId, startedAt, { category: "not_available", message: "That action isn't available." });
+          return this.failure(actionId, startedAt, {
+            category: "not_available",
+            message: "That action isn't available.",
+          });
       }
     } catch (err) {
       return this.failure(actionId, startedAt, mapError(err));
     }
   }
 
-  private async playSearch(actionId: string, startedAt: Date, query: string, type: SpotifySearchType): Promise<ActionResult> {
+  private async playSearch(
+    actionId: string,
+    startedAt: Date,
+    query: string,
+    type: SpotifySearchType
+  ): Promise<ActionResult> {
     const results = await this.client.search(query, [type], 1);
     const item = type === "track" ? results.tracks?.items?.[0] : undefined;
     // Artist/album search results share the same "playable context" shape
     // (id/name/uri) as a playlist for our purposes — Spotify itself only
     // ever returns typed arrays, so this narrows to whichever the caller asked for.
     const contextItem =
-      type !== "track" ? (results as unknown as Record<string, { items?: { name: string; uri: string }[] }>)[`${type}s`]?.items?.[0] : undefined;
+      type !== "track"
+        ? (results as unknown as Record<string, { items?: { name: string; uri: string }[] }>)[`${type}s`]
+            ?.items?.[0]
+        : undefined;
 
     if (type === "track") {
       if (!item) {
-        return this.failure(actionId, startedAt, { category: "not_found", message: "I couldn't find that on Spotify." });
+        return this.failure(actionId, startedAt, {
+          category: "not_found",
+          message: "I couldn't find that on Spotify.",
+        });
       }
       const outcome = await this.playWithDeviceFallback({ uris: [item.uri] });
       if (!outcome.success) return this.failureFromPlayOutcome(actionId, startedAt, outcome);
       const artist = item.artists?.[0]?.name;
       const message = artist ? `Playing "${item.name}" by ${artist}.` : `Playing "${item.name}".`;
-      return this.success(actionId, startedAt, message, { id: item.id, name: item.name, artist: artist ?? null });
+      return this.success(actionId, startedAt, message, {
+        id: item.id,
+        name: item.name,
+        artist: artist ?? null,
+      });
     }
 
     if (!contextItem) {
-      return this.failure(actionId, startedAt, { category: "not_found", message: "I couldn't find that on Spotify." });
+      return this.failure(actionId, startedAt, {
+        category: "not_found",
+        message: "I couldn't find that on Spotify.",
+      });
     }
     const outcome = await this.playWithDeviceFallback({ contextUri: contextItem.uri });
     if (!outcome.success) return this.failureFromPlayOutcome(actionId, startedAt, outcome);
     return this.success(actionId, startedAt, `Playing "${contextItem.name}".`, { name: contextItem.name });
   }
 
-  private async playPlaylist(actionId: string, startedAt: Date, query: string | undefined, playlistUri: string | undefined): Promise<ActionResult> {
+  private async playPlaylist(
+    actionId: string,
+    startedAt: Date,
+    query: string | undefined,
+    playlistUri: string | undefined
+  ): Promise<ActionResult> {
     // An exact URI (e.g. from a Routine configured against a picked
     // playlist — see src/routines/) is preferred when present: it's
     // unambiguous and needs no search round-trip at all. Falls back to a
@@ -220,7 +315,10 @@ export class SpotifyActionProvider implements ActionProvider {
     const results = await this.client.search(query!, ["playlist"], 1);
     const playlist = results.playlists?.items?.[0];
     if (!playlist) {
-      return this.failure(actionId, startedAt, { category: "not_found", message: "I couldn't find that playlist on Spotify." });
+      return this.failure(actionId, startedAt, {
+        category: "not_found",
+        message: "I couldn't find that playlist on Spotify.",
+      });
     }
     const outcome = await this.playWithDeviceFallback({ contextUri: playlist.uri });
     if (!outcome.success) return this.failureFromPlayOutcome(actionId, startedAt, outcome);

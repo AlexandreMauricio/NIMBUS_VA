@@ -69,7 +69,8 @@ function renderTimer(state: PublicTimerState | null): void {
   currentId = state.id;
   titleEl.textContent = state.title;
   remainingEl.textContent = formatRemaining(state.remainingMs);
-  const progress = state.durationMs > 0 ? ((state.durationMs - state.remainingMs) / state.durationMs) * 100 : 0;
+  const progress =
+    state.durationMs > 0 ? ((state.durationMs - state.remainingMs) / state.durationMs) * 100 : 0;
   progressFillEl.style.width = `${Math.min(100, Math.max(0, progress))}%`;
   pauseResumeBtn.textContent = state.status === "paused" ? "Resume" : "Pause";
   pauseResumeBtn.disabled = false;

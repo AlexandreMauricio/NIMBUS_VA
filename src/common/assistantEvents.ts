@@ -14,12 +14,7 @@
  * exists ahead of time.
  */
 
-export type AssistantEventType =
-  | "message"
-  | "notification"
-  | "briefing"
-  | "actionRequest"
-  | "suggestion";
+export type AssistantEventType = "message" | "notification" | "briefing" | "actionRequest" | "suggestion";
 
 interface AssistantEventBase {
   id: string;
@@ -86,8 +81,4 @@ export interface AssistantSuggestion extends AssistantEventBase {
 }
 
 export type AssistantEvent =
-  | AssistantMessage
-  | AssistantNotification
-  | AssistantBriefing
-  | AssistantActionRequest
-  | AssistantSuggestion;
+  AssistantMessage | AssistantNotification | AssistantBriefing | AssistantActionRequest | AssistantSuggestion;

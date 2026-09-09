@@ -353,10 +353,7 @@ export function extractSecrets(settings: NimbusSettings): {
  * store and strips it from settings.json. An account with neither ends
  * up with an empty string, exactly as if it were never configured.
  */
-export function restoreSecrets(
-  settings: NimbusSettings,
-  secrets: Record<string, string>
-): NimbusSettings {
+export function restoreSecrets(settings: NimbusSettings, secrets: Record<string, string>): NimbusSettings {
   return {
     ...settings,
     userPreferences: {

@@ -207,7 +207,11 @@ function buildContext(
 
   const importantMessages = byRecency
     .filter((m) => m.importance === "important" || m.importance === "high")
-    .sort((a, b) => IMPORTANCE_RANK[b.importance] - IMPORTANCE_RANK[a.importance] || b.receivedAt.localeCompare(a.receivedAt))
+    .sort(
+      (a, b) =>
+        IMPORTANCE_RANK[b.importance] - IMPORTANCE_RANK[a.importance] ||
+        b.receivedAt.localeCompare(a.receivedAt)
+    )
     .slice(0, MAX_IMPORTANT_MESSAGES);
 
   return {

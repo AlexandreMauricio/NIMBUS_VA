@@ -64,12 +64,7 @@ test("caches results within the TTL instead of re-fetching", async () => {
 test("re-fetches once the cache TTL has elapsed", async () => {
   const counter = { count: 0 };
   let now = 0;
-  const provider = new WeatherProvider(
-    stubLocationResolver(),
-    stubWeatherClient(counter),
-    10_000,
-    () => now
-  );
+  const provider = new WeatherProvider(stubLocationResolver(), stubWeatherClient(counter), 10_000, () => now);
 
   await provider.getContext();
   now += 20_000; // past TTL

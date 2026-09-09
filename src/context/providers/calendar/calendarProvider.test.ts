@@ -8,7 +8,9 @@ function ics(...lines: string[]): string {
 }
 
 /** Builds a source factory that returns canned ICS text per feed address, or throws for a configured "broken" address. */
-function stubSourceFactory(byAddress: Record<string, string | Error>): (address: string) => IcsCalendarSource {
+function stubSourceFactory(
+  byAddress: Record<string, string | Error>
+): (address: string) => IcsCalendarSource {
   return (address: string) => {
     const canned = byAddress[address];
     return {
@@ -48,7 +50,13 @@ test("isAvailable is true when enabled with at least one enabled feed", () => {
 
 test("an env fallback feed is used when enabled but no feed is saved yet", async () => {
   const now = new Date("2026-07-15T08:00:00.000Z");
-  const raw = ics("BEGIN:VEVENT", "UID:e1", "SUMMARY:From env feed", "DTSTART:20260715T140000Z", "END:VEVENT");
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:e1",
+    "SUMMARY:From env feed",
+    "DTSTART:20260715T140000Z",
+    "END:VEVENT"
+  );
   const provider = new CalendarProvider(
     () => config({ feeds: [] }),
     stubSourceFactory({ "env://feed": raw }),
@@ -79,7 +87,11 @@ test("a saved feed takes priority over the env fallback feed", async () => {
 test("no events today or upcoming produces empty buckets and a null nextEvent", async () => {
   const now = new Date("2026-07-15T12:00:00.000Z");
   const sourceFactory = stubSourceFactory({ "feed://personal": ics() });
-  const provider = new CalendarProvider(() => config(), sourceFactory, () => now);
+  const provider = new CalendarProvider(
+    () => config(),
+    sourceFactory,
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.deepEqual(ctx.todayEvents, []);
@@ -90,8 +102,19 @@ test("no events today or upcoming produces empty buckets and a null nextEvent", 
 
 test("one event today appears in todayEvents and as nextEvent", async () => {
   const now = new Date("2026-07-15T12:00:00.000Z");
-  const raw = ics("BEGIN:VEVENT", "UID:e1", "SUMMARY:Standup", "DTSTART:20260715T140000Z", "DTEND:20260715T143000Z", "END:VEVENT");
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:e1",
+    "SUMMARY:Standup",
+    "DTSTART:20260715T140000Z",
+    "DTEND:20260715T143000Z",
+    "END:VEVENT"
+  );
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.todayEvents.length, 1);
@@ -102,20 +125,39 @@ test("one event today appears in todayEvents and as nextEvent", async () => {
 test("multiple events today are all bucketed and sorted by start time", async () => {
   const now = new Date("2026-07-15T08:00:00.000Z");
   const raw = ics(
-    "BEGIN:VEVENT", "UID:e-late", "SUMMARY:Afternoon review", "DTSTART:20260715T180000Z", "END:VEVENT",
-    "BEGIN:VEVENT", "UID:e-early", "SUMMARY:Morning standup", "DTSTART:20260715T130000Z", "END:VEVENT"
+    "BEGIN:VEVENT",
+    "UID:e-late",
+    "SUMMARY:Afternoon review",
+    "DTSTART:20260715T180000Z",
+    "END:VEVENT",
+    "BEGIN:VEVENT",
+    "UID:e-early",
+    "SUMMARY:Morning standup",
+    "DTSTART:20260715T130000Z",
+    "END:VEVENT"
   );
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.todayEvents.length, 2);
-  assert.deepEqual(ctx.todayEvents.map((e) => e.id), ["e-early", "e-late"]);
+  assert.deepEqual(
+    ctx.todayEvents.map((e) => e.id),
+    ["e-early", "e-late"]
+  );
 });
 
 test("an event tomorrow is classified as laterEvents, not todayEvents", async () => {
   const now = new Date("2026-07-15T12:00:00.000Z");
   const raw = ics("BEGIN:VEVENT", "UID:tmr", "SUMMARY:Dentist", "DTSTART:20260716T140000Z", "END:VEVENT");
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.todayEvents.length, 0);
@@ -126,8 +168,18 @@ test("an event tomorrow is classified as laterEvents, not todayEvents", async ()
 
 test("an all-day event today is included in todayEvents with isAllDay true", async () => {
   const now = new Date("2026-07-15T12:00:00.000Z");
-  const raw = ics("BEGIN:VEVENT", "UID:holiday", "SUMMARY:Company holiday", "DTSTART;VALUE=DATE:20260715", "END:VEVENT");
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:holiday",
+    "SUMMARY:Company holiday",
+    "DTSTART;VALUE=DATE:20260715",
+    "END:VEVENT"
+  );
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.todayEvents.length, 1);
@@ -136,8 +188,19 @@ test("an all-day event today is included in todayEvents with isAllDay true", asy
 
 test("an event that already ended today still appears in todayEvents but is not nextEvent", async () => {
   const now = new Date("2026-07-15T16:00:00.000Z"); // after the event ended
-  const raw = ics("BEGIN:VEVENT", "UID:done", "SUMMARY:Morning call", "DTSTART:20260715T130000Z", "DTEND:20260715T140000Z", "END:VEVENT");
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:done",
+    "SUMMARY:Morning call",
+    "DTSTART:20260715T130000Z",
+    "DTEND:20260715T140000Z",
+    "END:VEVENT"
+  );
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.todayEvents.length, 1);
@@ -147,7 +210,11 @@ test("an event that already ended today still appears in todayEvents but is not 
 test("an event starting soon is reported as nextEvent", async () => {
   const now = new Date("2026-07-15T13:45:00.000Z");
   const raw = ics("BEGIN:VEVENT", "UID:soon", "SUMMARY:Interview", "DTSTART:20260715T140000Z", "END:VEVENT");
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.nextEvent?.id, "soon");
@@ -155,7 +222,13 @@ test("an event starting soon is reported as nextEvent", async () => {
 
 test("multiple enabled feeds are merged and tagged with their own calendar name", async () => {
   const now = new Date("2026-07-15T08:00:00.000Z");
-  const workRaw = ics("BEGIN:VEVENT", "UID:w1", "SUMMARY:Sprint planning", "DTSTART:20260715T140000Z", "END:VEVENT");
+  const workRaw = ics(
+    "BEGIN:VEVENT",
+    "UID:w1",
+    "SUMMARY:Sprint planning",
+    "DTSTART:20260715T140000Z",
+    "END:VEVENT"
+  );
   const personalRaw = ics("BEGIN:VEVENT", "UID:p1", "SUMMARY:Gym", "DTSTART:20260715T190000Z", "END:VEVENT");
 
   const provider = new CalendarProvider(
@@ -192,7 +265,13 @@ test("a disabled feed is not fetched or included", async () => {
 
 test("one feed failing does not prevent events from a working feed", async () => {
   const now = new Date("2026-07-15T08:00:00.000Z");
-  const goodRaw = ics("BEGIN:VEVENT", "UID:ok", "SUMMARY:Still works", "DTSTART:20260715T140000Z", "END:VEVENT");
+  const goodRaw = ics(
+    "BEGIN:VEVENT",
+    "UID:ok",
+    "SUMMARY:Still works",
+    "DTSTART:20260715T140000Z",
+    "END:VEVENT"
+  );
 
   const provider = new CalendarProvider(
     () =>
@@ -237,10 +316,21 @@ test("an unauthorized/forbidden feed response is treated as a normal failure, no
 test("malformed ICS content does not throw — unparseable events are simply skipped", async () => {
   const now = new Date("2026-07-15T08:00:00.000Z");
   const raw = ics(
-    "BEGIN:VEVENT", "SUMMARY:Missing uid", "DTSTART:20260715T090000Z", "END:VEVENT",
-    "BEGIN:VEVENT", "UID:valid", "SUMMARY:Valid event", "DTSTART:20260715T140000Z", "END:VEVENT"
+    "BEGIN:VEVENT",
+    "SUMMARY:Missing uid",
+    "DTSTART:20260715T090000Z",
+    "END:VEVENT",
+    "BEGIN:VEVENT",
+    "UID:valid",
+    "SUMMARY:Valid event",
+    "DTSTART:20260715T140000Z",
+    "END:VEVENT"
   );
-  const provider = new CalendarProvider(() => config(), stubSourceFactory({ "feed://personal": raw }), () => now);
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
 
   const ctx = await provider.getContext();
   assert.equal(ctx.todayEvents.length, 1);
@@ -283,7 +373,12 @@ test("cache TTL shrinks (refreshes sooner) once the next known event is imminent
     },
   } as unknown as IcsCalendarSource;
 
-  const provider = new CalendarProvider(() => config(), () => source, () => new Date(clockMs), () => clockMs);
+  const provider = new CalendarProvider(
+    () => config(),
+    () => source,
+    () => new Date(clockMs),
+    () => clockMs
+  );
 
   await provider.getContext();
   clockMs += 3 * 60 * 1000; // 3 minutes later — longer than the 2-minute "imminent" cache TTL

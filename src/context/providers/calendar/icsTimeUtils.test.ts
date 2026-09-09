@@ -23,10 +23,7 @@ test("zonedTimeToUtcMs converts a New York wall-clock time to the correct UTC in
 });
 
 test("zonedTimeToUtcMs handles a positive-offset zone (Tokyo, UTC+9)", () => {
-  const ms = zonedTimeToUtcMs(
-    { year: 2026, month: 3, day: 1, hour: 9, minute: 0, second: 0 },
-    "Asia/Tokyo"
-  );
+  const ms = zonedTimeToUtcMs({ year: 2026, month: 3, day: 1, hour: 9, minute: 0, second: 0 }, "Asia/Tokyo");
   const iso = new Date(ms).toISOString();
   assert.equal(iso, "2026-03-01T00:00:00.000Z");
 });

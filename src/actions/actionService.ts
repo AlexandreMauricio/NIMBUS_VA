@@ -57,10 +57,12 @@ export class ActionService {
     const provider = this.providers.get(providerIdOf(actionId));
 
     if (!provider) {
-      return this.finish(failure(actionId, startedAt, new Date(), {
-        category: "not_available",
-        message: "That action isn't available.",
-      }));
+      return this.finish(
+        failure(actionId, startedAt, new Date(), {
+          category: "not_available",
+          message: "That action isn't available.",
+        })
+      );
     }
 
     let available: boolean;
@@ -76,18 +78,22 @@ export class ActionService {
     }
 
     if (!available) {
-      return this.finish(failure(actionId, startedAt, new Date(), {
-        category: "not_available",
-        message: "That action isn't available right now.",
-      }));
+      return this.finish(
+        failure(actionId, startedAt, new Date(), {
+          category: "not_available",
+          message: "That action isn't available right now.",
+        })
+      );
     }
 
     const validation = provider.validate(actionId, params);
     if (!validation.valid) {
-      return this.finish(failure(actionId, startedAt, new Date(), {
-        category: "invalid_parameters",
-        message: validation.error || "Invalid parameters for that action.",
-      }));
+      return this.finish(
+        failure(actionId, startedAt, new Date(), {
+          category: "invalid_parameters",
+          message: validation.error || "Invalid parameters for that action.",
+        })
+      );
     }
 
     try {
@@ -111,12 +117,14 @@ export class ActionService {
         error: String(err),
       });
       const timedOut = err instanceof TimeoutError;
-      return this.finish(failure(actionId, startedAt, new Date(), {
-        category: timedOut ? "timeout" : "unknown",
-        message: timedOut
-          ? "That action took too long and was given up on."
-          : "Something went wrong performing that action.",
-      }));
+      return this.finish(
+        failure(actionId, startedAt, new Date(), {
+          category: timedOut ? "timeout" : "unknown",
+          message: timedOut
+            ? "That action took too long and was given up on."
+            : "Something went wrong performing that action.",
+        })
+      );
     }
   }
 

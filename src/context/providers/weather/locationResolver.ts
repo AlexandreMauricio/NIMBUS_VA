@@ -23,9 +23,7 @@ const AUTO_LOCATION_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — location rarely
  * the latest saved preference, including changes made after startup.
  */
 export class LocationResolver {
-  private readonly autoCache = new TtlCache<Omit<WeatherLocation, "source">>(
-    AUTO_LOCATION_CACHE_TTL_MS
-  );
+  private readonly autoCache = new TtlCache<Omit<WeatherLocation, "source">>(AUTO_LOCATION_CACHE_TTL_MS);
 
   constructor(
     private readonly getSettings: () => WeatherLocationSettings,

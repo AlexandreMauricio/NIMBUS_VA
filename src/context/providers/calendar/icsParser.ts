@@ -116,11 +116,7 @@ function parseProperty(line: string): { name: string; params: Record<string, str
 }
 
 function unescapeText(value: string): string {
-  return value
-    .replace(/\\n/gi, "\n")
-    .replace(/\\,/g, ",")
-    .replace(/\\;/g, ";")
-    .replace(/\\\\/g, "\\");
+  return value.replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
 }
 
 function finalizeEvent(
@@ -198,7 +194,9 @@ function parseDateTimeValue(
 
   if (isUtc) {
     return {
-      iso: new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)).toISOString(),
+      iso: new Date(
+        Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second)
+      ).toISOString(),
       isAllDay: false,
     };
   }

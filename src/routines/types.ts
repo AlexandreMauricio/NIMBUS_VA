@@ -45,7 +45,8 @@ export interface TimerCompletedTriggerConfig {
   timerType: string;
 }
 
-export type TriggerConfig = ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig | TimerCompletedTriggerConfig;
+export type TriggerConfig =
+  ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig | TimerCompletedTriggerConfig;
 
 /** A time-of-day window, in the user's local time. `startHour`/`endHour` are 0-23; a range that wraps past midnight (e.g. 22-6) is supported. */
 export interface TimeOfDayCondition {
@@ -170,7 +171,10 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
     if (!knownActionIds.includes(step.actionId)) {
       return { valid: false, error: `Unknown action "${step.actionId}".` };
     }
-    if (step.params !== undefined && (typeof step.params !== "object" || step.params === null || Array.isArray(step.params))) {
+    if (
+      step.params !== undefined &&
+      (typeof step.params !== "object" || step.params === null || Array.isArray(step.params))
+    ) {
       return { valid: false, error: `Action "${step.actionId}" params must be a plain object.` };
     }
   }
@@ -185,7 +189,11 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
     return { valid: false, error: "Routine suggestion needs a title and message." };
   }
 
-  if (typeof routine.cooldownMinutes !== "number" || !Number.isFinite(routine.cooldownMinutes) || routine.cooldownMinutes < 0) {
+  if (
+    typeof routine.cooldownMinutes !== "number" ||
+    !Number.isFinite(routine.cooldownMinutes) ||
+    routine.cooldownMinutes < 0
+  ) {
     return { valid: false, error: "cooldownMinutes must be a non-negative number." };
   }
 
@@ -248,8 +256,12 @@ function validateCondition(condition: RoutineCondition): string | null {
   switch (condition.type) {
     case "timeOfDay":
       if (
-        !Number.isInteger(condition.startHour) || condition.startHour < 0 || condition.startHour > 23 ||
-        !Number.isInteger(condition.endHour) || condition.endHour < 0 || condition.endHour > 23
+        !Number.isInteger(condition.startHour) ||
+        condition.startHour < 0 ||
+        condition.startHour > 23 ||
+        !Number.isInteger(condition.endHour) ||
+        condition.endHour < 0 ||
+        condition.endHour > 23
       ) {
         return "timeOfDay condition needs startHour/endHour between 0 and 23.";
       }

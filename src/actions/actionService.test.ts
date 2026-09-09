@@ -27,8 +27,9 @@ class StubProvider implements ActionProvider {
   readonly id = "demo";
   readonly displayName = "Demo";
   available: boolean | Promise<boolean> = true;
-  executeImpl: (actionId: string, params: Record<string, unknown>) => Promise<ActionResult> = async (actionId) =>
-    successResult(actionId);
+  executeImpl: (actionId: string, params: Record<string, unknown>) => Promise<ActionResult> = async (
+    actionId
+  ) => successResult(actionId);
   validateImpl: (actionId: string, params: Record<string, unknown>) => ActionValidationResult = () => ({
     valid: true,
   });

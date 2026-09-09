@@ -10,7 +10,10 @@ test("the first poll after starting establishes a baseline and publishes no even
   const received: string[] = [];
   bus.subscribe((e) => received.push(e.type));
 
-  const poll = async (): Promise<RawActivitySnapshot> => ({ ...emptySnapshot(), processNames: ["steam.exe"] });
+  const poll = async (): Promise<RawActivitySnapshot> => ({
+    ...emptySnapshot(),
+    processNames: ["steam.exe"],
+  });
   const monitor = new DesktopActivityMonitor(bus, poll, 999_999);
 
   monitor.start();
@@ -90,7 +93,10 @@ test("stopping the monitor resets its baseline — restarting requires a fresh b
   const received: string[] = [];
   bus.subscribe((e) => received.push(e.type));
 
-  const poll = async (): Promise<RawActivitySnapshot> => ({ ...emptySnapshot(), processNames: ["steam.exe"] });
+  const poll = async (): Promise<RawActivitySnapshot> => ({
+    ...emptySnapshot(),
+    processNames: ["steam.exe"],
+  });
   const monitor = new DesktopActivityMonitor(bus, poll, 999_999);
 
   monitor.start();
@@ -138,7 +144,13 @@ test("repeated polls reuse one PowerShell session rather than starting one each 
     if (runScript) await runScript("dummy");
     return emptySnapshot();
   };
-  const monitor = new DesktopActivityMonitor(bus, poll, 999_999, () => new Date(), () => session);
+  const monitor = new DesktopActivityMonitor(
+    bus,
+    poll,
+    999_999,
+    () => new Date(),
+    () => session
+  );
 
   monitor.start();
   await new Promise((r) => setImmediate(r));
@@ -158,7 +170,13 @@ test("stopping the monitor disposes the PowerShell session", async () => {
     if (runScript) await runScript("dummy");
     return emptySnapshot();
   };
-  const monitor = new DesktopActivityMonitor(bus, poll, 999_999, () => new Date(), () => session);
+  const monitor = new DesktopActivityMonitor(
+    bus,
+    poll,
+    999_999,
+    () => new Date(),
+    () => session
+  );
 
   monitor.start();
   await new Promise((r) => setImmediate(r));
@@ -178,7 +196,13 @@ test("a failing session stops being retried after repeated failures", async () =
     runScriptRef = runScript;
     return emptySnapshot();
   };
-  const monitor = new DesktopActivityMonitor(bus, poll, 999_999, () => new Date(), () => session);
+  const monitor = new DesktopActivityMonitor(
+    bus,
+    poll,
+    999_999,
+    () => new Date(),
+    () => session
+  );
 
   monitor.start();
   await new Promise((r) => setImmediate(r));

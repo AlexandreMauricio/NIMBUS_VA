@@ -295,14 +295,7 @@ interface RoutineSettings {
 }
 
 type BriefingCategory =
-  | "greeting"
-  | "dateTime"
-  | "weather"
-  | "calendar"
-  | "email"
-  | "tasks"
-  | "meals"
-  | "other";
+  "greeting" | "dateTime" | "weather" | "calendar" | "email" | "tasks" | "meals" | "other";
 
 interface BriefingAction {
   label: string;
@@ -354,7 +347,10 @@ interface NimbusApi {
   reopenTask: (taskId: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   getSpotifySettings: () => Promise<SpotifySettings>;
-  updateSpotifySettings: (partial: { enabled?: boolean; preferredDeviceId?: string | null }) => Promise<SpotifySettings>;
+  updateSpotifySettings: (partial: {
+    enabled?: boolean;
+    preferredDeviceId?: string | null;
+  }) => Promise<SpotifySettings>;
   connectSpotify: () => Promise<{ connected: boolean; error: string | null }>;
   disconnectSpotify: () => Promise<{ connected: boolean }>;
   listActions: () => Promise<ActionDefinition[]>;
@@ -523,9 +519,7 @@ async function initCalendarSettings(): Promise<void> {
       toggle.checked = feed.enabled;
       toggle.title = "Enabled";
       toggle.addEventListener("change", async () => {
-        const updated = settings.feeds.map((f) =>
-          f.id === feed.id ? { ...f, enabled: toggle.checked } : f
-        );
+        const updated = settings.feeds.map((f) => (f.id === feed.id ? { ...f, enabled: toggle.checked } : f));
         const saved = await window.nimbus.updateCalendarSettings({ feeds: updated });
         renderFeeds(saved);
       });
@@ -1030,7 +1024,9 @@ function initNowPlayingCard(): void {
     artistEl.textContent = context.track.artists.join(", ") || "";
 
     const playlistName =
-      context.context?.type === "playlist" ? knownPlaylists.find((p) => p.uri === context.context!.uri)?.name : null;
+      context.context?.type === "playlist"
+        ? knownPlaylists.find((p) => p.uri === context.context!.uri)?.name
+        : null;
     kickerEl.textContent = playlistName ? `Spotify · ${playlistName}` : "Spotify";
 
     const progress = context.progressMs ?? 0;
@@ -1050,7 +1046,10 @@ function initNowPlayingCard(): void {
 
   async function refresh(): Promise<void> {
     try {
-      const [spotifySettings, snapshot] = await Promise.all([window.nimbus.getSpotifySettings(), window.nimbus.getContext()]);
+      const [spotifySettings, snapshot] = await Promise.all([
+        window.nimbus.getSpotifySettings(),
+        window.nimbus.getContext(),
+      ]);
       if (!spotifySettings.connected) {
         render(null, false);
         return;
@@ -1159,7 +1158,8 @@ function triggerSummary(trigger: TriggerConfig): string {
 }
 
 function buildTriggerFromForm(): TriggerConfig | null {
-  const type = (document.getElementById("routineTriggerType") as HTMLSelectElement).value as TriggerConfig["type"];
+  const type = (document.getElementById("routineTriggerType") as HTMLSelectElement)
+    .value as TriggerConfig["type"];
   if (type === "applicationOpened") {
     const application = (document.getElementById("routineAppName") as HTMLInputElement).value.trim();
     return application ? { type, application, matchMode: "contains" } : null;
@@ -1219,7 +1219,9 @@ async function initRoutinesSettings(): Promise<void> {
   const routineListEmptyEl = document.getElementById("routineListEmpty") as HTMLElement;
   const activityDebugDetails = document.querySelector(".activity-debug") as HTMLDetailsElement;
   const activitySnapshotContentEl = document.getElementById("activitySnapshotContent") as HTMLElement;
-  const refreshActivitySnapshotBtn = document.getElementById("refreshActivitySnapshotBtn") as HTMLButtonElement;
+  const refreshActivitySnapshotBtn = document.getElementById(
+    "refreshActivitySnapshotBtn"
+  ) as HTMLButtonElement;
 
   function showListView(): void {
     listViewEl.hidden = false;
@@ -1357,12 +1359,17 @@ async function initRoutinesSettings(): Promise<void> {
       label.textContent = param.required ? param.name : `${param.name} (optional)`;
       row.appendChild(label);
 
-      const enumOptions = param.type === "string" && param.description ? parseEnumOptions(param.description) : null;
+      const enumOptions =
+        param.type === "string" && param.description ? parseEnumOptions(param.description) : null;
 
       // A picked-playlist affordance for Spotify's playPlaylist action —
       // still just filling in a plain action parameter, not a special
       // routine concept (see "Generic configuration" in README).
-      if (actionDef.id === "spotify.playPlaylist" && param.name === "playlistUri" && availablePlaylists.length > 0) {
+      if (
+        actionDef.id === "spotify.playPlaylist" &&
+        param.name === "playlistUri" &&
+        availablePlaylists.length > 0
+      ) {
         const select = document.createElement("select");
         select.className = "select";
         select.id = paramFieldId(param.name);
@@ -1416,7 +1423,8 @@ async function initRoutinesSettings(): Promise<void> {
   function collectActionParams(actionDef: ActionDefinition): Record<string, unknown> {
     const params: Record<string, unknown> = {};
     for (const param of actionDef.parameters) {
-      const el = document.getElementById(paramFieldId(param.name)) as HTMLInputElement | HTMLSelectElement | null;
+      const el = document.getElementById(paramFieldId(param.name)) as
+        HTMLInputElement | HTMLSelectElement | null;
       if (!el || !el.value) continue;
       params[param.name] = param.type === "number" ? Number(el.value) : el.value;
     }
@@ -1444,7 +1452,10 @@ async function initRoutinesSettings(): Promise<void> {
         up.textContent = "↑";
         up.addEventListener("click", () => {
           stopEditingAction(); // reordering while the picker has one of these steps loaded would edit the wrong one after the swap
-          [pendingActions[index - 1], pendingActions[index]] = [pendingActions[index], pendingActions[index - 1]];
+          [pendingActions[index - 1], pendingActions[index]] = [
+            pendingActions[index],
+            pendingActions[index - 1],
+          ];
           renderPendingActions();
         });
         actions.appendChild(up);
@@ -1455,7 +1466,10 @@ async function initRoutinesSettings(): Promise<void> {
         down.textContent = "↓";
         down.addEventListener("click", () => {
           stopEditingAction();
-          [pendingActions[index + 1], pendingActions[index]] = [pendingActions[index], pendingActions[index + 1]];
+          [pendingActions[index + 1], pendingActions[index]] = [
+            pendingActions[index],
+            pendingActions[index + 1],
+          ];
           renderPendingActions();
         });
         actions.appendChild(down);
@@ -1503,7 +1517,8 @@ async function initRoutinesSettings(): Promise<void> {
     for (const param of def.parameters) {
       const value = step.params[param.name];
       if (value === undefined) continue;
-      const el = document.getElementById(paramFieldId(param.name)) as HTMLInputElement | HTMLSelectElement | null;
+      const el = document.getElementById(paramFieldId(param.name)) as
+        HTMLInputElement | HTMLSelectElement | null;
       if (el) el.value = String(value);
     }
 
@@ -1634,7 +1649,9 @@ async function initRoutinesSettings(): Promise<void> {
       toggle.type = "checkbox";
       toggle.checked = routine.enabled;
       toggle.addEventListener("change", async () => {
-        const updated = settings.routines.map((r) => (r.id === routine.id ? { ...r, enabled: toggle.checked } : r));
+        const updated = settings.routines.map((r) =>
+          r.id === routine.id ? { ...r, enabled: toggle.checked } : r
+        );
         const saved = await window.nimbus.updateRoutineSettings({ routines: updated });
         renderRoutineList(saved);
       });
@@ -1658,8 +1675,12 @@ async function initRoutinesSettings(): Promise<void> {
         try {
           const results = await window.nimbus.testRoutine(routine.id);
           const failed = results.filter((r) => r.status === "failure");
-          runBtn.title = failed.length === 0 ? "Ran successfully" : `${failed.length} action${failed.length === 1 ? "" : "s"} failed`;
-          runBtn.innerHTML = failed.length === 0 ? ROUTINE_RUN_SUCCESS_ICON_SVG : ROUTINE_RUN_FAILURE_ICON_SVG;
+          runBtn.title =
+            failed.length === 0
+              ? "Ran successfully"
+              : `${failed.length} action${failed.length === 1 ? "" : "s"} failed`;
+          runBtn.innerHTML =
+            failed.length === 0 ? ROUTINE_RUN_SUCCESS_ICON_SVG : ROUTINE_RUN_FAILURE_ICON_SVG;
           window.dispatchEvent(new Event(NOW_PLAYING_REFRESH_EVENT));
         } catch {
           runBtn.title = "Failed to run";
@@ -1691,7 +1712,10 @@ async function initRoutinesSettings(): Promise<void> {
   }
 
   try {
-    const [settings, actions] = await Promise.all([window.nimbus.getRoutineSettings(), window.nimbus.listActions()]);
+    const [settings, actions] = await Promise.all([
+      window.nimbus.getRoutineSettings(),
+      window.nimbus.listActions(),
+    ]);
     availableActions = actions;
     populateActionServiceSelect();
     populateActionSelectForService(actionServiceSelect.value);
@@ -1845,7 +1869,8 @@ async function initRoutinesSettings(): Promise<void> {
   function renderActivitySnapshot(snapshot: RawActivitySnapshot | null): void {
     activitySnapshotContentEl.innerHTML = "";
     if (!snapshot) {
-      activitySnapshotContentEl.textContent = 'Turn on "Enable context-aware suggestions" above first — this only has anything to show while that\'s on.';
+      activitySnapshotContentEl.textContent =
+        'Turn on "Enable context-aware suggestions" above first — this only has anything to show while that\'s on.';
       return;
     }
 
@@ -1886,7 +1911,12 @@ async function initRoutinesSettings(): Promise<void> {
 }
 
 const TASK_REFRESH_EVENT = "nimbus:refresh-tasks";
-const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = { none: "", low: "Low", medium: "Medium", high: "High" };
+const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  none: "",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
 
 function formatTaskDue(task: TaskItem): { text: string; overdue: boolean } | null {
   if (!task.dueAt) return null;
@@ -1975,7 +2005,11 @@ function initTaskManagement(): void {
     const priorityRank: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2, none: 3 };
     switch (sortSelect.value) {
       case "priority":
-        sorted.sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || (a.dueAt ?? "").localeCompare(b.dueAt ?? ""));
+        sorted.sort(
+          (a, b) =>
+            priorityRank[a.priority] - priorityRank[b.priority] ||
+            (a.dueAt ?? "").localeCompare(b.dueAt ?? "")
+        );
         break;
       case "title":
         sorted.sort((a, b) => a.title.localeCompare(b.title));
@@ -2116,7 +2150,8 @@ function initTaskManagement(): void {
     try {
       const { tasks } = await window.nimbus.listTasks();
       currentTasks = tasks;
-      taskListEmptyEl.textContent = 'No active tasks. Click "+ New task" to add one — or enjoy being caught up.';
+      taskListEmptyEl.textContent =
+        'No active tasks. Click "+ New task" to add one — or enjoy being caught up.';
       renderList();
     } catch (err) {
       console.error("Failed to load tasks", err);
@@ -2279,7 +2314,8 @@ const CATEGORY_ICONS: Partial<Record<BriefingCategory, string>> = {
   tasks:
     '<path d="M226.83,74.83l-96,96a28,28,0,0,1-39.6,0l-40-40a4,4,0,0,1,0-5.66l17.17-17.17a4,4,0,0,1,5.66,0L104,137.94l86.83-86.83a4,4,0,0,1,5.66,0l17.17,17.17A4,4,0,0,1,226.83,74.83ZM216,128a8,8,0,0,0-8,8v72H48V80h96a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V136A8,8,0,0,0,216,128Z"/>',
 };
-const DEFAULT_ICON = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/>';
+const DEFAULT_ICON =
+  '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/>';
 
 function categoryIconSvg(category: BriefingCategory): string {
   const path = CATEGORY_ICONS[category] ?? DEFAULT_ICON;
@@ -2477,7 +2513,12 @@ function formatEventDateLabel(iso: string, timezone: string): string {
   }).format(new Date(iso));
 }
 
-function renderEventList(container: HTMLElement, events: CalendarEvent[], timezone: string, showDate: boolean): void {
+function renderEventList(
+  container: HTMLElement,
+  events: CalendarEvent[],
+  timezone: string,
+  showDate: boolean
+): void {
   if (events.length === 0) {
     const empty = document.createElement("p");
     empty.className = "calendar-empty";

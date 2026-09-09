@@ -57,10 +57,7 @@ test("maps the daily forecast array, one entry per day", async () => {
 test("throws a descriptive error when the API responds with a non-ok status", async () => {
   const client = new OpenMeteoClient(fakeFetch({}, false, 503));
 
-  await assert.rejects(
-    () => client.fetchForecast({ latitude: 0, longitude: 0 }),
-    /status 503/
-  );
+  await assert.rejects(() => client.fetchForecast({ latitude: 0, longitude: 0 }), /status 503/);
 });
 
 test("unknown weather codes still produce a readable label instead of crashing", async () => {

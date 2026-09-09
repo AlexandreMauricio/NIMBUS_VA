@@ -48,7 +48,9 @@ test("a process already running at baseline does not fire once a real second pol
 test("a browser already open on the very first poll DOES fire (unlike processes/folders) — the 'site already open, then routine configured' case", () => {
   const events = diffActivitySnapshot(
     null,
-    snapshot({ browserWindows: [{ executable: "chrome.exe", title: "Home - SkillCertPro - Google Chrome" }] }),
+    snapshot({
+      browserWindows: [{ executable: "chrome.exe", title: "Home - SkillCertPro - Google Chrome" }],
+    }),
     NOW
   );
   assert.equal(events.length, 1);
@@ -85,7 +87,9 @@ test("a browser window with a new title produces a websiteOpened event", () => {
 });
 
 test("an unchanged browser title does not re-fire on the next poll", () => {
-  const previous = snapshot({ browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }] });
+  const previous = snapshot({
+    browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }],
+  });
   const events = diffActivitySnapshot(
     previous,
     snapshot({ browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }] }),
@@ -95,7 +99,9 @@ test("an unchanged browser title does not re-fire on the next poll", () => {
 });
 
 test("a changed browser title (e.g. switched tab) fires again", () => {
-  const previous = snapshot({ browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }] });
+  const previous = snapshot({
+    browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }],
+  });
   const events = diffActivitySnapshot(
     previous,
     snapshot({ browserWindows: [{ executable: "chrome.exe", title: "YouTube - Google Chrome" }] }),
@@ -106,17 +112,25 @@ test("a changed browser title (e.g. switched tab) fires again", () => {
 });
 
 test("re-visiting the same site after navigating away fires again (title changed and changed back)", () => {
-  let previous = snapshot({ browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }] });
+  let previous = snapshot({
+    browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }],
+  });
   const away = snapshot({ browserWindows: [{ executable: "chrome.exe", title: "YouTube - Google Chrome" }] });
   diffActivitySnapshot(previous, away, NOW);
   previous = away;
-  const back = snapshot({ browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }] });
+  const back = snapshot({
+    browserWindows: [{ executable: "chrome.exe", title: "SkillCert - Google Chrome" }],
+  });
   const events = diffActivitySnapshot(previous, back, NOW);
   assert.equal(events.length, 1);
 });
 
 test("a newly opened Explorer folder produces a folderOpened event", () => {
-  const events = diffActivitySnapshot(emptySnapshot(), snapshot({ explorerFolders: ["C:\\Projects\\NIMBUS"] }), NOW);
+  const events = diffActivitySnapshot(
+    emptySnapshot(),
+    snapshot({ explorerFolders: ["C:\\Projects\\NIMBUS"] }),
+    NOW
+  );
   assert.equal(events.length, 1);
   assert.equal(events[0].type, "folderOpened");
   assert.equal((events[0] as { path: string }).path, "C:\\Projects\\NIMBUS");
@@ -144,6 +158,10 @@ test("multiple simultaneous changes each produce their own event", () => {
 });
 
 test("a browser window with an empty title is ignored rather than producing a bogus event", () => {
-  const events = diffActivitySnapshot(emptySnapshot(), snapshot({ browserWindows: [{ executable: "chrome.exe", title: "" }] }), NOW);
+  const events = diffActivitySnapshot(
+    emptySnapshot(),
+    snapshot({ browserWindows: [{ executable: "chrome.exe", title: "" }] }),
+    NOW
+  );
   assert.equal(events.length, 0);
 });

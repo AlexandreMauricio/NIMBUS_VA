@@ -2,7 +2,12 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { logger } from "../../logging/logger";
 import { ContextEventBus } from "../../events/eventBus";
-import { diffActivitySnapshot, emptySnapshot, RawActivitySnapshot, KNOWN_BROWSER_EXECUTABLES } from "./activitySnapshot";
+import {
+  diffActivitySnapshot,
+  emptySnapshot,
+  RawActivitySnapshot,
+  KNOWN_BROWSER_EXECUTABLES,
+} from "./activitySnapshot";
 import { PowerShellRunner, PowerShellSession } from "./powerShellSession";
 
 const execAsync = promisify(exec);
@@ -48,7 +53,9 @@ try {
 
 interface RawPollResult {
   processes?: string | string[];
-  browsers?: { ProcessName?: string; MainWindowTitle?: string } | Array<{ ProcessName?: string; MainWindowTitle?: string }>;
+  browsers?:
+    | { ProcessName?: string; MainWindowTitle?: string }
+    | Array<{ ProcessName?: string; MainWindowTitle?: string }>;
   folders?: string | string[];
 }
 
@@ -104,7 +111,9 @@ async function pollRealActivity(
       .map((b) => ({ executable: `${b.ProcessName!.toLowerCase()}.exe`, title: b.MainWindowTitle! }))
       .filter((w) => KNOWN_BROWSER_EXECUTABLES.includes(w.executable));
 
-    const explorerFolders = asArray(parsed.folders).filter((p): p is string => typeof p === "string" && p.length > 0);
+    const explorerFolders = asArray(parsed.folders).filter(
+      (p): p is string => typeof p === "string" && p.length > 0
+    );
 
     return { processNames, browserWindows, explorerFolders };
   } catch (err) {
@@ -136,7 +145,9 @@ export class DesktopActivityMonitor {
 
   constructor(
     private readonly eventBus: ContextEventBus,
-    private readonly pollFn: (runScript?: (script: string) => Promise<string>) => Promise<RawActivitySnapshot> = pollRealActivity,
+    private readonly pollFn: (
+      runScript?: (script: string) => Promise<string>
+    ) => Promise<RawActivitySnapshot> = pollRealActivity,
     private readonly intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
     private readonly now: () => Date = () => new Date(),
     /** Injectable so tests can drive the session paths without a real PowerShell. */

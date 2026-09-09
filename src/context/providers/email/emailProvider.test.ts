@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EmailProvider, EmailProviderConfig, EmailAccountConfig, EmailEnvFallbackAccount } from "./emailProvider";
+import {
+  EmailProvider,
+  EmailProviderConfig,
+  EmailAccountConfig,
+  EmailEnvFallbackAccount,
+} from "./emailProvider";
 import { ImapEmailSource, RawEmailMessage } from "./imapEmailSource";
 
 function account(overrides: Partial<EmailAccountConfig> = {}): EmailAccountConfig {
@@ -50,7 +55,11 @@ function stubSourceFactory(
   return (acct: EmailAccountConfig) => {
     const canned = byAccountId[acct.id];
     return {
-      fetchRecentMessages: async (_since: Date, _max: number, shouldFetchSnippet?: (m: RawEmailMessage) => boolean) => {
+      fetchRecentMessages: async (
+        _since: Date,
+        _max: number,
+        shouldFetchSnippet?: (m: RawEmailMessage) => boolean
+      ) => {
         if (canned instanceof Error) throw canned;
         const messages = canned ?? [];
         // Mirror the real source: only "fetch" a snippet when asked.
@@ -110,7 +119,10 @@ test("multiple recent emails are all present in recentMessages, most recent firs
   const provider = new EmailProvider(() => config(), stubSourceFactory({ personal: messages }));
   const ctx = await provider.getContext();
 
-  assert.deepEqual(ctx.recentMessages.map((m) => m.subject), ["New", "Mid", "Old"]);
+  assert.deepEqual(
+    ctx.recentMessages.map((m) => m.subject),
+    ["New", "Mid", "Old"]
+  );
 });
 
 test("an important email (keyword match) is classified and included in importantMessages", async () => {
@@ -125,7 +137,12 @@ test("an important email (keyword match) is classified and included in important
 
 test("a potentially important (flagged + unread) email is classified high and prioritized first", async () => {
   const messages = [
-    rawMessage({ uid: 1, subject: "Newsletter", senderAddress: "newsletter@shop.example.com", isUnread: true }),
+    rawMessage({
+      uid: 1,
+      subject: "Newsletter",
+      senderAddress: "newsletter@shop.example.com",
+      isUnread: true,
+    }),
     rawMessage({ uid: 2, subject: "Please review", isFlagged: true, isUnread: true }),
   ];
   const provider = new EmailProvider(() => config(), stubSourceFactory({ personal: messages }));
@@ -137,7 +154,12 @@ test("a potentially important (flagged + unread) email is classified high and pr
 
 test("a newsletter/promotional email is classified low and excluded from importantMessages", async () => {
   const messages = [
-    rawMessage({ uid: 1, subject: "This week's newsletter", senderAddress: "newsletter@shop.example.com", isUnread: true }),
+    rawMessage({
+      uid: 1,
+      subject: "This week's newsletter",
+      senderAddress: "newsletter@shop.example.com",
+      isUnread: true,
+    }),
   ];
   const provider = new EmailProvider(() => config(), stubSourceFactory({ personal: messages }));
   const ctx = await provider.getContext();
@@ -159,9 +181,7 @@ test("multiple messages in the same thread are all counted, tagged with the shar
 });
 
 test("malformed/sparse email data (missing sender/subject) does not crash the provider", async () => {
-  const messages = [
-    rawMessage({ uid: 1, senderName: null, senderAddress: null, subject: "(No subject)" }),
-  ];
+  const messages = [rawMessage({ uid: 1, senderName: null, senderAddress: null, subject: "(No subject)" })];
   const provider = new EmailProvider(() => config(), stubSourceFactory({ personal: messages }));
   const ctx = await provider.getContext();
 
@@ -182,10 +202,7 @@ test("an API/rate-limit failure on one account does not prevent messages from a 
   const provider = new EmailProvider(
     () =>
       config({
-        accounts: [
-          account({ id: "broken", label: "Broken" }),
-          account({ id: "good", label: "Good" }),
-        ],
+        accounts: [account({ id: "broken", label: "Broken" }), account({ id: "good", label: "Good" })],
       }),
     stubSourceFactory({
       broken: new Error("Rate limited (try again later)"),
@@ -230,10 +247,7 @@ test("multiple accounts are merged, each message tagged with its own accountId",
   const provider = new EmailProvider(
     () =>
       config({
-        accounts: [
-          account({ id: "work", label: "Work" }),
-          account({ id: "personal", label: "Personal" }),
-        ],
+        accounts: [account({ id: "work", label: "Work" }), account({ id: "personal", label: "Personal" })],
       }),
     stubSourceFactory({
       work: [rawMessage({ uid: 1, subject: "Work thing" })],

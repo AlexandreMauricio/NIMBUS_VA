@@ -77,7 +77,10 @@ test("a due date without a time is mapped as date-only, with no reminder", async
 });
 
 test("a task with no due field at all has a null due date", async () => {
-  const source = new TodoistTaskSource({ apiToken: "tok" }, fakeFetch({ tasks: [{ id: "3", content: "Someday" }] }));
+  const source = new TodoistTaskSource(
+    { apiToken: "tok" },
+    fakeFetch({ tasks: [{ id: "3", content: "Someday" }] })
+  );
   const [task] = await source.fetchActiveTasks();
 
   assert.equal(task.dueAt, null);
@@ -153,12 +156,19 @@ test("requests go to the v1 API, not the retired v2 one", async () => {
 test("a v1-style paginated response ({ results, next_cursor }) is unwrapped correctly", async () => {
   const fetchFn = (async (url: string) => {
     if (String(url).includes("/projects")) {
-      return { ok: true, status: 200, json: async () => ({ results: [{ id: "p1", name: "Work" }], next_cursor: null }) } as unknown as Response;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [{ id: "p1", name: "Work" }], next_cursor: null }),
+      } as unknown as Response;
     }
     return {
       ok: true,
       status: 200,
-      json: async () => ({ results: [{ id: "1", content: "Paginated task", project_id: "p1" }], next_cursor: null }),
+      json: async () => ({
+        results: [{ id: "1", content: "Paginated task", project_id: "p1" }],
+        next_cursor: null,
+      }),
     } as unknown as Response;
   }) as unknown as typeof fetch;
 
@@ -172,15 +182,27 @@ test("multiple pages of tasks (via next_cursor) are all fetched and combined", a
   let call = 0;
   const fetchFn = (async (url: string) => {
     if (String(url).includes("/projects")) {
-      return { ok: true, status: 200, json: async () => ({ results: [], next_cursor: null }) } as unknown as Response;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [], next_cursor: null }),
+      } as unknown as Response;
     }
     call++;
     if (call === 1) {
       assert.ok(!String(url).includes("cursor="));
-      return { ok: true, status: 200, json: async () => ({ results: [{ id: "1", content: "Page one" }], next_cursor: "abc" }) } as unknown as Response;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [{ id: "1", content: "Page one" }], next_cursor: "abc" }),
+      } as unknown as Response;
     }
     assert.ok(String(url).includes("cursor=abc"));
-    return { ok: true, status: 200, json: async () => ({ results: [{ id: "2", content: "Page two" }], next_cursor: null }) } as unknown as Response;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [{ id: "2", content: "Page two" }], next_cursor: null }),
+    } as unknown as Response;
   }) as unknown as typeof fetch;
 
   const source = new TodoistTaskSource({ apiToken: "tok" }, fetchFn);
@@ -192,14 +214,21 @@ test("pagination stops after a bounded number of pages rather than looping forev
   let call = 0;
   const fetchFn = (async (url: string) => {
     if (String(url).includes("/projects")) {
-      return { ok: true, status: 200, json: async () => ({ results: [], next_cursor: null }) } as unknown as Response;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [], next_cursor: null }),
+      } as unknown as Response;
     }
     call++;
     // Always returns a next_cursor — a malformed/misbehaving server that never terminates.
     return {
       ok: true,
       status: 200,
-      json: async () => ({ results: [{ id: String(call), content: `Task ${call}` }], next_cursor: "forever" }),
+      json: async () => ({
+        results: [{ id: String(call), content: `Task ${call}` }],
+        next_cursor: "forever",
+      }),
     } as unknown as Response;
   }) as unknown as typeof fetch;
 
@@ -210,7 +239,10 @@ test("pagination stops after a bounded number of pages rather than looping forev
 });
 
 test("a plain array response (the old v2 shape) is still accepted, not just the new paginated wrapper", async () => {
-  const source = new TodoistTaskSource({ apiToken: "tok" }, fakeFetch({ tasks: [{ id: "1", content: "Plain array task" }] }));
+  const source = new TodoistTaskSource(
+    { apiToken: "tok" },
+    fakeFetch({ tasks: [{ id: "1", content: "Plain array task" }] })
+  );
   const [task] = await source.fetchActiveTasks();
   assert.equal(task.title, "Plain array task");
 });
@@ -229,7 +261,13 @@ function capturingFetch(response: unknown = { id: "new-id", content: "ok" }, ok 
 test("createTask POSTs to /tasks with the mapped payload and Bearer auth", async () => {
   const { fetchFn, calls } = capturingFetch({ id: "1", content: "Buy milk" });
   const source = new TodoistTaskSource({ apiToken: "tok" }, fetchFn);
-  const task = await source.createTask({ title: "Buy milk", description: "2%", dueDate: "2026-09-10", priority: 4, projectId: "p1" });
+  const task = await source.createTask({
+    title: "Buy milk",
+    description: "2%",
+    dueDate: "2026-09-10",
+    priority: 4,
+    projectId: "p1",
+  });
 
   assert.equal(task.title, "Buy milk");
   assert.equal(calls.length, 1);
@@ -237,7 +275,13 @@ test("createTask POSTs to /tasks with the mapped payload and Bearer auth", async
   assert.equal(calls[0].init?.method, "POST");
   assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, "Bearer tok");
   const body = JSON.parse(calls[0].init?.body as string);
-  assert.deepEqual(body, { content: "Buy milk", description: "2%", due_date: "2026-09-10", priority: 4, project_id: "p1" });
+  assert.deepEqual(body, {
+    content: "Buy milk",
+    description: "2%",
+    due_date: "2026-09-10",
+    priority: 4,
+    project_id: "p1",
+  });
 });
 
 test("createTask omits project_id when none is given, rather than sending an empty string", async () => {
@@ -305,7 +349,10 @@ test("completeTask/reopenTask/deleteTask all throw descriptively on a non-ok res
 });
 
 test("fetchProjects returns id/name pairs and throws (rather than silently returning empty) on failure", async () => {
-  const source = new TodoistTaskSource({ apiToken: "tok" }, capturingFetch({ results: [{ id: "p1", name: "Work" }], next_cursor: null }).fetchFn);
+  const source = new TodoistTaskSource(
+    { apiToken: "tok" },
+    capturingFetch({ results: [{ id: "p1", name: "Work" }], next_cursor: null }).fetchFn
+  );
   assert.deepEqual(await source.fetchProjects(), [{ id: "p1", name: "Work" }]);
 
   const failing = new TodoistTaskSource({ apiToken: "tok" }, capturingFetch({}, false, 500).fetchFn);

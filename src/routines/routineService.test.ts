@@ -11,7 +11,14 @@ function actionResult(actionId: string, status: "success" | "failure" = "success
   const now = new Date().toISOString();
   return status === "success"
     ? { actionId, status, message: "done", startedAt: now, finishedAt: now, durationMs: 1 }
-    : { actionId, status, error: { category: "unknown", message: "failed" }, startedAt: now, finishedAt: now, durationMs: 1 };
+    : {
+        actionId,
+        status,
+        error: { category: "unknown", message: "failed" },
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 1,
+      };
 }
 
 /** A stub provider that records call order and can be told to fail specific actions. */
@@ -21,9 +28,36 @@ class RecordingProvider implements ActionProvider {
   calls: string[] = [];
   failingActionIds = new Set<string>();
   actions: ActionDefinition[] = [
-    { id: "demo.one", name: "One", description: "", parameters: [], readOnly: false, changesExternalState: true, requiresConfirmation: false, affectsService: "demo" },
-    { id: "demo.two", name: "Two", description: "", parameters: [], readOnly: false, changesExternalState: true, requiresConfirmation: false, affectsService: "demo" },
-    { id: "demo.three", name: "Three", description: "", parameters: [], readOnly: false, changesExternalState: true, requiresConfirmation: false, affectsService: "demo" },
+    {
+      id: "demo.one",
+      name: "One",
+      description: "",
+      parameters: [],
+      readOnly: false,
+      changesExternalState: true,
+      requiresConfirmation: false,
+      affectsService: "demo",
+    },
+    {
+      id: "demo.two",
+      name: "Two",
+      description: "",
+      parameters: [],
+      readOnly: false,
+      changesExternalState: true,
+      requiresConfirmation: false,
+      affectsService: "demo",
+    },
+    {
+      id: "demo.three",
+      name: "Three",
+      description: "",
+      parameters: [],
+      readOnly: false,
+      changesExternalState: true,
+      requiresConfirmation: false,
+      affectsService: "demo",
+    },
   ];
   listActions() {
     return this.actions;
@@ -60,7 +94,12 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     enabled: true,
     trigger: { type: "applicationOpened", application: "steam.exe", matchMode: "exact" },
     conditions: [],
-    suggestion: { title: "Gaming?", message: "Play your gaming playlist?", primaryLabel: "Play", secondaryLabel: "Not now" },
+    suggestion: {
+      title: "Gaming?",
+      message: "Play your gaming playlist?",
+      primaryLabel: "Play",
+      secondaryLabel: "Not now",
+    },
     actions: [{ actionId: "demo.one", params: {} }],
     cooldownMinutes: 30,
     ...overrides,
@@ -90,7 +129,12 @@ test("a matching trigger creates a suggestion rather than executing any action",
 });
 
 test("a suggestion's actionSummary is built from each action's registered name, in order — never hard-coded", async () => {
-  const r = routine({ actions: [{ actionId: "demo.two", params: {} }, { actionId: "demo.one", params: {} }] });
+  const r = routine({
+    actions: [
+      { actionId: "demo.two", params: {} },
+      { actionId: "demo.one", params: {} },
+    ],
+  });
   const { service, eventBus } = setup([r]);
   eventBus.publish(appEvent());
   await new Promise((res) => setImmediate(res));
@@ -177,7 +221,13 @@ test("dismissing a suggestion never executes any action", async () => {
 });
 
 test("multiple actions execute in the configured order", async () => {
-  const r = routine({ actions: [{ actionId: "demo.two", params: {} }, { actionId: "demo.one", params: {} }, { actionId: "demo.three", params: {} }] });
+  const r = routine({
+    actions: [
+      { actionId: "demo.two", params: {} },
+      { actionId: "demo.one", params: {} },
+      { actionId: "demo.three", params: {} },
+    ],
+  });
   const { eventBus, service, provider } = setup([r]);
   eventBus.publish(appEvent());
   await new Promise((r2) => setImmediate(r2));
@@ -189,7 +239,12 @@ test("multiple actions execute in the configured order", async () => {
 });
 
 test("a failing action step does not prevent later steps from running", async () => {
-  const r = routine({ actions: [{ actionId: "demo.one", params: {} }, { actionId: "demo.two", params: {} }] });
+  const r = routine({
+    actions: [
+      { actionId: "demo.one", params: {} },
+      { actionId: "demo.two", params: {} },
+    ],
+  });
   const { eventBus, service, provider } = setup([r]);
   provider.failingActionIds.add("demo.one");
 
@@ -255,7 +310,14 @@ test("getActiveSuggestions omits suggestions past their expiry", async () => {
   const actionService = new ActionService();
   actionService.register(new RecordingProvider());
   const eventBus = new ContextEventBus();
-  const service = new RoutineService(() => [routine()], actionService, eventBus, () => currentTime, undefined, 1000);
+  const service = new RoutineService(
+    () => [routine()],
+    actionService,
+    eventBus,
+    () => currentTime,
+    undefined,
+    1000
+  );
   service.start();
 
   eventBus.publish(appEvent());
@@ -272,7 +334,13 @@ test("testRoutine executes a routine's actions directly, bypassing trigger/coold
   const provider = new RecordingProvider();
   actionService.register(provider);
   const eventBus = new ContextEventBus();
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date(), () => true);
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date(),
+    () => true
+  );
 
   const results = await service.testRoutine("r1");
   assert.equal(provider.calls.length, 1);
@@ -286,13 +354,24 @@ test("accepting an unknown suggestion id is a no-op, not an error", async () => 
 });
 
 test("onActionExecuted fires for each step run via testRoutine", async () => {
-  const r = routine({ actions: [{ actionId: "demo.one", params: {} }, { actionId: "demo.two", params: {} }] });
+  const r = routine({
+    actions: [
+      { actionId: "demo.one", params: {} },
+      { actionId: "demo.two", params: {} },
+    ],
+  });
   const actionService = new ActionService();
   actionService.register(new RecordingProvider());
   const eventBus = new ContextEventBus();
   const executedIds: string[] = [];
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date(), undefined, undefined, (id) =>
-    executedIds.push(id)
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date(),
+    undefined,
+    undefined,
+    (id) => executedIds.push(id)
   );
 
   await service.testRoutine("r1");
@@ -305,8 +384,14 @@ test("onActionExecuted fires for each step run via acceptSuggestion", async () =
   actionService.register(new RecordingProvider());
   const eventBus = new ContextEventBus();
   const executedIds: string[] = [];
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date(), undefined, undefined, (id) =>
-    executedIds.push(id)
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date(),
+    undefined,
+    undefined,
+    (id) => executedIds.push(id)
   );
   service.start();
 
@@ -319,14 +404,27 @@ test("onActionExecuted fires for each step run via acceptSuggestion", async () =
 });
 
 test("a throwing onActionExecuted listener does not prevent remaining action steps from running", async () => {
-  const r = routine({ actions: [{ actionId: "demo.one", params: {} }, { actionId: "demo.two", params: {} }] });
+  const r = routine({
+    actions: [
+      { actionId: "demo.one", params: {} },
+      { actionId: "demo.two", params: {} },
+    ],
+  });
   const actionService = new ActionService();
   const provider = new RecordingProvider();
   actionService.register(provider);
   const eventBus = new ContextEventBus();
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date(), undefined, undefined, () => {
-    throw new Error("boom");
-  });
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date(),
+    undefined,
+    undefined,
+    () => {
+      throw new Error("boom");
+    }
+  );
 
   const results = await service.testRoutine("r1");
   assert.deepEqual(provider.calls, ["demo.one", "demo.two"]);
@@ -386,10 +484,19 @@ test("the actionsNotAlreadyActive checker receives this specific routine's actio
   actionService.register(new RecordingProvider());
   const eventBus = new ContextEventBus();
   let receivedSteps: unknown = null;
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date(), undefined, 60_000, undefined, async (steps) => {
-    receivedSteps = steps;
-    return false;
-  });
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date(),
+    undefined,
+    60_000,
+    undefined,
+    async (steps) => {
+      receivedSteps = steps;
+      return false;
+    }
+  );
   service.start();
 
   eventBus.publish(appEvent());
@@ -414,7 +521,12 @@ test("a routine with autoRun still respects cooldown — a second matching event
   const provider = new RecordingProvider();
   actionService.register(provider);
   const eventBus = new ContextEventBus();
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date());
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date()
+  );
   service.start();
 
   eventBus.publish(appEvent());
@@ -438,11 +550,20 @@ test("a routine without autoRun (or autoRun: false) still creates a normal sugge
 
 test("onAutoRun is notified with the routine and its action results, and never fires for a normal (non-autoRun) routine", async () => {
   const autoRoutine = routine({ id: "auto1", autoRun: true });
-  const normalRoutine = routine({ id: "normal1", autoRun: false, trigger: { type: "applicationOpened", application: "other.exe", matchMode: "exact" } });
+  const normalRoutine = routine({
+    id: "normal1",
+    autoRun: false,
+    trigger: { type: "applicationOpened", application: "other.exe", matchMode: "exact" },
+  });
   const actionService = new ActionService();
   actionService.register(new RecordingProvider());
   const eventBus = new ContextEventBus();
-  const service = new RoutineService(() => [autoRoutine, normalRoutine], actionService, eventBus, () => new Date());
+  const service = new RoutineService(
+    () => [autoRoutine, normalRoutine],
+    actionService,
+    eventBus,
+    () => new Date()
+  );
   service.start();
 
   const autoRunCalls: Array<{ routineId: string }> = [];
@@ -464,7 +585,12 @@ test("a throwing onAutoRun listener does not prevent the routine's actions from 
   const provider = new RecordingProvider();
   actionService.register(provider);
   const eventBus = new ContextEventBus();
-  const service = new RoutineService(() => [r], actionService, eventBus, () => new Date());
+  const service = new RoutineService(
+    () => [r],
+    actionService,
+    eventBus,
+    () => new Date()
+  );
   service.start();
   service.onAutoRun(() => {
     throw new Error("boom");

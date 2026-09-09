@@ -88,7 +88,11 @@ export class TimerService {
     };
     this.current = state;
     this.startInterval();
-    logger.info(`Timer "${phase.title}" started`, { timerId: state.id, durationMs: phase.durationMs, type: phase.type });
+    logger.info(`Timer "${phase.title}" started`, {
+      timerId: state.id,
+      durationMs: phase.durationMs,
+      type: phase.type,
+    });
     return { ...state };
   }
 

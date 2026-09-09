@@ -60,8 +60,7 @@ function write(level: LogLevel, message: string, meta?: unknown): void {
   const metaStr = meta !== undefined ? ` ${JSON.stringify(meta)}` : "";
   const line = `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
 
-  const consoleMethod =
-    level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+  const consoleMethod = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
   consoleMethod(line);
 
   const filePath = getLogFilePath();

@@ -72,7 +72,13 @@ test("a failing/unavailable Spotify integration degrades gracefully without affe
     search: async () => ({}),
   } as unknown as SpotifyApiClient;
 
-  contextService.register(new SpotifyContextProvider(() => ({ enabled: true }), brokenSpotifyClient, () => true));
+  contextService.register(
+    new SpotifyContextProvider(
+      () => ({ enabled: true }),
+      brokenSpotifyClient,
+      () => true
+    )
+  );
 
   const snapshot = await contextService.getSnapshot();
 
@@ -96,7 +102,13 @@ test("a failing/unavailable Spotify integration degrades gracefully without affe
   // And executing a Spotify action against the same broken client degrades
   // to a structured ActionResult instead of throwing or crashing anything.
   const actionService = new ActionService();
-  actionService.register(new SpotifyActionProvider(brokenSpotifyClient, () => ({ enabled: true }), () => true));
+  actionService.register(
+    new SpotifyActionProvider(
+      brokenSpotifyClient,
+      () => ({ enabled: true }),
+      () => true
+    )
+  );
 
   const actionResult = await actionService.executeAction("spotify.play", {});
   assert.equal(actionResult.status, "failure");

@@ -63,10 +63,7 @@ test("applyDefaults keeps saved values while filling in missing ones", () => {
 
   assert.equal(settings.windowsClient.startup.launchWithWindows, true);
   assert.equal(settings.windowsClient.startup.startMinimized, false);
-  assert.equal(
-    settings.windowsClient.windowBounds.width,
-    DEFAULT_SETTINGS.windowsClient.windowBounds.width
-  );
+  assert.equal(settings.windowsClient.windowBounds.width, DEFAULT_SETTINGS.windowsClient.windowBounds.width);
 });
 
 test("applyDefaults supplies defaults for a preference group the saved file predates", () => {
@@ -194,10 +191,7 @@ test("the stored credential wins over a stale inline one", () => {
 });
 
 test("an account with no stored and no inline credential reads as unset", () => {
-  const settings = settingsWith(
-    [emailAccount({ password: "" })],
-    [taskAccount({ apiToken: "" })]
-  );
+  const settings = settingsWith([emailAccount({ password: "" })], [taskAccount({ apiToken: "" })]);
 
   const restored = restoreSecrets(settings, {});
 

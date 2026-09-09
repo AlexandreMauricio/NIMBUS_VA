@@ -201,11 +201,7 @@ test("one event today (not imminent) mentions its time", () => {
   const evt = event({ startsAt: "2026-07-15T18:00:00.000Z", endsAt: "2026-07-15T18:30:00.000Z" });
   const briefing = generator.generate(
     snapshot({
-      calendar: okResult(
-        "calendar",
-        "Calendar",
-        calendarContext({ todayEvents: [evt], nextEvent: evt })
-      ),
+      calendar: okResult("calendar", "Calendar", calendarContext({ todayEvents: [evt], nextEvent: evt })),
     }),
     NOW
   );
@@ -238,7 +234,11 @@ test("multiple events today mentions the count and the first event's time", () =
 
 test("an all-day-only day mentions it without a time", () => {
   const generator = new BriefingGenerator("en-US");
-  const evt = event({ isAllDay: true, startsAt: "2026-07-15T00:00:00.000Z", endsAt: "2026-07-16T00:00:00.000Z" });
+  const evt = event({
+    isAllDay: true,
+    startsAt: "2026-07-15T00:00:00.000Z",
+    endsAt: "2026-07-16T00:00:00.000Z",
+  });
   const briefing = generator.generate(
     snapshot({ calendar: okResult("calendar", "Calendar", calendarContext({ todayEvents: [evt] })) }),
     NOW
@@ -252,7 +252,11 @@ test("an imminent next event overrides the today-summary with a countdown, at ve
   const generator = new BriefingGenerator("en-US");
   // 30 minutes from NOW (12:00) -> 12:30
   const soon = event({ startsAt: "2026-07-15T12:30:00.000Z", endsAt: "2026-07-15T13:00:00.000Z" });
-  const other = event({ id: "later-today", startsAt: "2026-07-15T18:00:00.000Z", endsAt: "2026-07-15T18:30:00.000Z" });
+  const other = event({
+    id: "later-today",
+    startsAt: "2026-07-15T18:00:00.000Z",
+    endsAt: "2026-07-15T18:30:00.000Z",
+  });
   const briefing = generator.generate(
     snapshot({
       calendar: okResult(
@@ -307,7 +311,9 @@ test("a missing/unavailable/errored calendar provider is omitted, not shown as a
   assert.ok(!unavailable.items.some((i) => i.category === "calendar"));
 
   const errored = generator.generate(
-    snapshot({ calendar: errorResult("calendar", "Calendar", "All configured calendar feeds failed to load") }),
+    snapshot({
+      calendar: errorResult("calendar", "Calendar", "All configured calendar feeds failed to load"),
+    }),
     NOW
   );
   assert.ok(!errored.items.some((i) => i.category === "calendar"));
@@ -369,10 +375,7 @@ function emailContext(overrides: Partial<EmailContext> = {}): EmailContext {
 
 test("no recent email produces the calm 'nothing important' message, at low relevance", () => {
   const generator = new BriefingGenerator();
-  const briefing = generator.generate(
-    snapshot({ email: okResult("email", "Email", emailContext({})) }),
-    NOW
-  );
+  const briefing = generator.generate(snapshot({ email: okResult("email", "Email", emailContext({})) }), NOW);
 
   const item = briefing.items.find((i) => i.category === "email")!;
   assert.equal(item.message, "Nothing important came in overnight.");
@@ -460,7 +463,11 @@ test("spotlight falls back to the sender address when no display name is availab
   });
   const briefing = generator.generate(
     snapshot({
-      email: okResult("email", "Email", emailContext({ totalRecent: 1, unreadCount: 1, importantMessages: [spotlighted] })),
+      email: okResult(
+        "email",
+        "Email",
+        emailContext({ totalRecent: 1, unreadCount: 1, importantMessages: [spotlighted] })
+      ),
     }),
     NOW
   );
@@ -583,14 +590,19 @@ test("multiple tasks due today mentions the count and names one of them", () => 
   );
 
   const item = briefing.items.find((i) => i.category === "tasks")!;
-  assert.equal(item.message, 'You have three tasks due today, including "Finish the NIMBUS email integration".');
+  assert.equal(
+    item.message,
+    'You have three tasks due today, including "Finish the NIMBUS email integration".'
+  );
 });
 
 test("a single task due today is named directly, not phrased as 'including'", () => {
   const generator = new BriefingGenerator();
   const dueToday = [taskItem({ title: "Pay the electricity bill", category: "dueToday" })];
   const briefing = generator.generate(
-    snapshot({ tasks: okResult("tasks", "Tasks", taskContext({ dueTodayCount: 1, dueTodayTasks: dueToday })) }),
+    snapshot({
+      tasks: okResult("tasks", "Tasks", taskContext({ dueTodayCount: 1, dueTodayTasks: dueToday })),
+    }),
     NOW
   );
 
@@ -644,11 +656,7 @@ test("a task due within the imminent window is spotlighted with a time estimate,
   });
   const briefing = generator.generate(
     snapshot({
-      tasks: okResult(
-        "tasks",
-        "Tasks",
-        taskContext({ dueTodayCount: 1, dueTodayTasks: [soon] })
-      ),
+      tasks: okResult("tasks", "Tasks", taskContext({ dueTodayCount: 1, dueTodayTasks: [soon] })),
     }),
     NOW
   );
@@ -683,7 +691,12 @@ test("an imminent task takes priority over the overdue/due-today count messages"
 
 test("a date-only (all-day) task due today is never treated as imminent", () => {
   const generator = new BriefingGenerator();
-  const allDay = taskItem({ title: "Water the plants", category: "dueToday", dueAt: NOW.toISOString(), dueIsDateOnly: true });
+  const allDay = taskItem({
+    title: "Water the plants",
+    category: "dueToday",
+    dueAt: NOW.toISOString(),
+    dueIsDateOnly: true,
+  });
   const briefing = generator.generate(
     snapshot({
       tasks: okResult("tasks", "Tasks", taskContext({ dueTodayCount: 1, dueTodayTasks: [allDay] })),

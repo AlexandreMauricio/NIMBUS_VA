@@ -7,7 +7,12 @@ import { ContextEventBus } from "../events/eventBus";
 import { ContextEvent } from "../events/types";
 import { matchesTrigger } from "./triggerMatcher";
 import { evaluateConditions, ConditionContext } from "./conditionEvaluator";
-import { DEFAULT_ROUTINE_COOLDOWN_MINUTES, DEFAULT_SUGGESTION_TTL_MS, Routine, RoutineActionStep } from "./types";
+import {
+  DEFAULT_ROUTINE_COOLDOWN_MINUTES,
+  DEFAULT_SUGGESTION_TTL_MS,
+  Routine,
+  RoutineActionStep,
+} from "./types";
 
 /**
  * The Routine orchestrator — subscribes to Context Events, matches them
@@ -129,7 +134,10 @@ export class RoutineService {
       try {
         conditionsOk = await evaluateConditions(routine.conditions, conditionCtx);
       } catch (err) {
-        logger.warn(`Routine "${routine.name}" condition evaluation failed`, { routineId: routine.id, error: String(err) });
+        logger.warn(`Routine "${routine.name}" condition evaluation failed`, {
+          routineId: routine.id,
+          error: String(err),
+        });
         continue;
       }
       if (!conditionsOk) continue;
@@ -192,7 +200,10 @@ export class RoutineService {
     };
 
     this.activeSuggestions.set(suggestion.id, suggestion);
-    logger.info(`Routine "${routine.name}" suggested`, { routineId: routine.id, suggestionId: suggestion.id });
+    logger.info(`Routine "${routine.name}" suggested`, {
+      routineId: routine.id,
+      suggestionId: suggestion.id,
+    });
 
     for (const listener of this.suggestionListeners) {
       try {
@@ -216,7 +227,10 @@ export class RoutineService {
     const definitions = this.actionService.listActions();
     return routine.actions.map((step) => {
       const def = definitions.find((d) => d.id === step.actionId);
-      return { label: def?.name ?? step.actionId, service: def?.affectsService ?? step.actionId.split(".")[0] };
+      return {
+        label: def?.name ?? step.actionId,
+        service: def?.affectsService ?? step.actionId.split(".")[0],
+      };
     });
   }
 

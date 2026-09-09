@@ -241,12 +241,20 @@ export class SpotifyApiClient {
     if (response.status === 403) {
       const reason = await readErrorReason(response);
       if (reason === "PREMIUM_REQUIRED") {
-        throw new SpotifyApiError("Spotify playback control requires a Premium account", "not_available", 403);
+        throw new SpotifyApiError(
+          "Spotify playback control requires a Premium account",
+          "not_available",
+          403
+        );
       }
       throw new SpotifyApiError("Spotify forbade this request", "not_available", 403);
     }
 
-    throw new SpotifyApiError(`Spotify API request failed with status ${response.status}`, "unknown", response.status);
+    throw new SpotifyApiError(
+      `Spotify API request failed with status ${response.status}`,
+      "unknown",
+      response.status
+    );
   }
 }
 

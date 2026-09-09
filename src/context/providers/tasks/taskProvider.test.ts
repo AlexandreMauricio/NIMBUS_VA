@@ -62,7 +62,13 @@ function provider(
   now: Date = NOW,
   envFallback: TaskEnvFallbackAccount | null = null
 ): TaskProvider {
-  return new TaskProvider(() => cfg, stubSourceFactory(byAccountId), () => now, Date.now, envFallback);
+  return new TaskProvider(
+    () => cfg,
+    stubSourceFactory(byAccountId),
+    () => now,
+    Date.now,
+    envFallback
+  );
 }
 
 test("isAvailable is false when tasks are disabled", () => {
@@ -99,9 +105,12 @@ test("completed tasks are excluded from active totals and every bucket", async (
   const ctx = await provider(config(), { personal: tasks }).getContext();
 
   assert.equal(ctx.totalActive, 1);
-  const allTitles = [...ctx.overdueTasks, ...ctx.dueTodayTasks, ...ctx.upcomingTasks, ...ctx.noDeadlineTasks].map(
-    (t) => t.title
-  );
+  const allTitles = [
+    ...ctx.overdueTasks,
+    ...ctx.dueTodayTasks,
+    ...ctx.upcomingTasks,
+    ...ctx.noDeadlineTasks,
+  ].map((t) => t.title);
   assert.ok(!allTitles.includes("Done already"));
   assert.ok(allTitles.includes("Still open"));
 });
@@ -177,7 +186,9 @@ test("a task without a deadline never appears in overdue/dueToday/upcoming", asy
 
 test("a task with a reminder carries the reminder timestamp through to context", async () => {
   const ctx = await provider(config(), {
-    personal: [rawTask({ title: "Call John", dueAt: "2026-09-09T13:00:00Z", reminderAt: "2026-09-09T13:00:00Z" })],
+    personal: [
+      rawTask({ title: "Call John", dueAt: "2026-09-09T13:00:00Z", reminderAt: "2026-09-09T13:00:00Z" }),
+    ],
   }).getContext();
 
   assert.equal(ctx.dueTodayTasks[0].reminderAt, "2026-09-09T13:00:00Z");
@@ -289,7 +300,12 @@ test("timezone handling: category bucketing uses the resolved local timezone, no
 
 test("an env fallback account is used when enabled but no account is saved yet", async () => {
   const fallback: TaskEnvFallbackAccount = { label: "Env Default", apiToken: "env-token" };
-  const p = provider(config({ accounts: [] }), { "env-default": [rawTask({ title: "From env" })] }, NOW, fallback);
+  const p = provider(
+    config({ accounts: [] }),
+    { "env-default": [rawTask({ title: "From env" })] },
+    NOW,
+    fallback
+  );
 
   assert.equal(p.isAvailable(), true);
   const ctx = await p.getContext();
@@ -319,7 +335,11 @@ interface WriteStub {
   fetchActiveTasks: () => Promise<RawTaskItem[]>;
 }
 
-function writeProvider(cfg: TaskProviderConfig, stub: Partial<WriteStub>, now: Date = NOW): { provider: TaskProvider; calls: unknown[] } {
+function writeProvider(
+  cfg: TaskProviderConfig,
+  stub: Partial<WriteStub>,
+  now: Date = NOW
+): { provider: TaskProvider; calls: unknown[] } {
   const calls: unknown[] = [];
   const factory = () =>
     ({
@@ -347,15 +367,30 @@ function writeProvider(cfg: TaskProviderConfig, stub: Partial<WriteStub>, now: D
       },
     }) as unknown as TodoistTaskSource;
 
-  return { provider: new TaskProvider(() => cfg, factory, () => now, Date.now, null), calls };
+  return {
+    provider: new TaskProvider(
+      () => cfg,
+      factory,
+      () => now,
+      Date.now,
+      null
+    ),
+    calls,
+  };
 }
 
 test("listAllTasks returns the full unbucketed, uncompleted task list", async () => {
   const { provider: p } = writeProvider(config(), {
-    fetchActiveTasks: async () => [rawTask({ id: "1", title: "A" }), rawTask({ id: "2", title: "B", completed: true })],
+    fetchActiveTasks: async () => [
+      rawTask({ id: "1", title: "A" }),
+      rawTask({ id: "2", title: "B", completed: true }),
+    ],
   });
   const { tasks, accounts } = await p.listAllTasks();
-  assert.deepEqual(tasks.map((t) => t.title), ["A"]); // completed task filtered out
+  assert.deepEqual(
+    tasks.map((t) => t.title),
+    ["A"]
+  ); // completed task filtered out
   assert.equal(accounts.length, 1);
 });
 

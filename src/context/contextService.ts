@@ -39,9 +39,7 @@ export class ContextService {
   }
 
   async getSnapshot(): Promise<ContextSnapshot> {
-    const results = await Promise.all(
-      [...this.providers.values()].map((provider) => this.collect(provider))
-    );
+    const results = await Promise.all([...this.providers.values()].map((provider) => this.collect(provider)));
 
     const providers: Record<string, ContextProviderResult> = {};
     for (const result of results) {
@@ -123,10 +121,7 @@ export class ContextService {
   }
 
   /** Reuses the last known-good result (marked stale) if one exists, else returns `empty` as-is. */
-  private fallbackOr(
-    provider: ContextProvider,
-    empty: ContextProviderResult
-  ): ContextProviderResult {
+  private fallbackOr(provider: ContextProvider, empty: ContextProviderResult): ContextProviderResult {
     const cached = this.lastGood.get(provider.id);
     if (!cached) return empty;
     return {

@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { Readable } from "stream";
 import { ImapEmailSource } from "./imapEmailSource";
 
-const CONFIG = { host: "imap.example.com", port: 993, secure: true, username: "me@example.com", password: "secret" };
+const CONFIG = {
+  host: "imap.example.com",
+  port: 993,
+  secure: true,
+  username: "me@example.com",
+  password: "secret",
+};
 
 interface FakeFetchEntry {
   uid: number;
@@ -74,15 +80,42 @@ test("maps fetched entries into RawEmailMessage, most-recent (highest UID) first
   const { client } = fakeClient({
     searchResult: [10, 11, 12],
     fetchEntries: [
-      { uid: 12, envelope: { subject: "Third", date: new Date("2026-09-08T10:00:00Z"), from: [{ name: "C", address: "c@example.com" }] }, flags: new Set() },
-      { uid: 11, envelope: { subject: "Second", date: new Date("2026-09-08T09:00:00Z"), from: [{ name: "B", address: "b@example.com" }] }, flags: new Set(["\\Seen"]) },
-      { uid: 10, envelope: { subject: "First", date: new Date("2026-09-08T08:00:00Z"), from: [{ name: "A", address: "a@example.com" }] }, flags: new Set(["\\Seen"]) },
+      {
+        uid: 12,
+        envelope: {
+          subject: "Third",
+          date: new Date("2026-09-08T10:00:00Z"),
+          from: [{ name: "C", address: "c@example.com" }],
+        },
+        flags: new Set(),
+      },
+      {
+        uid: 11,
+        envelope: {
+          subject: "Second",
+          date: new Date("2026-09-08T09:00:00Z"),
+          from: [{ name: "B", address: "b@example.com" }],
+        },
+        flags: new Set(["\\Seen"]),
+      },
+      {
+        uid: 10,
+        envelope: {
+          subject: "First",
+          date: new Date("2026-09-08T08:00:00Z"),
+          from: [{ name: "A", address: "a@example.com" }],
+        },
+        flags: new Set(["\\Seen"]),
+      },
     ],
   });
   const source = new ImapEmailSource(CONFIG, () => client as never);
 
   const messages = await source.fetchRecentMessages(new Date("2026-09-07"), 50);
-  assert.deepEqual(messages.map((m) => m.subject), ["Third", "Second", "First"]);
+  assert.deepEqual(
+    messages.map((m) => m.subject),
+    ["Third", "Second", "First"]
+  );
   assert.equal(messages[0].isUnread, true);
   assert.equal(messages[1].isUnread, false);
   assert.equal(messages[0].senderAddress, "c@example.com");

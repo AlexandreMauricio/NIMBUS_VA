@@ -35,10 +35,11 @@ test("manual mode uses the configured manual location", async () => {
 });
 
 test("manual mode falls back to the env-configured location when none is saved", async () => {
-  const resolver = new LocationResolver(
-    () => ({ locationMode: "manual", manualLocation: null }),
-    { latitude: 1, longitude: 2, label: "Fallback" }
-  );
+  const resolver = new LocationResolver(() => ({ locationMode: "manual", manualLocation: null }), {
+    latitude: 1,
+    longitude: 2,
+    label: "Fallback",
+  });
 
   const location = await resolver.resolve();
 
@@ -74,7 +75,11 @@ test("auto mode caches the resolved location instead of re-locating every call",
     },
   } as unknown as IpGeolocationClient;
 
-  const resolver = new LocationResolver(() => ({ locationMode: "auto", manualLocation: null }), null, ipClient);
+  const resolver = new LocationResolver(
+    () => ({ locationMode: "auto", manualLocation: null }),
+    null,
+    ipClient
+  );
 
   await resolver.resolve();
   await resolver.resolve();

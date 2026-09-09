@@ -18,7 +18,13 @@ export interface RawActivitySnapshot {
   explorerFolders: string[];
 }
 
-export const KNOWN_BROWSER_EXECUTABLES = ["chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"];
+export const KNOWN_BROWSER_EXECUTABLES = [
+  "chrome.exe",
+  "msedge.exe",
+  "firefox.exe",
+  "brave.exe",
+  "opera.exe",
+];
 
 export function emptySnapshot(): RawActivitySnapshot {
   return { processNames: [], browserWindows: [], explorerFolders: [] };
@@ -66,7 +72,11 @@ export function emptySnapshot(): RawActivitySnapshot {
  * (i.e. every currently-titled browser window is eligible to match)
  * while processes/folders still get the quiet, event-free baseline poll.
  */
-export function diffActivitySnapshot(previous: RawActivitySnapshot | null, current: RawActivitySnapshot, now: Date): ContextEvent[] {
+export function diffActivitySnapshot(
+  previous: RawActivitySnapshot | null,
+  current: RawActivitySnapshot,
+  now: Date
+): ContextEvent[] {
   const events: ContextEvent[] = [];
   const occurredAt = now.toISOString();
 
@@ -108,7 +118,13 @@ export function diffActivitySnapshot(previous: RawActivitySnapshot | null, curre
     const previousFolders = new Set(previous.explorerFolders);
     for (const path of current.explorerFolders) {
       if (!previousFolders.has(path)) {
-        events.push({ id: randomUUID(), type: "folderOpened", occurredAt, source: "desktopActivityMonitor", path });
+        events.push({
+          id: randomUUID(),
+          type: "folderOpened",
+          occurredAt,
+          source: "desktopActivityMonitor",
+          path,
+        });
       }
     }
   }

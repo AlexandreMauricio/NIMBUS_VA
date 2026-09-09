@@ -27,7 +27,10 @@ export interface ConditionContext {
 }
 
 /** All conditions must hold for a routine to be allowed to suggest — an empty list always passes. */
-export async function evaluateConditions(conditions: RoutineCondition[], ctx: ConditionContext): Promise<boolean> {
+export async function evaluateConditions(
+  conditions: RoutineCondition[],
+  ctx: ConditionContext
+): Promise<boolean> {
   for (const condition of conditions) {
     if (!(await evaluateCondition(condition, ctx))) return false;
   }

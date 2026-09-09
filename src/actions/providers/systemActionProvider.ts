@@ -24,7 +24,10 @@ export class SystemActionProvider implements ActionProvider {
   readonly id = "system";
   readonly displayName = "System";
 
-  constructor(private readonly openUrl: (url: string) => Promise<void>, private readonly now: () => Date = () => new Date()) {}
+  constructor(
+    private readonly openUrl: (url: string) => Promise<void>,
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
   listActions(): ActionDefinition[] {
     return [
@@ -32,7 +35,9 @@ export class SystemActionProvider implements ActionProvider {
         id: SYSTEM_ACTIONS.OPEN_URL,
         name: "Open website",
         description: "Opens a website in your default browser.",
-        parameters: [{ name: "url", type: "string", required: true, description: "Must start with http:// or https://" }],
+        parameters: [
+          { name: "url", type: "string", required: true, description: "Must start with http:// or https://" },
+        ],
         readOnly: false,
         changesExternalState: true,
         requiresConfirmation: false,

@@ -23,7 +23,9 @@ test("a task with no deadline and no signals classifies as low", () => {
 });
 
 test("a completed task always classifies as low regardless of other signals", () => {
-  const { urgency } = classifyTaskUrgency(input({ isOverdue: true, sourceHighPriority: true, completed: true }));
+  const { urgency } = classifyTaskUrgency(
+    input({ isOverdue: true, sourceHighPriority: true, completed: true })
+  );
   assert.equal(urgency, "low");
 });
 
@@ -39,9 +41,7 @@ test("a task due today (but not soon) classifies as normal or higher", () => {
 });
 
 test("a task due within the imminent window classifies as high", () => {
-  const { urgency, signals } = classifyTaskUrgency(
-    input({ isDueToday: true, minutesUntilDue: 30 })
-  );
+  const { urgency, signals } = classifyTaskUrgency(input({ isDueToday: true, minutesUntilDue: 30 }));
   assert.equal(signals.isDueSoon, true);
   assert.equal(urgency, "high");
 });

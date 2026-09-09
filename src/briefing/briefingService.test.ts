@@ -26,7 +26,9 @@ test("getCurrent() is null before any generation has happened", () => {
 
 test("generate() produces a briefing and getCurrent() then returns it without regenerating", async () => {
   const contextService = new ContextService();
-  contextService.register(okProvider("dateTime", { date: "2024-01-15", time: "09:00:00", dayOfWeek: "Monday" }));
+  contextService.register(
+    okProvider("dateTime", { date: "2024-01-15", time: "09:00:00", dayOfWeek: "Monday" })
+  );
   const service = new BriefingService(contextService);
 
   const briefing = await service.generate();

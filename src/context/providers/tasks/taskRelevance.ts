@@ -30,7 +30,10 @@ export interface UrgencyInput {
   completed: boolean;
 }
 
-export function classifyTaskUrgency(input: UrgencyInput): { urgency: TaskUrgency; signals: TaskUrgencySignals } {
+export function classifyTaskUrgency(input: UrgencyInput): {
+  urgency: TaskUrgency;
+  signals: TaskUrgencySignals;
+} {
   const isDueSoon =
     input.minutesUntilDue !== null && input.minutesUntilDue >= 0 && input.minutesUntilDue <= DUE_SOON_MINUTES;
   const hasReminderApproaching =

@@ -17,7 +17,12 @@ export function matchesTrigger(event: ContextEvent, trigger: TriggerConfig): boo
 
     case "websiteOpened": {
       if (event.type !== "websiteOpened") return false;
-      const value = trigger.matchField === "domain" ? event.domain : trigger.matchField === "url" ? event.url : event.windowTitle;
+      const value =
+        trigger.matchField === "domain"
+          ? event.domain
+          : trigger.matchField === "url"
+            ? event.url
+            : event.windowTitle;
       if (value === null) return false; // can't match a field the detector didn't determine
       return matchAnyPattern(value, trigger.pattern, trigger.matchMode);
     }

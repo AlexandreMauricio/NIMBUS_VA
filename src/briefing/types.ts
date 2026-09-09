@@ -17,14 +17,7 @@
  * report under without changing this type.
  */
 export type BriefingCategory =
-  | "greeting"
-  | "dateTime"
-  | "weather"
-  | "calendar"
-  | "email"
-  | "tasks"
-  | "meals"
-  | "other";
+  "greeting" | "dateTime" | "weather" | "calendar" | "email" | "tasks" | "meals" | "other";
 
 /** An optional next step the user could take on an item (not wired to any handler yet). */
 export interface BriefingAction {
