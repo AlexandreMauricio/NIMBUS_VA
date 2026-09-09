@@ -29,8 +29,8 @@ const MAX_SESSION_FAILURES = 3;
  * mechanism rather than fragile polling" guidance for folder detection).
  *
  * Deliberately reads only process/window names and folder paths — never
- * page content, keystrokes, or screenshots (see "Privacy" in README's
- * Routines section).
+ * page content, keystrokes, or screenshots (see "Privacy" in
+ * docs/routines.md).
  */
 const POWERSHELL_SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'

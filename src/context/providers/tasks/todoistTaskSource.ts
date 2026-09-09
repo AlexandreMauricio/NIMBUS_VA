@@ -85,7 +85,7 @@ export interface RawTaskItem {
  *
  * Uses a personal API token (Bearer auth) — no OAuth app registration
  * needed, the same reasoning behind Calendar's ICS URL and Email's IMAP
- * app password (see README's "Tasks" section).
+ * app password (see docs/tasks.md).
  *
  * Only *active* tasks are ever requested — Todoist's `/tasks` endpoint
  * doesn't return completed ones at all, which is exactly the "don't

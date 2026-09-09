@@ -72,7 +72,7 @@ export class SpotifyAuthManager {
    * happens once something actually asks (isAvailable()/getContext()
    * calls, which only happen after the app is fully started), by which
    * point `app` is always ready. Caught via a real "reconnect needed
-   * every restart" bug report — see README's Spotify section.
+   * every restart" bug report — see docs/spotify.md.
    */
   private ensureTokensLoaded(): void {
     if (this.tokensLoaded) return;

@@ -1176,7 +1176,7 @@ const ROUTINE_RUN_FAILURE_ICON_SVG = `<svg width="11" height="11" viewBox="0 0 1
  * delete/test a Routine, choose a trigger + its parameters, and build an
  * ordered action sequence from NIMBUS's existing, already-registered
  * Actions — never anything Routines invents or hard-codes itself (see
- * "Generic configuration" in README's Routines section).
+ * "Generic configuration" in docs/routines.md).
  */
 async function initRoutinesSettings(): Promise<void> {
   const enabledCheckbox = document.getElementById("routinesEnabled") as HTMLInputElement;
@@ -1352,7 +1352,7 @@ async function initRoutinesSettings(): Promise<void> {
 
       // A picked-playlist affordance for Spotify's playPlaylist action —
       // still just filling in a plain action parameter, not a special
-      // routine concept (see "Generic configuration" in README).
+      // routine concept (see "Generic configuration" in docs/routines.md).
       if (
         actionDef.id === "spotify.playPlaylist" &&
         param.name === "playlistUri" &&

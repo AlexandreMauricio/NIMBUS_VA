@@ -4,7 +4,7 @@ import * as crypto from "crypto";
  * Pure helpers for Spotify's Authorization Code + PKCE flow — the flow
  * NIMBUS uses specifically because it never requires a client secret,
  * only a public Client ID (see config.ts's SpotifyConfig doc comment and
- * README's "Spotify" section for why this was chosen over the older
+ * docs/spotify.md for why this was chosen over the older
  * Authorization Code flow, which does need a secret).
  *
  * Kept separate from SpotifyAuthManager (the stateful class that actually

@@ -7,7 +7,7 @@ import { ContextEvent } from "../../events/types";
  * substitute for WEBSITE_OPENED — see module doc below), and open
  * Explorer folder paths (for FOLDER_OPENED). Deliberately minimal: no
  * page content, no keystrokes, no screenshots — see "Privacy" in
- * README's Routines section.
+ * docs/routines.md.
  */
 export interface RawActivitySnapshot {
   /** Lowercased running executable names, e.g. "steam.exe". */

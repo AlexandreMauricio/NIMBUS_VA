@@ -51,7 +51,7 @@ export interface SpotifyConfig {
    * needs a client secret at all), but still not something to hardcode: a
    * shared NIMBUS-wide app would let every install collide on the same
    * rate limits/quota and would need its redirect URI to match every
-   * user's machine. See README's "Spotify" section for setup steps.
+   * user's machine. See docs/spotify.md for setup steps.
    */
   clientId: string | null;
   /** Loopback port the local OAuth redirect listener binds during the auth flow — must match the redirect URI registered in the user's Spotify app. */

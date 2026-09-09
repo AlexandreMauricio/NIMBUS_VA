@@ -28,10 +28,15 @@ const ROOT = path.join(__dirname, "..");
 /** One per BrowserWindow NIMBUS opens; each becomes a standalone <script src> in its own HTML file. */
 const ENTRY_POINTS = ["renderer", "suggestionRenderer", "timerRenderer"];
 
+// `npm run dev` watches types with tsc -w; this is the matching watcher
+// for the bundle, since tsc's own output for the entry points is not what
+// the app loads any more.
+const WATCH = process.argv.includes("--watch");
+
 async function main() {
-  await Promise.all(
-    ENTRY_POINTS.map((name) =>
-      esbuild.build({
+  const contexts = await Promise.all(
+    ENTRY_POINTS.map((name) => {
+      const options = {
         entryPoints: [path.join(ROOT, "src", "ui", `${name}.ts`)],
         outfile: path.join(ROOT, "dist", "ui", `${name}.js`),
         bundle: true,
@@ -42,10 +47,18 @@ async function main() {
         target: "chrome120", // Electron 33 ships Chromium 130
         sourcemap: true,
         logLevel: "warning",
-      })
-    )
+      };
+      return WATCH ? esbuild.context(options) : esbuild.build(options);
+    })
   );
-  console.log(`Bundled ${ENTRY_POINTS.length} UI entry points`);
+
+  if (!WATCH) {
+    console.log(`Bundled ${ENTRY_POINTS.length} UI entry points`);
+    return;
+  }
+
+  await Promise.all(contexts.map((ctx) => ctx.watch()));
+  console.log(`Watching ${ENTRY_POINTS.length} UI entry points for changes`);
 }
 
 main().catch((err) => {

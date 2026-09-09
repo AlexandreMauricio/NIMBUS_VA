@@ -13,7 +13,7 @@ import { httpTimeoutSignal } from "../../../common/timeout";
  * iCal format" URL for a calendar, with no OAuth app registration, no
  * client secret, and no token refresh logic required. The URL itself is
  * the credential — treat it exactly like one (never logged, never sent
- * anywhere but to fetch this feed). See README.md for how a user obtains
+ * anywhere but to fetch this feed). See docs/calendar.md for how a user obtains
  * one, and ARCHITECTURE.md for how a future OAuth-based source (Google/
  * Microsoft Graph) would plug in alongside this one without the
  * CalendarProvider needing to change.

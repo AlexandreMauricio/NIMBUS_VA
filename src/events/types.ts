@@ -22,7 +22,7 @@ export type ContextEventType =
   | "timerCompleted"
   // Reserved for future producers — not emitted by anything yet, but
   // included so the trigger/routine types this task builds don't need to
-  // change shape when they are. See "Context events" in README.
+  // change shape when they are. See "Context events" in docs/context-system.md.
   | "playbackChanged"
   | "calendarEventApproaching"
   | "emailReceived";

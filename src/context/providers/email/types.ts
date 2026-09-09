@@ -25,7 +25,7 @@ export interface EmailAccountInfo {
 
 /**
  * A single message's metadata — deliberately not the full body. See
- * ARCHITECTURE.md / README "Email" section for why: NIMBUS summarizes,
+ * ARCHITECTURE.md / docs/email.md for why: NIMBUS summarizes,
  * it doesn't become an email client.
  */
 export interface EmailMessage {

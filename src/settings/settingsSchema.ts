@@ -132,7 +132,7 @@ export interface RoutineSettings {
    * the desktop activity monitor runs at all. Off by default: NIMBUS
    * should not be watching running processes/window titles/open folders
    * unless the user has actually opted into Routines (see "Privacy" in
-   * README's Routines section).
+   * docs/routines.md).
    */
   enabled: boolean;
   routines: Routine[];

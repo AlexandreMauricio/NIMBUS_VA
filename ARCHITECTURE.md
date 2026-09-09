@@ -132,16 +132,23 @@ src/
                                    works (console-only) — this is what makes it
                                    safe for Core to depend on.
 
-  settings/settingsManager.ts [2] Windows-specific — persists `NimbusSettings`
-                                   to a JSON file via `electron.app.getPath`.
-                                   Defines `WindowsClientSettings` (device-only:
+  settings/settingsSchema.ts  [1] Core — the *shape* of settings: types,
+                                   defaults, legacy migration, and the
+                                   plaintext/credential split. No Electron,
+                                   no filesystem, so it is unit-testable
+                                   under plain `node --test`. Defines
+                                   `WindowsClientSettings` (device-only:
                                    window bounds, launch-with-Windows,
                                    start-minimized) separately from
                                    `UserPreferences` (`weather`, `calendar`,
-                                   `email`, `tasks`, `spotify`) — see "Settings
-                                   split" below. Spotify's *tokens* are
-                                   deliberately NOT here — see spotify/
-                                   under main/ below.
+                                   `email`, `tasks`, `spotify`) — see
+                                   "Settings split" below.
+  settings/settingsManager.ts [2] Windows-specific — the thin layer around
+                                   that schema: file path via
+                                   `electron.app.getPath`, an atomic
+                                   temp-file-then-rename write, and keystore
+                                   wiring. NO credential is written here —
+                                   see secretStore.ts under main/ below.
 
   main/                      [2] Windows-specific (Electron main process)
     main.ts                       Entry point; configures file logging
@@ -170,6 +177,18 @@ src/
                                    Electron's `safeStorage` (OS-level,
                                    Windows DPAPI) into their own file,
                                    never `settings.json`.
+    secretStore.ts             [2] Windows-specific — the same `safeStorage`
+                                   treatment generalized to NIMBUS's other
+                                   credentials (IMAP passwords, Todoist API
+                                   tokens), keyed by account id in their own
+                                   `secrets.json`. Settings strip credentials
+                                   into it on save and merge them back on
+                                   load, so every consumer still sees one
+                                   plain `NimbusSettings`.
+    activity/powerShellSession.ts  [2] Windows-specific — one long-lived
+                                   PowerShell process the activity monitor
+                                   feeds scripts to over stdin, instead of
+                                   spawning `powershell.exe` per poll.
     activity/                  (new this task) The only producer of
                                    ApplicationOpened/WebsiteOpened/FolderOpened
                                    Context Events today
@@ -532,7 +551,7 @@ in — a local redirect listener (a temporary loopback `http.createServer`),
 `safeStorage`-based token storage, and refresh scheduling — and it lives
 entirely under `src/main/`, not inside Core. It uses Authorization Code +
 PKCE specifically because that flow needs no client secret at all (see
-README's "Spotify" section), so unlike a hypothetical future
+docs/spotify.md), so unlike a hypothetical future
 Calendar/Email OAuth integration, there was never a secret to keep out of
 Core in the first place — only a Client ID, which still isn't hardcoded
 (see config.ts's `SpotifyConfig`). A future Android client would
@@ -548,13 +567,21 @@ password, a task account's API token, and Spotify's tokens never do — the
 renderer only ever sees `hasPassword`/`hasApiToken`/`connected` booleans
 — since a stolen ICS URL only exposes read access to free/busy calendar
 data, while a stolen mail password, task-app token, or Spotify token is
-far more sensitive. Spotify goes one step further than email/tasks:
-where their credentials are plaintext strings in `settings.json` (still
-never sent to the renderer, but readable by anything with filesystem
-access to that file), Spotify's tokens are encrypted at rest via
-`safeStorage` in their own file — see README's "Token storage" under
-"Spotify" for why the stakes are different enough to justify that extra
-step.
+far more sensitive.
+
+Every credential of that second kind is now encrypted at rest via
+`safeStorage` (Windows DPAPI) in its own file, never `settings.json`:
+Spotify's OAuth tokens in `spotifyTokenStore.ts`, and IMAP passwords and
+Todoist API tokens in the general `secretStore.ts`. Both fail safe rather
+than falling back to plaintext — without OS secure storage, a credential
+simply does not persist across restarts. This keeps `settings.json` safe
+to open, diff, or paste into a bug report, which is exactly what a file
+of "readable user preferences" should be.
+
+The ICS feed address remains a deliberate exception: it stays in
+`settings.json` because the Settings form has to show it back to the user
+for editing, and a stolen feed URL exposes only read access to free/busy
+data. See docs/calendar.md.
 
 ## Things reviewed and deliberately left alone
 
