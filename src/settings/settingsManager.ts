@@ -35,45 +35,80 @@ export * from "./settingsSchema";
 
 const secretStore = new SecretStore();
 
+/**
+ * The settings objects whose credentials have been filled in from the
+ * store. Only these may write credentials back: any other object's
+ * credential fields are blanks (see `loadSettings`), and writing those
+ * would erase what is stored.
+ *
+ * Tracked per object rather than as a single "hydration has happened"
+ * flag, so the guard states the property that actually matters — this
+ * object is safe to write — instead of a global that a second settings
+ * object silently inherits.
+ */
+const hydratedSettings = new WeakSet<NimbusSettings>();
+
 function getSettingsFilePath(): string {
   return path.join(app.getPath("userData"), "settings.json");
 }
 
+/**
+ * Reads settings.json. Safe to call before Electron's `app` is ready —
+ * and it deliberately does NOT touch the credential store, because that
+ * is not: `safeStorage.isEncryptionAvailable()` returns a silent `false`
+ * before the ready event, so reading credentials here would report every
+ * one of them as unset.
+ *
+ * Credentials are filled in afterwards by `hydrateCredentials`. This is
+ * the same lazy-until-ready discipline SpotifyTokenStore's caller
+ * already follows (see SpotifyAuthManager.ensureLoaded).
+ */
 export function loadSettings(): NimbusSettings {
   const filePath = getSettingsFilePath();
-  let settings: NimbusSettings;
 
   try {
     if (!fs.existsSync(filePath)) {
-      settings = structuredClone(DEFAULT_SETTINGS);
-    } else {
-      const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-      if (isLegacyShape(parsed)) {
-        logger.info("Migrating settings.json from pre-split legacy shape");
-      }
-      settings = applyDefaults(migrateLegacyShape(parsed));
+      return structuredClone(DEFAULT_SETTINGS);
     }
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    if (isLegacyShape(parsed)) {
+      logger.info("Migrating settings.json from pre-split legacy shape");
+    }
+    return applyDefaults(migrateLegacyShape(parsed));
   } catch (err) {
     logger.warn("Failed to read settings.json, falling back to defaults", {
       error: String(err),
     });
-    settings = structuredClone(DEFAULT_SETTINGS);
+    return structuredClone(DEFAULT_SETTINGS);
   }
+}
 
-  // A pre-SecretStore settings.json still has credentials inline;
-  // restoreSecrets keeps those, and the save below moves them into the
-  // encrypted store and strips them from settings.json. Doing it here
-  // (rather than waiting for the user's next settings edit) means the
-  // plaintext stops sitting on disk from the first launch after upgrade.
+/**
+ * Fills the credentials into an already-loaded settings object. MUST be
+ * called after Electron's `app` is ready and before anything reads or
+ * writes a credential — `startApp` calls it first thing on ready.
+ *
+ * Until this runs, `saveSettings` refuses to touch the credential store
+ * at all (see `credentialsHydrated`). That guard is what makes the
+ * split safe: without it, a save in the window between load and
+ * hydration would strip the in-memory blanks into the store and delete
+ * every stored credential.
+ */
+export function hydrateCredentials(settings: NimbusSettings): NimbusSettings {
+  // A settings.json written before credentials moved into the store
+  // still has them inline. restoreSecrets keeps those, and the save
+  // below moves them into the store and strips the plaintext, so it
+  // stops sitting on disk from the first launch after the upgrade.
   const migratingCredentials = hasInlineCredentials(settings);
-  settings = restoreSecrets(settings, secretStore.readAll());
+  const hydrated = restoreSecrets(settings, secretStore.readAll());
+  hydratedSettings.add(hydrated);
 
   if (migratingCredentials) {
     logger.info("Moving credentials out of settings.json into OS-encrypted storage");
-    saveSettings(settings);
+    saveSettings(hydrated);
   }
 
-  return settings;
+  return hydrated;
 }
 
 /**
@@ -95,7 +130,16 @@ export function saveSettings(settings: NimbusSettings): void {
 
   // Credentials are peeled off here and never reach settings.json.
   const { sanitized, secrets } = extractSecrets(settings);
-  secretStore.writeAll(secrets);
+
+  if (hydratedSettings.has(settings)) {
+    secretStore.writeAll(secrets);
+  } else {
+    // This object's credentials are blanks, so writing them would clear
+    // the store — the exact bug this guard exists for. Nothing should
+    // save this early; if something does, settings.json is still
+    // written and the stored credentials are left alone.
+    logger.warn("Settings saved before credentials were hydrated — leaving the credential store untouched");
+  }
 
   try {
     const serialized = JSON.stringify(sanitized, null, 2);

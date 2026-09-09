@@ -2,7 +2,7 @@ import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
 import { randomUUID } from "crypto";
 import * as path from "path";
 import { logger } from "../logging/logger";
-import { loadSettings, saveSettings, NimbusSettings } from "../settings/settingsManager";
+import { loadSettings, hydrateCredentials, saveSettings, NimbusSettings } from "../settings/settingsManager";
 import { APP_NAME, APP_FULL_NAME, APP_VERSION } from "../common/appInfo";
 import { config } from "../config/config";
 import { createTray, destroyTray } from "./tray";
@@ -741,6 +741,13 @@ export function startApp(): void {
 
   app.on("ready", () => {
     logger.info(`${APP_NAME} starting`, { version: APP_VERSION, env: config.appEnv });
+
+    // Credentials are read here, not in loadSettings() above, because
+    // Electron's safeStorage reports itself unavailable until the app is
+    // ready — and does so silently, so reading earlier yields blanks
+    // rather than an error. Must happen before anything touches a
+    // credential: the providers below, the IPC handlers, and any save.
+    settings = hydrateCredentials(settings);
 
     // NIMBUS's own UI is the only chrome it needs — the default Electron
     // menu bar (File/Edit/View/Window/Help) doesn't do anything useful
