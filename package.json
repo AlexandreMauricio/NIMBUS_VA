@@ -9,7 +9,10 @@
     "copy-assets": "node scripts/copy-assets.js",
     "start": "npm run build && electron .",
     "dev": "tsc -p tsconfig.json -w",
-    "test": "tsc -p tsconfig.json && node --test \"dist/{context,briefing,actions,main,events,routines,timers}/**/*.test.js\""
+    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20.6.0"
   },
   "author": "",
   "license": "UNLICENSED",
