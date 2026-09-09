@@ -164,3 +164,118 @@ test("actionsNotAlreadyActive is a recognized condition type", () => {
     true
   );
 });
+
+/* ------------- Routine Engine 2.0: new fields and their validation ------------- */
+
+test("a routine with none of the new fields is still valid — old configurations keep loading", () => {
+  const legacy = routine();
+  delete (legacy as Partial<Routine>).conditionLogic;
+  delete (legacy as Partial<Routine>).sessionRestriction;
+  delete (legacy as Partial<Routine>).description;
+
+  assert.equal(validateRoutine(legacy, KNOWN_ACTION_IDS).valid, true);
+});
+
+test("conditionLogic accepts all and any, and rejects anything else", () => {
+  assert.equal(validateRoutine(routine({ conditionLogic: "all" }), KNOWN_ACTION_IDS).valid, true);
+  assert.equal(validateRoutine(routine({ conditionLogic: "any" }), KNOWN_ACTION_IDS).valid, true);
+
+  const bad = validateRoutine(routine({ conditionLogic: "sometimes" as unknown as "all" }), KNOWN_ACTION_IDS);
+  assert.equal(bad.valid, false);
+  assert.match(bad.error ?? "", /conditionLogic/);
+});
+
+test("sessionRestriction accepts its two values and rejects anything else", () => {
+  assert.equal(validateRoutine(routine({ sessionRestriction: "none" }), KNOWN_ACTION_IDS).valid, true);
+  assert.equal(
+    validateRoutine(routine({ sessionRestriction: "oncePerSession" }), KNOWN_ACTION_IDS).valid,
+    true
+  );
+
+  const bad = validateRoutine(
+    routine({ sessionRestriction: "onceEver" as unknown as "none" }),
+    KNOWN_ACTION_IDS
+  );
+  assert.equal(bad.valid, false);
+  assert.match(bad.error ?? "", /sessionRestriction/);
+});
+
+test("a non-string description is rejected", () => {
+  const bad = validateRoutine(routine({ description: 42 as unknown as string }), KNOWN_ACTION_IDS);
+  assert.equal(bad.valid, false);
+  assert.match(bad.error ?? "", /description/);
+});
+
+test("a valid daysOfWeek condition is accepted", () => {
+  assert.equal(
+    validateRoutine(routine({ conditions: [{ type: "daysOfWeek", days: [0, 6] }] }), KNOWN_ACTION_IDS).valid,
+    true
+  );
+});
+
+test("an empty daysOfWeek list is rejected — it could never match", () => {
+  const result = validateRoutine(
+    routine({ conditions: [{ type: "daysOfWeek", days: [] }] }),
+    KNOWN_ACTION_IDS
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.error ?? "", /at least one day/);
+});
+
+test("an out-of-range day is rejected", () => {
+  const result = validateRoutine(
+    routine({ conditions: [{ type: "daysOfWeek", days: [1, 7] }] }),
+    KNOWN_ACTION_IDS
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.error ?? "", /0 \(Sunday\) to 6/);
+});
+
+test("timeOfDay minutes are validated when present", () => {
+  assert.equal(
+    validateRoutine(
+      routine({ conditions: [{ type: "timeOfDay", startHour: 18, endHour: 23, startMinute: 30 }] }),
+      KNOWN_ACTION_IDS
+    ).valid,
+    true
+  );
+
+  const result = validateRoutine(
+    routine({ conditions: [{ type: "timeOfDay", startHour: 18, endHour: 23, endMinute: 60 }] }),
+    KNOWN_ACTION_IDS
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.error ?? "", /minutes must be between 0 and 59/);
+});
+
+test("a routine mixing several condition types validates as a whole", () => {
+  const result = validateRoutine(
+    routine({
+      conditionLogic: "all",
+      conditions: [
+        { type: "timeOfDay", startHour: 18, endHour: 23, startMinute: 0, endMinute: 0 },
+        { type: "daysOfWeek", days: [1, 2, 3, 4, 5] },
+        { type: "spotifyNotAlreadyPlaying" },
+        { type: "actionsNotAlreadyActive" },
+      ],
+      sessionRestriction: "oncePerSession",
+      description: "Evening study",
+    }),
+    KNOWN_ACTION_IDS
+  );
+
+  assert.equal(result.valid, true);
+});
+
+test("one malformed condition rejects the whole routine, so nothing partial is saved", () => {
+  const result = validateRoutine(
+    routine({
+      conditions: [
+        { type: "timeOfDay", startHour: 18, endHour: 23 },
+        { type: "daysOfWeek", days: [99] },
+      ],
+    }),
+    KNOWN_ACTION_IDS
+  );
+  assert.equal(result.valid, false);
+});

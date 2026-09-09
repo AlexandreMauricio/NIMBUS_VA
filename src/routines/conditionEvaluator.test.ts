@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateConditions } from "./conditionEvaluator";
+import { evaluateConditions, evaluateConditionsDetailed } from "./conditionEvaluator";
 import { RoutineCondition } from "./types";
 
 test("an empty condition list always passes", async () => {
@@ -133,4 +133,123 @@ test("all conditions must pass — one failing condition fails the whole set", a
   ];
   const mondayEvening = new Date(2026, 0, 5, 20, 0, 0); // Monday but outside the hour range
   assert.equal(await evaluateConditions(conditions, { now: mondayEvening }), false);
+});
+
+/* ---------------- Routine Engine 2.0: minutes, days, AND/OR ---------------- */
+
+const at = (h: number, m = 0) => new Date(2026, 2, 16, h, m, 0); // a Monday
+
+test("timeOfDay respects start and end minutes", async () => {
+  const conditions: RoutineCondition[] = [
+    { type: "timeOfDay", startHour: 18, endHour: 23, startMinute: 30, endMinute: 15 },
+  ];
+
+  assert.equal(await evaluateConditions(conditions, { now: at(18, 29) }), false);
+  assert.equal(await evaluateConditions(conditions, { now: at(18, 30) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(23, 14) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(23, 15) }), false, "end is exclusive");
+});
+
+test("a timeOfDay without minutes behaves exactly as it did before they existed", async () => {
+  const conditions: RoutineCondition[] = [{ type: "timeOfDay", startHour: 18, endHour: 23 }];
+
+  assert.equal(await evaluateConditions(conditions, { now: at(17, 59) }), false);
+  assert.equal(await evaluateConditions(conditions, { now: at(18, 0) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(22, 59) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(23, 0) }), false);
+});
+
+test("a midnight-crossing window with minutes covers both sides of midnight", async () => {
+  const conditions: RoutineCondition[] = [
+    { type: "timeOfDay", startHour: 22, endHour: 2, startMinute: 30, endMinute: 15 },
+  ];
+
+  assert.equal(await evaluateConditions(conditions, { now: at(22, 29) }), false);
+  assert.equal(await evaluateConditions(conditions, { now: at(22, 30) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(23, 59) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(0, 30) }), true, "after midnight");
+  assert.equal(await evaluateConditions(conditions, { now: at(2, 14) }), true);
+  assert.equal(await evaluateConditions(conditions, { now: at(2, 15) }), false);
+  assert.equal(await evaluateConditions(conditions, { now: at(12, 0) }), false, "midday is outside");
+});
+
+test("a window whose start equals its end is treated as always", async () => {
+  const conditions: RoutineCondition[] = [{ type: "timeOfDay", startHour: 9, endHour: 9 }];
+  assert.equal(await evaluateConditions(conditions, { now: at(3, 0) }), true);
+});
+
+test("daysOfWeek passes only on the listed days", async () => {
+  const monday: RoutineCondition[] = [{ type: "daysOfWeek", days: [1] }];
+  const weekend: RoutineCondition[] = [{ type: "daysOfWeek", days: [0, 6] }];
+
+  assert.equal(await evaluateConditions(monday, { now: at(12) }), true);
+  assert.equal(await evaluateConditions(weekend, { now: at(12) }), false);
+  // Sunday
+  assert.equal(await evaluateConditions(weekend, { now: new Date(2026, 2, 15, 12) }), true);
+});
+
+test("daysOfWeek [1..5] is equivalent to weekdaysOnly", async () => {
+  const explicit: RoutineCondition[] = [{ type: "daysOfWeek", days: [1, 2, 3, 4, 5] }];
+  const legacy: RoutineCondition[] = [{ type: "weekdaysOnly" }];
+
+  for (const day of [15, 16, 17, 18, 19, 20, 21]) {
+    const now = new Date(2026, 2, day, 12);
+    assert.equal(
+      await evaluateConditions(explicit, { now }),
+      await evaluateConditions(legacy, { now }),
+      `day ${day}`
+    );
+  }
+});
+
+test("'all' requires every condition and 'any' requires just one", async () => {
+  const conditions: RoutineCondition[] = [
+    { type: "timeOfDay", startHour: 9, endHour: 17 },
+    { type: "daysOfWeek", days: [0] }, // Sunday only — false on a Monday
+  ];
+
+  assert.equal(await evaluateConditions(conditions, { now: at(12) }, "all"), false);
+  assert.equal(await evaluateConditions(conditions, { now: at(12) }, "any"), true);
+});
+
+test("'any' fails when nothing holds", async () => {
+  const conditions: RoutineCondition[] = [
+    { type: "timeOfDay", startHour: 9, endHour: 17 },
+    { type: "daysOfWeek", days: [0] },
+  ];
+  assert.equal(await evaluateConditions(conditions, { now: at(3) }, "any"), false);
+});
+
+test("an empty condition list passes under 'any' too, rather than reading as 'none held'", async () => {
+  assert.equal(await evaluateConditions([], { now: at(12) }, "any"), true);
+});
+
+test("the detailed evaluation reports every condition, not just the decisive one", async () => {
+  const conditions: RoutineCondition[] = [
+    { type: "timeOfDay", startHour: 9, endHour: 17 },
+    { type: "daysOfWeek", days: [0] },
+  ];
+
+  const evaluation = await evaluateConditionsDetailed(conditions, { now: at(12) }, "all");
+
+  assert.equal(evaluation.passed, false);
+  assert.equal(evaluation.results.length, 2, "a partial list would be a misleading explanation");
+  assert.equal(evaluation.results[0].passed, true);
+  assert.equal(evaluation.results[1].passed, false);
+});
+
+test("each condition carries a readable label describing the outcome", async () => {
+  const evaluation = await evaluateConditionsDetailed([{ type: "timeOfDay", startHour: 18, endHour: 23 }], {
+    now: at(12),
+  });
+
+  assert.match(evaluation.results[0].label, /Time is outside 18:00-23:00/);
+});
+
+test("labels name the configured days rather than raw numbers", async () => {
+  const evaluation = await evaluateConditionsDetailed([{ type: "daysOfWeek", days: [1, 5] }], {
+    now: at(12),
+  });
+
+  assert.match(evaluation.results[0].label, /Monday, Friday/);
 });

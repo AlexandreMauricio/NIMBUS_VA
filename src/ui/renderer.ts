@@ -14,6 +14,28 @@ import {
  * only through the `window.nimbus` API exposed by the preload script —
  * it has no Node/Electron access of its own.
  */
+interface RoutineCheck {
+  label: string;
+  passed: boolean;
+}
+
+interface RoutineEvaluation {
+  routineId: string;
+  routineName: string;
+  matched: boolean;
+  checks: RoutineCheck[];
+  blockedBy?: string;
+}
+
+interface RoutineHistoryEntry {
+  id: string;
+  at: string;
+  routineId: string;
+  routineName: string;
+  kind: string;
+  detail?: string;
+}
+
 interface AppInfo {
   name: string;
   fullName: string;
@@ -270,10 +292,21 @@ interface FolderTriggerConfig {
 }
 type TriggerConfig = ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig;
 
+/**
+ * Mirrors src/routines/types.ts's RoutineCondition. Kept as one loose
+ * shape with optional fields rather than a discriminated union: the
+ * renderer only reads and writes these, and a union here would have to
+ * be kept in lockstep with the real one for no gain on this side of the
+ * bridge. `weekdaysOnly` stays listed because older routines have it,
+ * even though new ones are offered `daysOfWeek` instead.
+ */
 interface RoutineCondition {
-  type: "timeOfDay" | "weekdaysOnly" | "spotifyNotAlreadyPlaying" | "actionsNotAlreadyActive";
+  type: "timeOfDay" | "weekdaysOnly" | "daysOfWeek" | "spotifyNotAlreadyPlaying" | "actionsNotAlreadyActive";
   startHour?: number;
   endHour?: number;
+  startMinute?: number;
+  endMinute?: number;
+  days?: number[];
 }
 
 interface RoutineActionStep {
@@ -298,6 +331,9 @@ interface Routine {
   actions: RoutineActionStep[];
   cooldownMinutes: number;
   autoRun?: boolean;
+  description?: string;
+  conditionLogic?: "all" | "any";
+  sessionRestriction?: "none" | "oncePerSession";
 }
 
 interface RoutineSettings {
@@ -369,7 +405,10 @@ interface NimbusApi {
   listSpotifyPlaylists: () => Promise<SpotifyPlaylistSummary[]>;
   getRoutineSettings: () => Promise<RoutineSettings>;
   updateRoutineSettings: (partial: { enabled?: boolean; routines?: Routine[] }) => Promise<RoutineSettings>;
-  testRoutine: (routineId: string) => Promise<ActionResult[]>;
+  testRoutine: (routineId: string) => Promise<RoutineEvaluation | null>;
+  runRoutineNow: (routineId: string) => Promise<ActionResult[]>;
+  getRoutineHistory: () => Promise<RoutineHistoryEntry[]>;
+  getRoutineLastTriggered: () => Promise<Record<string, number>>;
   getActivitySnapshot: () => Promise<RawActivitySnapshot | null>;
   getActiveSuggestions: () => Promise<AssistantEvent[]>;
   acceptSuggestion: (suggestionId: string) => Promise<ActionResult[]>;
@@ -1151,19 +1190,32 @@ function initNowPlayingCard(): void {
 
 const TRIGGER_TYPES: TriggerConfig["type"][] = ["applicationOpened", "websiteOpened", "folderOpened"];
 
-function buildTriggerFromForm(): TriggerConfig | null {
+/**
+ * Builds a trigger from the form.
+ *
+ * `existing` is the trigger being edited, when there is one. The form has
+ * no match-mode control, so without this an edit would rewrite whatever
+ * was saved to "contains" — silently loosening an "exact" routine's
+ * matching as a side effect of changing something unrelated. The saved
+ * mode is carried over whenever the trigger type is unchanged; a genuinely
+ * new trigger type gets the form's default.
+ */
+function buildTriggerFromForm(existing?: TriggerConfig): TriggerConfig | null {
   const type = (document.getElementById("routineTriggerType") as HTMLSelectElement)
     .value as TriggerConfig["type"];
+  const matchMode: StringMatchMode = existing?.type === type ? existing.matchMode : "contains";
+
   if (type === "applicationOpened") {
     const application = (document.getElementById("routineAppName") as HTMLInputElement).value.trim();
-    return application ? { type, application, matchMode: "contains" } : null;
+    return application ? { type, application, matchMode } : null;
   }
   if (type === "websiteOpened") {
     const pattern = (document.getElementById("routineWebsitePattern") as HTMLInputElement).value.trim();
-    return pattern ? { type, matchField: "windowTitle", pattern, matchMode: "contains" } : null;
+    const matchField = existing?.type === "websiteOpened" ? existing.matchField : ("windowTitle" as const);
+    return pattern ? { type, matchField, pattern, matchMode } : null;
   }
   const path = (document.getElementById("routineFolderPath") as HTMLInputElement).value.trim();
-  return path ? { type: "folderOpened", path, matchMode: "contains" } : null;
+  return path ? { type: "folderOpened", path, matchMode } : null;
 }
 
 const ROUTINE_RUN_ICON_SVG = `<svg width="11" height="12" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 3,15 15,8"/></svg>`;
@@ -1254,6 +1306,8 @@ async function initRoutinesSettings(): Promise<void> {
   // is the one bit of state that changes "Save routine" from appending a
   // new routine to replacing this one in place.
   let editingRoutineId: string | null = null;
+  /** The trigger of the routine open in the editor, so an edit preserves its match mode. */
+  let editedRoutineTrigger: TriggerConfig | null = null;
 
   function syncTriggerFieldsVisibility(): void {
     for (const type of TRIGGER_TYPES) {
@@ -1532,6 +1586,7 @@ async function initRoutinesSettings(): Promise<void> {
   function resetForm(): void {
     stopEditingAction();
     editingRoutineId = null;
+    editedRoutineTrigger = null;
     formHeadingEl.textContent = "New routine";
     saveBtn.textContent = "Save routine";
     cancelEditBtn.hidden = true;
@@ -1547,6 +1602,12 @@ async function initRoutinesSettings(): Promise<void> {
     cooldownInput.value = "30";
     skipIfActiveCheckbox.checked = false;
     autoRunCheckbox.checked = false;
+    routineEnabledCheckbox.checked = true; // a routine you just created is meant to run
+    oncePerSessionCheckbox.checked = false;
+    descriptionInput.value = "";
+    conditionLogicSelect.value = "all";
+    pendingConditions = [];
+    renderPendingConditions();
     pendingActions = [];
     renderPendingActions();
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
@@ -1564,6 +1625,7 @@ async function initRoutinesSettings(): Promise<void> {
     showEditView();
     stopEditingAction();
     editingRoutineId = routine.id;
+    editedRoutineTrigger = routine.trigger;
     formHeadingEl.textContent = `Editing "${routine.name}"`;
     saveBtn.textContent = "Update routine";
     cancelEditBtn.hidden = false;
@@ -1574,6 +1636,17 @@ async function initRoutinesSettings(): Promise<void> {
     cooldownInput.value = String(routine.cooldownMinutes);
     skipIfActiveCheckbox.checked = routine.conditions.some((c) => c.type === "actionsNotAlreadyActive");
     autoRunCheckbox.checked = routine.autoRun ?? false;
+    routineEnabledCheckbox.checked = routine.enabled;
+    oncePerSessionCheckbox.checked = (routine.sessionRestriction ?? "none") === "oncePerSession";
+    descriptionInput.value = routine.description ?? "";
+    conditionLogicSelect.value = routine.conditionLogic ?? "all";
+    // Everything except the "Skip if already active" switch, which owns
+    // that one condition — see buildConditionsFromForm. Deep-copied so
+    // editing the form never mutates the stored routine before save.
+    pendingConditions = routine.conditions
+      .filter((c) => c.type !== "actionsNotAlreadyActive")
+      .map((c) => ({ ...c, days: c.days ? [...c.days] : undefined }));
+    renderPendingConditions();
 
     (document.getElementById("routineAppName") as HTMLInputElement).value = "";
     (document.getElementById("routineWebsitePattern") as HTMLInputElement).value = "";
@@ -1597,7 +1670,231 @@ async function initRoutinesSettings(): Promise<void> {
     document.getElementById("routineName")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+  /**
+   * The conditions being edited, mirroring `pendingActions` above: the
+   * form owns a working copy and only writes it back into a Routine on
+   * save, so cancelling leaves the stored routine untouched.
+   *
+   * `actionsNotAlreadyActive` is deliberately NOT in here — it is the
+   * "Skip if already active" switch below. Keeping one setting in two
+   * places is worse than the small asymmetry of leaving it out, and a
+   * routine that already has it keeps it through an edit either way (see
+   * buildConditionsFromForm).
+   */
+  let pendingConditions: RoutineCondition[] = [];
+
+  const conditionListEl = document.getElementById("routineConditionList") as HTMLElement;
+  const conditionEmptyEl = document.getElementById("routineConditionEmpty") as HTMLElement;
+  const conditionLogicSelect = document.getElementById("routineConditionLogic") as HTMLSelectElement;
+  const conditionTypeSelect = document.getElementById("routineConditionTypeSelect") as HTMLSelectElement;
+  const addConditionBtn = document.getElementById("routineAddConditionBtn") as HTMLButtonElement;
+  const descriptionInput = document.getElementById("routineDescription") as HTMLInputElement;
+  const oncePerSessionCheckbox = document.getElementById("routineOncePerSession") as HTMLInputElement;
+  const routineEnabledCheckbox = document.getElementById("routineEnabled") as HTMLInputElement;
+
+  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  /** Minutes-since-midnight <-> the "HH:MM" an <input type="time"> speaks. */
+  function toTimeValue(hour: number, minute: number | undefined): string {
+    return `${String(hour).padStart(2, "0")}:${String(minute ?? 0).padStart(2, "0")}`;
+  }
+
+  function addCondition(type: string): void {
+    if (type === "timeOfDay") {
+      pendingConditions.push({ type: "timeOfDay", startHour: 18, endHour: 23 });
+    } else if (type === "daysOfWeek") {
+      pendingConditions.push({ type: "daysOfWeek", days: [1, 2, 3, 4, 5] });
+    } else if (type === "spotifyNotAlreadyPlaying") {
+      pendingConditions.push({ type: "spotifyNotAlreadyPlaying" });
+    }
+    renderPendingConditions();
+  }
+
+  function renderPendingConditions(): void {
+    conditionListEl.innerHTML = "";
+    conditionEmptyEl.hidden = pendingConditions.length > 0;
+
+    pendingConditions.forEach((condition, index) => {
+      const row = document.createElement("div");
+      row.className = "condition-row";
+
+      const label = document.createElement("span");
+      label.className = "condition-row-label";
+      row.appendChild(label);
+
+      const controls = document.createElement("div");
+      controls.className = "condition-row-controls";
+      row.appendChild(controls);
+
+      if (condition.type === "timeOfDay") {
+        label.textContent = "Time of day";
+        const from = document.createElement("input");
+        from.type = "time";
+        from.className = "input";
+        from.value = toTimeValue(condition.startHour ?? 0, condition.startMinute);
+        from.addEventListener("change", () => {
+          const [h, m] = from.value.split(":").map(Number);
+          if (Number.isFinite(h) && Number.isFinite(m)) {
+            condition.startHour = h;
+            condition.startMinute = m;
+          }
+        });
+        const to = document.createElement("input");
+        to.type = "time";
+        to.className = "input";
+        to.value = toTimeValue(condition.endHour ?? 0, condition.endMinute);
+        to.addEventListener("change", () => {
+          const [h, m] = to.value.split(":").map(Number);
+          if (Number.isFinite(h) && Number.isFinite(m)) {
+            condition.endHour = h;
+            condition.endMinute = m;
+          }
+        });
+        const between = document.createElement("span");
+        between.className = "condition-row-sep";
+        between.textContent = "to";
+        controls.append(from, between, to);
+      } else if (condition.type === "daysOfWeek") {
+        label.textContent = "Days of the week";
+        // Normalized up front so a malformed saved condition (no days
+        // array at all) still edits cleanly rather than throwing.
+        const days = condition;
+        if (!Array.isArray(days.days)) days.days = [];
+        for (let day = 0; day < 7; day++) {
+          const dayLabel = document.createElement("label");
+          dayLabel.className = "day-chip";
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.checked = (days.days ?? []).includes(day);
+          box.addEventListener("change", () => {
+            const current = days.days ?? [];
+            days.days = box.checked
+              ? [...current, day].sort((a, b) => a - b)
+              : current.filter((d) => d !== day);
+          });
+          const text = document.createElement("span");
+          text.textContent = DAY_LABELS[day];
+          dayLabel.append(box, text);
+          controls.appendChild(dayLabel);
+        }
+      } else if (condition.type === "weekdaysOnly") {
+        // Superseded by daysOfWeek and not offered for new routines, but
+        // still rendered so an older routine that uses it stays editable
+        // and is not silently dropped on save.
+        label.textContent = "Weekdays only (Mon-Fri)";
+      } else if (condition.type === "spotifyNotAlreadyPlaying") {
+        label.textContent = "Spotify is not already playing";
+      } else {
+        label.textContent = `Unrecognized condition (${(condition as { type?: string }).type})`;
+      }
+
+      const remove = document.createElement("button");
+      remove.className = "btn btn-ghost action-row-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        pendingConditions = pendingConditions.filter((_, i) => i !== index);
+        renderPendingConditions();
+      });
+      controls.appendChild(remove);
+
+      conditionListEl.appendChild(row);
+    });
+  }
+
+  addConditionBtn.addEventListener("click", () => addCondition(conditionTypeSelect.value));
+
+  /**
+   * The conditions to save: the edited list, plus the "Skip if already
+   * active" switch expressed as the condition it has always been.
+   */
+  function buildConditionsFromForm(): RoutineCondition[] {
+    return withSkipIfActiveCondition(pendingConditions, skipIfActiveCheckbox.checked);
+  }
+
+  /**
+   * Renders a routine evaluation as the tick/cross list the engine
+   * produced. The labels come from the engine itself rather than being
+   * re-derived here, so what the user reads is what actually decided.
+   */
+  function renderRoutineExplanation(target: HTMLElement, evaluation: RoutineEvaluation | null): void {
+    target.innerHTML = "";
+    if (!evaluation) {
+      target.textContent = "That routine no longer exists.";
+      return;
+    }
+
+    const verdict = document.createElement("div");
+    verdict.className = evaluation.matched
+      ? "routine-explain-verdict matched"
+      : "routine-explain-verdict blocked";
+    verdict.textContent = evaluation.matched ? "Would match" : "Would not match";
+    target.appendChild(verdict);
+
+    for (const check of evaluation.checks) {
+      const line = document.createElement("div");
+      line.className = check.passed ? "routine-explain-check pass" : "routine-explain-check fail";
+      line.textContent = `${check.passed ? "\u2713" : "\u2717"} ${check.label}`;
+      target.appendChild(line);
+    }
+
+    const note = document.createElement("div");
+    note.className = "routine-explain-note";
+    note.textContent = "Evaluated against the current state. Nothing was run.";
+    target.appendChild(note);
+  }
+
+  /**
+   * When each routine last fired, refreshed alongside the list. Held
+   * here rather than fetched per card so rendering stays synchronous.
+   */
+  let lastTriggeredAt: Record<string, number> = {};
+
+  /**
+   * One line describing what a routine does and what limits it. Built
+   * from the routine's own configuration — every part is omitted when
+   * not configured, so a simple routine still reads simply.
+   */
+  function summarizeRoutine(routine: Routine): string {
+    const parts = [triggerSummary(routine.trigger)];
+
+    const conditions = routine.conditions ?? [];
+    if (conditions.length > 0) {
+      const joiner = (routine.conditionLogic ?? "all") === "any" ? "any of" : "all of";
+      parts.push(`${joiner} ${conditions.length} condition${conditions.length === 1 ? "" : "s"}`);
+    }
+
+    parts.push(`${routine.actions.length} action${routine.actions.length === 1 ? "" : "s"}`);
+
+    if (routine.cooldownMinutes > 0) parts.push(`${routine.cooldownMinutes} min cooldown`);
+    if ((routine.sessionRestriction ?? "none") === "oncePerSession") parts.push("once per session");
+    if (routine.autoRun) parts.push("runs automatically");
+
+    return parts.join(" · ");
+  }
+
+  /** Coarse on purpose — the exact second a routine fired is noise in a list. */
+  function formatRelativeTime(epochMs: number): string {
+    const minutes = Math.floor((Date.now() - epochMs) / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
   function renderRoutineList(settings: RoutineSettings): void {
+    // Refreshed in the background: a stale "last triggered" line is a
+    // cosmetic lag, and awaiting it would make every list render async.
+    void window.nimbus
+      .getRoutineLastTriggered()
+      .then((latest) => {
+        const changed = JSON.stringify(latest) !== JSON.stringify(lastTriggeredAt);
+        lastTriggeredAt = latest;
+        if (changed) renderRoutineList(settings);
+      })
+      .catch(() => undefined);
+
     // Surfaces the "your routine exists but can't fire" trap directly in
     // the UI instead of leaving it silently confusing — see the
     // save-routine handler below for the other half of this fix.
@@ -1627,11 +1924,26 @@ async function initRoutinesSettings(): Promise<void> {
 
       const metaEl = document.createElement("span");
       metaEl.className = "routine-card-meta";
-      const actionCount = `${routine.actions.length} action${routine.actions.length === 1 ? "" : "s"}`;
-      metaEl.textContent = routine.autoRun
-        ? `${triggerSummary(routine.trigger)} · ${actionCount} · runs automatically`
-        : `${triggerSummary(routine.trigger)} · ${actionCount}`;
+      metaEl.textContent = summarizeRoutine(routine);
       body.appendChild(metaEl);
+
+      // "Last triggered" comes from the engine's own cooldown clock, so
+      // it reflects when the routine actually fired — not when it was
+      // edited or when a suggestion happened to be accepted.
+      const lastAt = lastTriggeredAt[routine.id];
+      if (lastAt) {
+        const lastEl = document.createElement("span");
+        lastEl.className = "routine-card-meta";
+        lastEl.textContent = `Last triggered ${formatRelativeTime(lastAt)}`;
+        body.appendChild(lastEl);
+      }
+
+      if (routine.description) {
+        const descEl = document.createElement("span");
+        descEl.className = "routine-card-meta";
+        descEl.textContent = routine.description;
+        body.appendChild(descEl);
+      }
 
       card.appendChild(body);
 
@@ -1658,9 +1970,9 @@ async function initRoutinesSettings(): Promise<void> {
       actions.appendChild(toggleLabel);
 
       // Runs the routine's actions immediately — bypasses trigger match,
-      // cooldown, and conditions entirely (same as the old "Test"
-      // button, just presented as a small play icon per-card so forcing
-      // a routine to run doesn't need opening it for editing first).
+      // cooldown, and conditions entirely. Distinct from the Test button
+      // beside it, which only evaluates and explains: asking whether a
+      // routine matches must never start playing music or open anything.
       const runBtn = document.createElement("button");
       runBtn.className = "now-playing-btn routine-run-btn";
       runBtn.title = "Run now";
@@ -1669,7 +1981,7 @@ async function initRoutinesSettings(): Promise<void> {
         runBtn.disabled = true;
         runBtn.innerHTML = ROUTINE_RUNNING_ICON_SVG;
         try {
-          const results = await window.nimbus.testRoutine(routine.id);
+          const results = await window.nimbus.runRoutineNow(routine.id);
           const failed = results.filter((r) => r.status === "failure");
           runBtn.title =
             failed.length === 0
@@ -1691,6 +2003,35 @@ async function initRoutinesSettings(): Promise<void> {
       });
       actions.appendChild(runBtn);
 
+      // Evaluates the routine against the current state and shows every
+      // check behind the verdict. Runs nothing — see the run button
+      // above for the deliberate counterpart.
+      const explainEl = document.createElement("div");
+      explainEl.className = "routine-explain";
+      explainEl.hidden = true;
+
+      const testBtn = document.createElement("button");
+      testBtn.className = "btn btn-ghost";
+      testBtn.textContent = "Test";
+      testBtn.title = "Check whether this routine would match right now — runs nothing";
+      testBtn.addEventListener("click", async () => {
+        if (!explainEl.hidden) {
+          explainEl.hidden = true;
+          return;
+        }
+        testBtn.disabled = true;
+        try {
+          const evaluation = await window.nimbus.testRoutine(routine.id);
+          renderRoutineExplanation(explainEl, evaluation);
+        } catch (err) {
+          explainEl.textContent = `Could not evaluate this routine: ${String(err)}`;
+        } finally {
+          explainEl.hidden = false;
+          testBtn.disabled = false;
+        }
+      });
+      actions.appendChild(testBtn);
+
       const removeBtn = document.createElement("button");
       removeBtn.className = "calendar-feed-remove";
       removeBtn.textContent = "Delete";
@@ -1703,15 +2044,18 @@ async function initRoutinesSettings(): Promise<void> {
       actions.appendChild(removeBtn);
 
       card.appendChild(actions);
+      card.appendChild(explainEl);
       routineListEl.appendChild(card);
     }
   }
 
   try {
-    const [settings, actions] = await Promise.all([
+    const [settings, actions, lastTriggered] = await Promise.all([
       window.nimbus.getRoutineSettings(),
       window.nimbus.listActions(),
+      window.nimbus.getRoutineLastTriggered(),
     ]);
+    lastTriggeredAt = lastTriggered;
     availableActions = actions;
     populateActionServiceSelect();
     populateActionSelectForService(actionServiceSelect.value);
@@ -1769,7 +2113,11 @@ async function initRoutinesSettings(): Promise<void> {
 
   saveBtn.addEventListener("click", async () => {
     const name = nameInput.value.trim();
-    const trigger = buildTriggerFromForm();
+    // The routine being edited (if any) is looked up before building the
+    // trigger so its saved match mode survives the edit — see
+    // buildTriggerFromForm.
+    const editingTrigger = editingRoutineId ? (editedRoutineTrigger ?? undefined) : undefined;
+    const trigger = buildTriggerFromForm(editingTrigger);
     const title = suggestionTitleInput.value.trim();
     const message = suggestionMessageInput.value.trim();
     const cooldownMinutes = Number(cooldownInput.value) || 0;
@@ -1792,14 +2140,20 @@ async function initRoutinesSettings(): Promise<void> {
           renderRoutineList(current);
           return;
         }
+        // Spread `existing` first so any field this editor doesn't know
+        // about survives a round-trip rather than being dropped.
         const updated: Routine = {
           ...existing,
           name,
+          enabled: routineEnabledCheckbox.checked,
           trigger,
           suggestion: { ...existing.suggestion, title, message },
           actions: pendingActions,
           cooldownMinutes,
-          conditions: withSkipIfActiveCondition(existing.conditions, skipIfActiveCheckbox.checked),
+          conditions: buildConditionsFromForm(),
+          conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
+          sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
+          description: descriptionInput.value.trim() || undefined,
           autoRun: autoRunCheckbox.checked,
         };
         updatedRoutines = current.routines.map((r) => (r.id === editingRoutineId ? updated : r));
@@ -1807,9 +2161,12 @@ async function initRoutinesSettings(): Promise<void> {
         const newRoutine: Routine = {
           id: `routine-${Date.now()}`,
           name,
-          enabled: true,
+          enabled: routineEnabledCheckbox.checked,
           trigger,
-          conditions: withSkipIfActiveCondition([], skipIfActiveCheckbox.checked),
+          conditions: buildConditionsFromForm(),
+          conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
+          sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
+          description: descriptionInput.value.trim() || undefined,
           suggestion: { title, message, primaryLabel: "Yes", secondaryLabel: "Not now" },
           actions: pendingActions,
           cooldownMinutes,

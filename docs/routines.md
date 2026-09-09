@@ -115,6 +115,86 @@ internal design; this section covers behavior, privacy, and setup.
   action's own `affectsService`, so a new provider needs no editor
   changes to show up correctly grouped.
 
+## Conditions, time windows, sessions and cooldowns
+
+A routine's trigger decides *when it is considered*; its conditions decide
+*whether it should actually fire*. Conditions are structured data, never
+expressions or code — each is a small typed object, and adding a new kind
+means one variant in `RoutineCondition` plus one case in
+`conditionEvaluator.ts`.
+
+| Condition | What it checks |
+| --- | --- |
+| `timeOfDay` | A local-time window, e.g. 18:30–23:15. Minutes are optional and default to `:00`, so an older whole-hour condition means exactly what it always did. A window may cross midnight (22:00–02:00); the end is exclusive. |
+| `daysOfWeek` | Specific days, 0 (Sunday) to 6 (Saturday). |
+| `weekdaysOnly` | Monday–Friday. Superseded by `daysOfWeek` and no longer offered for new routines, but still honoured so existing ones keep working. |
+| `spotifyNotAlreadyPlaying` | Nothing is already playing — don't talk over music the user started. |
+| `actionsNotAlreadyActive` | This routine's own configured effects don't already appear to be in place. Edited through the "Skip if already active" switch rather than the condition list. |
+
+`conditionLogic` combines them: `"all"` (the default, and what every
+routine written before the field existed does) or `"any"`. It is one flat
+list plus an operator rather than a nested boolean tree — that covers the
+cases people actually write, stays editable in a simple form, and being
+structured data leaves room to grow into groups later without
+invalidating anything already saved.
+
+**Cooldown** (`cooldownMinutes`) is the minimum gap between firings. It
+starts the moment a routine fires — not when the user answers — so a
+dismissed suggestion cannot immediately return. Cooldowns are written to
+`routine-state.json` in the user data directory and reloaded at startup,
+because a cooldown that resets on restart is exactly the spam it exists
+to prevent.
+
+**Session restriction** (`sessionRestriction: "oncePerSession"`) limits a
+routine to once per *thing that triggered it* — one application run, one
+page, one folder. A session belongs to that thing rather than to NIMBUS:
+switching away from an application and back is the same session, while a
+different application is a different one. An application's session ends
+when it closes, which the activity monitor reports as an
+`applicationClosed` event (nothing triggers on that event; it exists only
+to close sessions). Sessions are deliberately not persisted — after a
+restart NIMBUS cannot know whether the application it saw is still the
+same run, so it starts fresh rather than guessing.
+
+## Why did this trigger?
+
+Every decision the engine makes is explainable. `RoutineService.evaluate`
+runs the gates in order — enabled, cooldown, session, conditions — and
+records a pass/fail line for each. The Routines tab's **Test** button
+shows exactly that:
+
+```
+Study Mode
+Would not match
+  ✓ Has not run yet, so no cooldown applies
+  ✓ Not already triggered this session
+  ✗ Time is outside 18:00-23:00
+  ✓ Today is one of Monday, Tuesday, Wednesday, Thursday, Friday
+```
+
+Live event handling and Test call the same method, so what a user reads
+while testing is produced by the code that actually decides, not a
+description of it that could drift.
+
+**Test never executes anything.** Asking whether a rule matches is not
+asking for its effects, so testing will not start playback, start a
+timer, or open a page. The play button beside it — **Run now** — is the
+explicit way to run a routine's actions on demand, and is what the old
+"Test" button used to do.
+
+## Decision history
+
+`RoutineService.getHistory()` returns the recent decisions, newest first:
+matched, suggested, accepted, dismissed, expired, auto-ran, and each kind
+of block (cooldown, session, conditions). It is capped at 200 entries and
+held in memory only.
+
+It records **NIMBUS's own decisions and nothing else** — a routine id, a
+name, a kind, and at most a short count like "2 actions, 1 failed". There
+is no field for page content, window titles, keystrokes, or anything the
+user typed or read, and a test asserts that a routine triggered by a
+browser window records nothing of that window's title.
+
 ## Privacy
 
 Desktop activity monitoring is **off by default** and only runs while

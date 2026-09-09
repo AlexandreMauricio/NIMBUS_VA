@@ -328,7 +328,7 @@ test("getActiveSuggestions omits suggestions past their expiry", async () => {
   assert.equal(service.getActiveSuggestions().length, 0);
 });
 
-test("testRoutine executes a routine's actions directly, bypassing trigger/cooldown/conditions", async () => {
+test("runRoutineNow executes a routine's actions directly, bypassing trigger/cooldown/conditions", async () => {
   const r = routine({ enabled: false, conditions: [{ type: "spotifyNotAlreadyPlaying" }] });
   const actionService = new ActionService();
   const provider = new RecordingProvider();
@@ -342,7 +342,7 @@ test("testRoutine executes a routine's actions directly, bypassing trigger/coold
     () => true
   );
 
-  const results = await service.testRoutine("r1");
+  const results = await service.runRoutineNow("r1");
   assert.equal(provider.calls.length, 1);
   assert.equal(results[0].status, "success");
 });
@@ -353,7 +353,7 @@ test("accepting an unknown suggestion id is a no-op, not an error", async () => 
   assert.deepEqual(results, []);
 });
 
-test("onActionExecuted fires for each step run via testRoutine", async () => {
+test("onActionExecuted fires for each step run via runRoutineNow", async () => {
   const r = routine({
     actions: [
       { actionId: "demo.one", params: {} },
@@ -374,7 +374,7 @@ test("onActionExecuted fires for each step run via testRoutine", async () => {
     (id) => executedIds.push(id)
   );
 
-  await service.testRoutine("r1");
+  await service.runRoutineNow("r1");
   assert.deepEqual(executedIds, ["demo.one", "demo.two"]);
 });
 
@@ -426,7 +426,7 @@ test("a throwing onActionExecuted listener does not prevent remaining action ste
     }
   );
 
-  const results = await service.testRoutine("r1");
+  const results = await service.runRoutineNow("r1");
   assert.deepEqual(provider.calls, ["demo.one", "demo.two"]);
   assert.equal(results.length, 2);
 });

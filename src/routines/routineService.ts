@@ -6,12 +6,18 @@ import { AssistantSuggestion } from "../common/assistantEvents";
 import { ContextEventBus } from "../events/eventBus";
 import { ContextEvent } from "../events/types";
 import { matchesTrigger } from "./triggerMatcher";
-import { evaluateConditions, ConditionContext } from "./conditionEvaluator";
+import { evaluateConditionsDetailed } from "./conditionEvaluator";
 import {
   DEFAULT_ROUTINE_COOLDOWN_MINUTES,
   DEFAULT_SUGGESTION_TTL_MS,
+  MAX_ROUTINE_HISTORY_ENTRIES,
   Routine,
   RoutineActionStep,
+  RoutineCheck,
+  RoutineEvaluation,
+  RoutineHistoryEntry,
+  RoutineHistoryKind,
+  RoutineStateStore,
 } from "./types";
 
 /**
@@ -28,8 +34,20 @@ import {
  * failing, never stops other routines from being evaluated or other
  * action steps from running.
  */
+/** Which history entry each block reason produces. */
+const BLOCK_HISTORY_KIND: Record<string, RoutineHistoryKind> = {
+  disabled: "blockedByConditions",
+  trigger: "blockedByConditions",
+  cooldown: "blockedByCooldown",
+  session: "blockedBySession",
+  conditions: "blockedByConditions",
+};
+
 export class RoutineService {
   private readonly lastTriggeredAt = new Map<string, number>();
+  /** routine id -> session keys it has already fired for. See sessionKeyFor. */
+  private readonly firedSessions = new Map<string, Set<string>>();
+  private readonly history: RoutineHistoryEntry[] = [];
   private readonly activeSuggestions = new Map<string, AssistantSuggestion>();
   private readonly suggestionListeners = new Set<(suggestion: AssistantSuggestion) => void>();
   private readonly autoRunListeners = new Set<(routine: Routine, results: ActionResult[]) => void>();
@@ -58,8 +76,27 @@ export class RoutineService {
      */
     private readonly onActionExecuted?: (actionId: string, result: ActionResult) => void,
     /** Injected rather than reached-for directly, same as `isSpotifyPlaying` above — keeps this class from needing to know what Spotify/Timer actually are. Used only by the "actionsNotAlreadyActive" condition. */
-    private readonly areActionsAlreadyActive?: (steps: RoutineActionStep[]) => boolean | Promise<boolean>
-  ) {}
+    private readonly areActionsAlreadyActive?: (steps: RoutineActionStep[]) => boolean | Promise<boolean>,
+    /**
+     * Persists cooldown timestamps across restarts. Optional so Core
+     * tests can run without any storage; when absent, cooldowns behave
+     * exactly as they did before — in memory, reset on restart.
+     */
+    private readonly stateStore?: RoutineStateStore
+  ) {
+    if (stateStore) {
+      try {
+        const state = stateStore.load();
+        for (const [routineId, at] of Object.entries(state.lastTriggeredAt ?? {})) {
+          if (typeof at === "number" && Number.isFinite(at)) this.lastTriggeredAt.set(routineId, at);
+        }
+      } catch (err) {
+        // A missing or corrupt state file must never stop NIMBUS
+        // starting — the cost is only that cooldowns start fresh.
+        logger.warn("Could not restore routine cooldown state", { error: String(err) });
+      }
+    }
+  }
 
   /** Starts listening for Context Events. Safe to call more than once — only the first subscribes. */
   start(): void {
@@ -103,60 +140,289 @@ export class RoutineService {
     const routine = this.getRoutines().find((r) => r.id === suggestion.routineId);
     if (!routine) return [];
 
-    return this.runActions(routine);
+    this.record(routine, "accepted");
+    const results = await this.runActions(routine);
+    const failures = results.filter((r) => r.status === "failure").length;
+    this.record(
+      routine,
+      "actionsCompleted",
+      `${results.length} action${results.length === 1 ? "" : "s"}, ${failures} failed`
+    );
+    return results;
   }
 
   /** The user dismissed a suggestion — just clears it; the routine's cooldown (already started when the suggestion was created) still governs when it can suggest again. */
   dismissSuggestion(suggestionId: string): void {
+    const suggestion = this.activeSuggestions.get(suggestionId);
     this.activeSuggestions.delete(suggestionId);
+    if (!suggestion) return;
+    const routine = this.getRoutines().find((r) => r.id === suggestion.routineId);
+    if (routine) this.record(routine, "dismissed");
   }
 
-  /** Runs a routine's actions immediately, bypassing trigger/cooldown/condition checks — backs the Settings UI's "Test" button, not part of the normal suggestion flow. */
-  async testRoutine(routineId: string): Promise<ActionResult[]> {
+  /**
+   * Evaluates a routine against the current state and explains the
+   * result WITHOUT executing anything.
+   *
+   * This is what the editor's "Test" button calls. It deliberately runs
+   * no actions: testing a routine must never start playback, start a
+   * timer, or open anything — a user checking whether a rule is correct
+   * has not asked for its effects. `runRoutineNow` is the separate,
+   * explicit way to actually run one.
+   *
+   * There is no triggering event here, so the trigger itself cannot be
+   * evaluated; the returned checks say so rather than pretending. Every
+   * other gate — cooldown, session, conditions — is the real one.
+   */
+  async testRoutine(routineId: string): Promise<RoutineEvaluation | null> {
+    const routine = this.getRoutines().find((r) => r.id === routineId);
+    if (!routine) return null;
+
+    const evaluation = await this.evaluate(routine, null);
+    return {
+      ...evaluation,
+      checks: [
+        {
+          label: `Trigger not evaluated here: ${describeTrigger(routine)} decides that live`,
+          passed: true,
+        },
+        ...evaluation.checks,
+      ],
+    };
+  }
+
+  /**
+   * Runs a routine's actions immediately, bypassing trigger, cooldown and
+   * condition checks.
+   *
+   * This is what "Test" used to do. It is kept — deliberately running a
+   * routine on demand is genuinely useful, and removing it would take
+   * away working behaviour — but it is now its own explicitly-named
+   * operation, so nothing executes merely because the user asked whether
+   * a rule matches.
+   */
+  async runRoutineNow(routineId: string): Promise<ActionResult[]> {
     const routine = this.getRoutines().find((r) => r.id === routineId);
     if (!routine) return [];
     return this.runActions(routine);
   }
 
+  /**
+   * The decision log, most recent first — routine decisions only, never
+   * anything the user typed, read or browsed. See RoutineHistoryEntry.
+   */
+  getHistory(limit = MAX_ROUTINE_HISTORY_ENTRIES): RoutineHistoryEntry[] {
+    return this.history.slice(0, limit);
+  }
+
+  /** When each routine last fired, for the routine list. Epoch ms, keyed by routine id. */
+  getLastTriggeredAt(): Record<string, number> {
+    return Object.fromEntries(this.lastTriggeredAt);
+  }
+
   private async handleEvent(event: ContextEvent): Promise<void> {
+    // A closing application ends its session, so the next launch is a
+    // genuinely new one for any "once per session" routine. Nothing
+    // triggers on this event; it is bookkeeping only.
+    if (event.type === "applicationClosed") {
+      this.endSession(`app:${event.executableName.toLowerCase()}`);
+      return;
+    }
+
+    const sessionKey = this.sessionKeyFor(event);
+
     for (const routine of this.getRoutines()) {
+      // The trigger decides whether this routine is a candidate at all.
+      // Checked before anything is recorded: every routine sees every
+      // event, and recording all of them would bury the interesting ones.
       if (!routine.enabled) continue;
       if (!matchesTrigger(event, routine.trigger)) continue;
-      if (this.isInCooldown(routine)) continue;
 
-      const conditionCtx: ConditionContext = {
-        now: this.now(),
-        isSpotifyPlaying: this.isSpotifyPlaying,
-        routineActions: routine.actions,
-        areActionsAlreadyActive: this.areActionsAlreadyActive,
-      };
-      let conditionsOk: boolean;
+      let evaluation: RoutineEvaluation;
       try {
-        conditionsOk = await evaluateConditions(routine.conditions, conditionCtx);
+        evaluation = await this.evaluate(routine, sessionKey);
       } catch (err) {
-        logger.warn(`Routine "${routine.name}" condition evaluation failed`, {
+        logger.warn(`Routine "${routine.name}" evaluation failed`, {
           routineId: routine.id,
           error: String(err),
         });
         continue;
       }
-      if (!conditionsOk) continue;
 
+      if (!evaluation.matched) {
+        this.record(routine, BLOCK_HISTORY_KIND[evaluation.blockedBy ?? "conditions"]);
+        continue;
+      }
+
+      this.record(routine, "matched");
       if (routine.autoRun) {
-        await this.runAutoRun(routine);
+        await this.runAutoRun(routine, sessionKey);
       } else {
-        this.createSuggestion(routine);
+        this.createSuggestion(routine, sessionKey);
       }
     }
   }
 
-  private async runAutoRun(routine: Routine): Promise<void> {
+  /**
+   * Runs the gates a routine must pass, in order, and reports each one.
+   *
+   * The single source of truth for "should this routine fire?" — live
+   * event handling and the editor's Test button both call it, so what a
+   * user is told while testing is produced by the code that actually
+   * decides, rather than a description of it that could drift.
+   *
+   * `sessionKey` is null when there is no event in hand (testing), in
+   * which case the session gate is reported as inapplicable rather than
+   * guessed at.
+   */
+  private async evaluate(routine: Routine, sessionKey: string | null): Promise<RoutineEvaluation> {
+    const checks: RoutineCheck[] = [];
+    const base = { routineId: routine.id, routineName: routine.name };
+
+    if (!routine.enabled) {
+      checks.push({ label: "Routine is enabled", passed: false });
+      return { ...base, matched: false, checks, blockedBy: "disabled" };
+    }
+
+    const cooldownOk = !this.isInCooldown(routine);
+    const cooldownMinutes = routine.cooldownMinutes ?? DEFAULT_ROUTINE_COOLDOWN_MINUTES;
+    checks.push({
+      label: cooldownOk
+        ? this.describeCooldownPassed(routine)
+        : `Cooldown has not elapsed (${cooldownMinutes} min)`,
+      passed: cooldownOk,
+    });
+
+    const restricted = (routine.sessionRestriction ?? "none") === "oncePerSession";
+    const sessionOk = !restricted || sessionKey === null || !this.hasFiredThisSession(routine, sessionKey);
+    if (restricted) {
+      checks.push({
+        label:
+          sessionKey === null
+            ? "Session restriction not applicable without a triggering event"
+            : sessionOk
+              ? "Not already triggered this session"
+              : "Already triggered once this session",
+        passed: sessionOk,
+      });
+    }
+
+    const conditions = await evaluateConditionsDetailed(
+      routine.conditions,
+      {
+        now: this.now(),
+        isSpotifyPlaying: this.isSpotifyPlaying,
+        routineActions: routine.actions,
+        areActionsAlreadyActive: this.areActionsAlreadyActive,
+      },
+      routine.conditionLogic ?? "all"
+    );
+    for (const result of conditions.results) {
+      checks.push({ label: result.label, passed: result.passed });
+    }
+
+    // Reported in the order the engine applies them, so the first failing
+    // line is the reason.
+    if (!cooldownOk) return { ...base, matched: false, checks, blockedBy: "cooldown" };
+    if (!sessionOk) return { ...base, matched: false, checks, blockedBy: "session" };
+    if (!conditions.passed) return { ...base, matched: false, checks, blockedBy: "conditions" };
+    return { ...base, matched: true, checks };
+  }
+
+  private describeCooldownPassed(routine: Routine): string {
+    const minutes = routine.cooldownMinutes ?? DEFAULT_ROUTINE_COOLDOWN_MINUTES;
+    if (minutes <= 0) return "No cooldown configured";
+    return this.lastTriggeredAt.has(routine.id)
+      ? "Cooldown has elapsed"
+      : "Has not run yet, so no cooldown applies";
+  }
+
+  /**
+   * The session an event belongs to. A session is a property of the
+   * *thing* that triggered — a particular application, page or folder —
+   * not of NIMBUS, so switching away and coming back is the same session
+   * while opening a different app is a new one.
+   *
+   * A completed timer is a one-off occurrence rather than something with
+   * a duration, so each gets its own key and a "once per session"
+   * restriction never suppresses one.
+   */
+  private sessionKeyFor(event: ContextEvent): string | null {
+    switch (event.type) {
+      case "applicationOpened":
+        return `app:${event.executableName.toLowerCase()}`;
+      case "websiteOpened":
+        return `site:${event.windowTitle.toLowerCase()}`;
+      case "folderOpened":
+        return `folder:${event.path.toLowerCase()}`;
+      case "timerCompleted":
+        return `timer:${event.timerId}`;
+      default:
+        return null;
+    }
+  }
+
+  private hasFiredThisSession(routine: Routine, sessionKey: string): boolean {
+    return this.firedSessions.get(routine.id)?.has(sessionKey) ?? false;
+  }
+
+  /** Starts the cooldown and, when there is a session in hand, marks it used. */
+  private markFired(routine: Routine, sessionKey: string | null): void {
+    this.lastTriggeredAt.set(routine.id, this.now().getTime());
+    this.persistState();
+    if (sessionKey === null) return;
+    let keys = this.firedSessions.get(routine.id);
+    if (!keys) {
+      keys = new Set();
+      this.firedSessions.set(routine.id, keys);
+    }
+    keys.add(sessionKey);
+  }
+
+  /** Forgets one session across every routine — called when its application closes. */
+  private endSession(sessionKey: string): void {
+    for (const keys of this.firedSessions.values()) keys.delete(sessionKey);
+  }
+
+  private persistState(): void {
+    if (!this.stateStore) return;
+    try {
+      this.stateStore.save({ lastTriggeredAt: Object.fromEntries(this.lastTriggeredAt) });
+    } catch (err) {
+      // Losing a cooldown timestamp is a small annoyance; failing a
+      // suggestion because of it would not be.
+      logger.warn("Could not persist routine cooldown state", { error: String(err) });
+    }
+  }
+
+  /** Appends to the decision log, oldest entries dropped past the cap. */
+  private record(routine: Routine, kind: RoutineHistoryKind, detail?: string): void {
+    this.history.unshift({
+      id: randomUUID(),
+      at: this.now().toISOString(),
+      routineId: routine.id,
+      routineName: routine.name,
+      kind,
+      detail,
+    });
+    if (this.history.length > MAX_ROUTINE_HISTORY_ENTRIES) {
+      this.history.length = MAX_ROUTINE_HISTORY_ENTRIES;
+    }
+  }
+
+  private async runAutoRun(routine: Routine, sessionKey: string | null = null): Promise<void> {
     // Cooldown starts the moment this fires, exactly like a normal
     // suggestion's cooldown starts the moment it's shown — not tied to
     // whether anything "succeeded", so a routine whose action keeps
     // failing still can't fire on every single matching event.
-    this.lastTriggeredAt.set(routine.id, this.now().getTime());
+    this.markFired(routine, sessionKey);
     const results = await this.runActions(routine);
+    const failures = results.filter((r) => r.status === "failure").length;
+    this.record(
+      routine,
+      "autoRan",
+      `${results.length} action${results.length === 1 ? "" : "s"}, ${failures} failed`
+    );
     logger.info(`Routine "${routine.name}" auto-ran (no suggestion shown)`, {
       routineId: routine.id,
       failureCount: results.filter((r) => r.status === "failure").length,
@@ -177,13 +443,13 @@ export class RoutineService {
     return this.now().getTime() - last < cooldownMs;
   }
 
-  private createSuggestion(routine: Routine): AssistantSuggestion {
+  private createSuggestion(routine: Routine, sessionKey: string | null = null): AssistantSuggestion {
     const now = this.now();
     // Cooldown starts the moment a suggestion is made — not when/if the
     // user acts on it — so a dismissed-then-re-triggered routine still
     // can't spam (see the task's own "user dismisses, switches tabs,
     // comes back" example).
-    this.lastTriggeredAt.set(routine.id, now.getTime());
+    this.markFired(routine, sessionKey);
 
     const suggestion: AssistantSuggestion = {
       id: randomUUID(),
@@ -200,6 +466,7 @@ export class RoutineService {
     };
 
     this.activeSuggestions.set(suggestion.id, suggestion);
+    this.record(routine, "suggested");
     logger.info(`Routine "${routine.name}" suggested`, {
       routineId: routine.id,
       suggestionId: suggestion.id,
@@ -263,7 +530,30 @@ export class RoutineService {
     for (const [id, suggestion] of this.activeSuggestions) {
       if (new Date(suggestion.expiresAt).getTime() <= nowMs) {
         this.activeSuggestions.delete(id);
+        const routine = this.getRoutines().find((r) => r.id === suggestion.routineId);
+        if (routine) this.record(routine, "expired");
       }
     }
+  }
+}
+
+/**
+ * A one-line description of what would fire a routine, built from the
+ * user's own configuration — nothing here names a specific application,
+ * site or service.
+ */
+function describeTrigger(routine: Routine): string {
+  const trigger = routine.trigger;
+  switch (trigger.type) {
+    case "applicationOpened":
+      return `opening ${trigger.application}`;
+    case "websiteOpened":
+      return `a browser window matching "${trigger.pattern}"`;
+    case "folderOpened":
+      return `opening a folder matching "${trigger.path}"`;
+    case "timerCompleted":
+      return trigger.timerType ? `a "${trigger.timerType}" timer completing` : "any timer completing";
+    default:
+      return "its trigger";
   }
 }

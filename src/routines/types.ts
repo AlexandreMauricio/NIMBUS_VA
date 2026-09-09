@@ -48,16 +48,41 @@ export interface TimerCompletedTriggerConfig {
 export type TriggerConfig =
   ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig | TimerCompletedTriggerConfig;
 
-/** A time-of-day window, in the user's local time. `startHour`/`endHour` are 0-23; a range that wraps past midnight (e.g. 22-6) is supported. */
+/**
+ * A time-of-day window, in the user's local time. `startHour`/`endHour`
+ * are 0-23 and a range that wraps past midnight (e.g. 22-6) is supported.
+ *
+ * `startMinute`/`endMinute` are optional and default to 0, which is what
+ * keeps every routine saved before they existed behaving identically —
+ * an 18-23 window still means 18:00-23:00. With them, the same condition
+ * expresses 18:30-23:15.
+ */
 export interface TimeOfDayCondition {
   type: "timeOfDay";
   startHour: number;
   endHour: number;
+  startMinute?: number;
+  endMinute?: number;
 }
 
-/** Only Monday-Friday, in local time. */
+/**
+ * Only Monday-Friday, in local time. Kept as its own type rather than
+ * being rewritten into `daysOfWeek` on load: routines saved with it must
+ * keep working untouched, and "weekdays" is the common case stated
+ * plainly. It is exactly equivalent to daysOfWeek [1,2,3,4,5].
+ */
 export interface WeekdaysOnlyCondition {
   type: "weekdaysOnly";
+}
+
+/**
+ * Only on the listed days, in local time — 0 is Sunday through 6 is
+ * Saturday, matching `Date.getDay()`. Covers what `weekdaysOnly` cannot:
+ * weekends only, or a single day.
+ */
+export interface DaysOfWeekCondition {
+  type: "daysOfWeek";
+  days: number[];
 }
 
 /** Only when Spotify isn't already actively playing something — avoids interrupting music the user already started themselves. */
@@ -88,8 +113,35 @@ export interface ActionsNotAlreadyActiveCondition {
 export type RoutineCondition =
   | TimeOfDayCondition
   | WeekdaysOnlyCondition
+  | DaysOfWeekCondition
   | SpotifyNotAlreadyPlayingCondition
   | ActionsNotAlreadyActiveCondition;
+
+/**
+ * How a routine's conditions combine. "all" (the default, and what every
+ * routine saved before this field existed did) requires every condition;
+ * "any" requires at least one.
+ *
+ * A flat list plus one operator rather than a nested boolean tree: it
+ * covers the cases actually asked for, stays representable in a simple
+ * editor, and — being structured data rather than an expression — leaves
+ * room to grow into groups later without invalidating what is saved
+ * today.
+ */
+export type ConditionLogic = "all" | "any";
+
+/**
+ * How often a routine may fire within one "session" of whatever
+ * triggered it.
+ *
+ * "oncePerSession" exists for the case where a trigger legitimately
+ * re-fires for something the user is already doing — returning to an app
+ * that is still open, or a browser re-reporting the same page. The
+ * session key is derived from the event itself (see
+ * RoutineService.sessionKeyFor), so it is the *thing* that has a session,
+ * not NIMBUS: a different app, page or folder is a different session.
+ */
+export type SessionRestriction = "none" | "oncePerSession";
 
 /** One step of a Routine's action sequence — executed in array order through the existing Action system (src/actions/), never anything else. */
 export interface RoutineActionStep {
@@ -129,6 +181,12 @@ export interface Routine {
    * field existed.
    */
   autoRun?: boolean;
+  /** Free-text note for the user's own benefit. Never shown in a suggestion; purely to make a list of routines readable. Optional — routines saved before it existed simply have none. */
+  description?: string;
+  /** Defaults to "all" when absent, which is exactly how every routine saved before this field existed already behaved. */
+  conditionLogic?: ConditionLogic;
+  /** Defaults to "none" when absent — again, the pre-existing behaviour. */
+  sessionRestriction?: SessionRestriction;
 }
 
 export const DEFAULT_ROUTINE_COOLDOWN_MINUTES = 30;
@@ -201,6 +259,26 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
     return { valid: false, error: "autoRun must be a boolean." };
   }
 
+  if (routine.description !== undefined && typeof routine.description !== "string") {
+    return { valid: false, error: "description must be a string." };
+  }
+
+  if (
+    routine.conditionLogic !== undefined &&
+    routine.conditionLogic !== "all" &&
+    routine.conditionLogic !== "any"
+  ) {
+    return { valid: false, error: 'conditionLogic must be "all" or "any".' };
+  }
+
+  if (
+    routine.sessionRestriction !== undefined &&
+    routine.sessionRestriction !== "none" &&
+    routine.sessionRestriction !== "oncePerSession"
+  ) {
+    return { valid: false, error: 'sessionRestriction must be "none" or "oncePerSession".' };
+  }
+
   if (!Array.isArray(routine.conditions)) {
     return { valid: false, error: "conditions must be an array." };
   }
@@ -265,6 +343,22 @@ function validateCondition(condition: RoutineCondition): string | null {
       ) {
         return "timeOfDay condition needs startHour/endHour between 0 and 23.";
       }
+      for (const minute of [condition.startMinute, condition.endMinute]) {
+        if (minute === undefined) continue; // absent means :00 — see TimeOfDayCondition
+        if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+          return "timeOfDay condition minutes must be between 0 and 59.";
+        }
+      }
+      return null;
+    case "daysOfWeek":
+      if (!Array.isArray(condition.days) || condition.days.length === 0) {
+        return "daysOfWeek condition needs at least one day.";
+      }
+      for (const day of condition.days) {
+        if (!Number.isInteger(day) || day < 0 || day > 6) {
+          return "daysOfWeek condition days must be integers from 0 (Sunday) to 6 (Saturday).";
+        }
+      }
       return null;
     case "weekdaysOnly":
     case "spotifyNotAlreadyPlaying":
@@ -274,3 +368,89 @@ function validateCondition(condition: RoutineCondition): string | null {
       return `Unknown condition type "${(condition as { type?: string }).type}".`;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Explanation, history and persisted runtime state.
+ *
+ * These describe what the engine DECIDED, as opposed to what the user
+ * CONFIGURED (everything above). They live here so the IPC layer and UI
+ * can share the shapes without importing the service itself.
+ * ------------------------------------------------------------------ */
+
+/** One line of a routine's decision, phrased for a human and safe to show verbatim. */
+export interface RoutineCheck {
+  label: string;
+  passed: boolean;
+}
+
+/** Why a routine did not run. Ordered as the engine tests them. */
+export type RoutineBlockReason = "disabled" | "trigger" | "cooldown" | "session" | "conditions";
+
+/**
+ * The deterministic answer to "why did (or didn't) this routine fire?".
+ * Produced both by live event handling and by the editor's Test button,
+ * so the explanation a user reads while testing is generated by the same
+ * code that makes the real decision — not a parallel description of it
+ * that could drift.
+ */
+export interface RoutineEvaluation {
+  routineId: string;
+  routineName: string;
+  matched: boolean;
+  checks: RoutineCheck[];
+  blockedBy?: RoutineBlockReason;
+}
+
+/**
+ * What happened, as a short record for debugging and for a future
+ * intelligence layer to learn the shape of.
+ *
+ * Deliberately narrow: NIMBUS's own decisions and nothing else. There is
+ * no field here for page content, window titles beyond what a routine
+ * already matched on, keystrokes, or anything the user typed or read —
+ * see "Privacy" in docs/routines.md.
+ */
+export type RoutineHistoryKind =
+  | "matched"
+  | "suggested"
+  | "accepted"
+  | "dismissed"
+  | "expired"
+  | "autoRan"
+  | "blockedByCooldown"
+  | "blockedBySession"
+  | "blockedByConditions"
+  | "actionsCompleted";
+
+export interface RoutineHistoryEntry {
+  id: string;
+  at: string;
+  routineId: string;
+  routineName: string;
+  kind: RoutineHistoryKind;
+  /** One short, non-sensitive clarifier, e.g. "2 actions, 1 failed". */
+  detail?: string;
+}
+
+/**
+ * The slice of routine state that must outlive a restart.
+ *
+ * Only cooldown timestamps: a cooldown that silently resets because
+ * NIMBUS restarted is exactly the suggestion spam cooldowns exist to
+ * stop. Session state is deliberately NOT here — a session belongs to a
+ * running application, and after a restart NIMBUS cannot know whether
+ * the app it saw is the same one still running, so the honest default is
+ * a fresh session.
+ */
+export interface RoutineRuntimeState {
+  /** routine id -> epoch ms when it last fired. */
+  lastTriggeredAt: Record<string, number>;
+}
+
+/** Injected into RoutineService so Core never touches the filesystem or Electron directly. */
+export interface RoutineStateStore {
+  load(): RoutineRuntimeState;
+  save(state: RoutineRuntimeState): void;
+}
+
+export const MAX_ROUTINE_HISTORY_ENTRIES = 200;

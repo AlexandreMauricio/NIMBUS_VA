@@ -97,6 +97,26 @@ export function diffActivitySnapshot(
     }
   }
 
+  // The counterpart of the block above: a process that was there last
+  // poll and isn't now. Gated on a real previous snapshot for the same
+  // reason — on the baseline poll there is nothing to have disappeared.
+  // Nothing triggers on these; they exist so a routine's "once per
+  // session" window can end when the application actually closes.
+  if (previous !== null) {
+    const currentProcesses = new Set(current.processNames);
+    for (const name of previous.processNames) {
+      if (!currentProcesses.has(name)) {
+        events.push({
+          id: randomUUID(),
+          type: "applicationClosed",
+          occurredAt,
+          source: "desktopActivityMonitor",
+          executableName: name,
+        });
+      }
+    }
+  }
+
   // Intentionally NOT gated on `previous !== null` — see doc comment above.
   const previousBrowserTitles = new Map((previous?.browserWindows ?? []).map((w) => [w.executable, w.title]));
   for (const window of current.browserWindows) {

@@ -21,6 +21,7 @@ import { BriefingService } from "../briefing";
 import { ContextEventBus } from "../events";
 import { RoutineService, validateRoutine, Routine } from "../routines";
 import { DesktopActivityMonitor } from "./activity";
+import { FileRoutineStateStore } from "./routineStateStore";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
 import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
@@ -420,7 +421,15 @@ function registerIpcHandlers(): void {
     }
   );
 
+  // "Test" evaluates and explains; it deliberately runs nothing (see
+  // RoutineService.testRoutine). "Run now" is the separate, explicit way
+  // to actually execute a routine's actions — what Test used to do.
   ipcMain.handle("nimbus:test-routine", (_event, routineId: string) => routineService.testRoutine(routineId));
+  ipcMain.handle("nimbus:run-routine-now", (_event, routineId: string) =>
+    routineService.runRoutineNow(routineId)
+  );
+  ipcMain.handle("nimbus:get-routine-history", () => routineService.getHistory());
+  ipcMain.handle("nimbus:get-routine-last-triggered", () => routineService.getLastTriggeredAt());
 
   // A debugging aid for "why didn't my trigger fire" — the exact raw
   // process/window/folder data the desktop activity monitor saw on its
@@ -679,7 +688,11 @@ export function startApp(): void {
         }
       }
       return anyCheckable;
-    }
+    },
+    // Cooldowns outlive the process — without this, quitting and
+    // relaunching NIMBUS would clear every cooldown and let routines
+    // re-suggest immediately.
+    new FileRoutineStateStore()
   );
   routineService.start();
   routineService.onSuggestion((suggestion) => {

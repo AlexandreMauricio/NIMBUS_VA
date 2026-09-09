@@ -17,6 +17,7 @@
 
 export type ContextEventType =
   | "applicationOpened"
+  | "applicationClosed"
   | "websiteOpened"
   | "folderOpened"
   | "timerCompleted"
@@ -49,6 +50,21 @@ export interface ApplicationOpenedEvent extends ContextEventBase {
   executableName: string;
   windowTitle: string | null;
   activation: "launched" | "activated" | "alreadyRunning";
+}
+
+/**
+ * A monitored application stopped running.
+ *
+ * There is deliberately no *trigger* for this — nothing lets a user say
+ * "when I close X". It exists so the Routine system can tell when a
+ * routine's "once per session" window has ended: closing the app is what
+ * makes the next launch a genuinely new session rather than the same one
+ * continuing. See RoutineService's session handling.
+ */
+export interface ApplicationClosedEvent extends ContextEventBase {
+  type: "applicationClosed";
+  /** Lowercased executable name, e.g. "steam.exe". */
+  executableName: string;
 }
 
 /**
@@ -87,4 +103,8 @@ export interface TimerCompletedEvent extends ContextEventBase {
 }
 
 export type ContextEvent =
-  ApplicationOpenedEvent | WebsiteOpenedEvent | FolderOpenedEvent | TimerCompletedEvent;
+  | ApplicationOpenedEvent
+  | ApplicationClosedEvent
+  | WebsiteOpenedEvent
+  | FolderOpenedEvent
+  | TimerCompletedEvent;

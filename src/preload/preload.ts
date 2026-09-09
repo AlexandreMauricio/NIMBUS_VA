@@ -6,7 +6,7 @@ import {
   CalendarSettings,
   RoutineSettings,
 } from "../settings/settingsManager";
-import { Routine } from "../routines/types";
+import { Routine, RoutineEvaluation, RoutineHistoryEntry } from "../routines/types";
 import { SpotifyPlaylistSummary } from "../context/providers/spotify/types";
 import {
   TaskItem,
@@ -184,9 +184,22 @@ contextBridge.exposeInMainWorld("nimbus", {
   getRoutineSettings: (): Promise<RoutineSettings> => ipcRenderer.invoke("nimbus:get-routine-settings"),
   updateRoutineSettings: (partial: { enabled?: boolean; routines?: Routine[] }): Promise<RoutineSettings> =>
     ipcRenderer.invoke("nimbus:update-routine-settings", partial),
-  /** Runs a routine's actions immediately, bypassing its trigger/cooldown/conditions — for the Settings UI's "Test" button. */
-  testRoutine: (routineId: string): Promise<PublicActionResult[]> =>
+  /**
+   * Evaluates a routine against the current state and returns the
+   * deterministic explanation — runs NOTHING. Backs the editor's "Test"
+   * button; see RoutineService.testRoutine for why testing must not
+   * execute actions.
+   */
+  testRoutine: (routineId: string): Promise<RoutineEvaluation | null> =>
     ipcRenderer.invoke("nimbus:test-routine", routineId),
+  /** Actually runs a routine's actions now, bypassing trigger/cooldown/conditions — the explicit counterpart to testRoutine. */
+  runRoutineNow: (routineId: string): Promise<PublicActionResult[]> =>
+    ipcRenderer.invoke("nimbus:run-routine-now", routineId),
+  /** NIMBUS's own routine decisions, most recent first — never anything the user typed, read or browsed. */
+  getRoutineHistory: (): Promise<RoutineHistoryEntry[]> => ipcRenderer.invoke("nimbus:get-routine-history"),
+  /** Epoch ms per routine id, for the routine list's "last triggered" line. */
+  getRoutineLastTriggered: (): Promise<Record<string, number>> =>
+    ipcRenderer.invoke("nimbus:get-routine-last-triggered"),
   /** Debugging aid: the raw process/window/folder data the desktop activity monitor saw on its most recent poll, or null if it isn't running. */
   /** DesktopActivityMonitor's last poll (raw process names/browser window titles/folder paths), or null if it isn't running — surfaced read-only in the Routines tab so a trigger pattern can be checked against reality instead of guessed at. */
   getActivitySnapshot: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-activity-snapshot"),

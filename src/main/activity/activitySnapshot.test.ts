@@ -165,3 +165,40 @@ test("a browser window with an empty title is ignored rather than producing a bo
   );
   assert.equal(events.length, 0);
 });
+
+/* --------- applicationClosed: the signal that ends a routine session --------- */
+
+test("a process disappearing produces an applicationClosed event", () => {
+  const previous = snapshot({ processNames: ["steam.exe", "chrome.exe"] });
+  const current = snapshot({ processNames: ["chrome.exe"] });
+
+  const events = diffActivitySnapshot(previous, current, NOW);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "applicationClosed");
+  assert.equal((events[0] as { executableName: string }).executableName, "steam.exe");
+});
+
+test("the baseline poll reports nothing as closed", () => {
+  const events = diffActivitySnapshot(null, snapshot({ processNames: ["steam.exe"] }), NOW);
+
+  assert.equal(
+    events.some((e) => e.type === "applicationClosed"),
+    false
+  );
+});
+
+test("a process that keeps running produces no close event", () => {
+  const previous = snapshot({ processNames: ["steam.exe"] });
+  const events = diffActivitySnapshot(previous, snapshot({ processNames: ["steam.exe"] }), NOW);
+
+  assert.equal(events.length, 0);
+});
+
+test("closing one application and opening another reports both", () => {
+  const previous = snapshot({ processNames: ["steam.exe"] });
+  const events = diffActivitySnapshot(previous, snapshot({ processNames: ["game.exe"] }), NOW);
+
+  const kinds = events.map((e) => e.type).sort();
+  assert.deepEqual(kinds, ["applicationClosed", "applicationOpened"]);
+});

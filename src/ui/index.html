@@ -411,6 +411,44 @@
                   <input class="input" type="number" id="routineCooldown" min="0" value="30" />
                 </div>
               </div>
+
+              <div class="field">
+                <label for="routineDescription">Description (optional)</label>
+                <input
+                  class="input"
+                  type="text"
+                  id="routineDescription"
+                  placeholder="A note to yourself about what this routine is for"
+                />
+              </div>
+            </div>
+
+            <div class="panel-card">
+              <div class="conditions-head">
+                <div>
+                  <h6 class="section-kicker section-kicker-flush">Conditions</h6>
+                  <p class="opt-desc">
+                    Extra requirements checked after the trigger fires. With no conditions, the trigger alone
+                    decides.
+                  </p>
+                </div>
+                <select id="routineConditionLogic" class="input input-compact">
+                  <option value="all">Match ALL conditions</option>
+                  <option value="any">Match ANY condition</option>
+                </select>
+              </div>
+
+              <div id="routineConditionList"></div>
+              <p class="feed-empty" id="routineConditionEmpty">No conditions — the trigger alone decides.</p>
+
+              <div class="action-picker-row">
+                <select id="routineConditionTypeSelect" class="input input-compact">
+                  <option value="timeOfDay">Time of day</option>
+                  <option value="daysOfWeek">Days of the week</option>
+                  <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
+                </select>
+                <button class="btn btn-secondary" id="routineAddConditionBtn">Add condition</button>
+              </div>
             </div>
 
             <div class="opt-card">
@@ -426,6 +464,33 @@
                 </div>
                 <label class="toggle">
                   <input type="checkbox" id="routineSkipIfActive" />
+                  <span class="track"></span>
+                </label>
+              </div>
+              <div class="opt-row">
+                <div>
+                  <p class="opt-title">Only once per session</p>
+                  <p class="opt-desc">
+                    Suggest at most once per thing that triggered it — one application run, one page, one
+                    folder. Returning to an application that is still open won't suggest again; closing and
+                    reopening it starts a new session. Without this, only the cooldown limits repeats.
+                  </p>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="routineOncePerSession" />
+                  <span class="track"></span>
+                </label>
+              </div>
+              <div class="opt-row">
+                <div>
+                  <p class="opt-title">Enabled</p>
+                  <p class="opt-desc">
+                    A disabled routine is kept but never triggers. The same switch appears on the routine
+                    list.
+                  </p>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="routineEnabled" checked />
                   <span class="track"></span>
                 </label>
               </div>

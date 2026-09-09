@@ -1339,3 +1339,137 @@ button.btn {
   padding-top: var(--space-4);
   border-top: 1px solid var(--color-divider);
 }
+
+/* ---------- Routine conditions & explanations ---------- */
+
+/* The renderer's CSP is `style-src 'self'`, which blocks inline style
+   attributes as well as <style> blocks — so every one of these is a real
+   class rather than a style="" convenience. */
+.section-kicker-flush {
+  margin: 0;
+}
+
+.input-compact {
+  max-width: 220px;
+}
+
+.conditions-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.condition-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  flex-wrap: wrap;
+}
+
+.condition-row + .condition-row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.condition-row-label {
+  font-size: 14px;
+}
+
+.condition-row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* A time input is content-sized; left at .input's 100% it would push the
+   Remove button off the row. */
+.condition-row-controls .input {
+  width: auto;
+  min-width: 7.5rem;
+}
+
+.condition-row-sep {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
+/* Day toggles: a real checkbox kept operable, with the visible chip
+   driven off :checked rather than a second element to keep in sync. */
+.day-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.day-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.day-chip span {
+  display: inline-block;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-divider);
+  color: var(--color-neutral-400);
+}
+
+.day-chip input:checked + span {
+  border-color: var(--color-accent);
+  color: var(--color-accent-300);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.day-chip input:focus-visible + span {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* The "why did this match?" panel under a routine card. */
+.routine-explain {
+  border-top: 1px solid var(--color-divider);
+  padding: var(--space-3) 0 0;
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.routine-explain-verdict {
+  font-size: 13px;
+  margin-bottom: var(--space-2);
+}
+
+.routine-explain-verdict.matched {
+  color: var(--color-accent-300);
+}
+
+.routine-explain-verdict.blocked {
+  color: var(--color-neutral-400);
+}
+
+.routine-explain-check {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.routine-explain-check.pass {
+  color: var(--color-neutral-300);
+}
+
+.routine-explain-check.fail {
+  color: var(--color-neutral-500);
+}
+
+.routine-explain-note {
+  font-size: 11px;
+  color: var(--color-neutral-500);
+  margin-top: var(--space-2);
+}
