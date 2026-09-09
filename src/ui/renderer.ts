@@ -1,3 +1,14 @@
+import {
+  formatContextValue,
+  formatEventDateLabel,
+  formatEventTime,
+  formatMs,
+  formatTaskDue,
+  maskAddress,
+  triggerSummary,
+  withSkipIfActiveCondition,
+} from "./uiFormat";
+
 /**
  * Renderer script for the placeholder UI. Talks to the main process
  * only through the `window.nimbus` API exposed by the preload script —
@@ -370,8 +381,14 @@ interface NimbusApi {
   onBriefingUpdated: (callback: () => void) => () => void;
 }
 
-interface Window {
-  nimbus: NimbusApi;
+// renderer.ts imports from ./uiFormat, which makes this file a module —
+// so a bare `interface Window` would declare a local type rather than
+// extend the DOM's. `declare global` is what keeps `window.nimbus`
+// typed, exactly as it was when this file was a plain script.
+declare global {
+  interface Window {
+    nimbus: NimbusApi;
+  }
 }
 
 function initTabs(): void {
@@ -482,11 +499,6 @@ async function initWeatherSettings(): Promise<void> {
 }
 
 /** Shortens a feed address for display — it's a credential, not something to show in full in a settings list. */
-function maskAddress(address: string): string {
-  if (address.length <= 40) return address;
-  return `${address.slice(0, 24)}…${address.slice(-10)}`;
-}
-
 async function initCalendarSettings(): Promise<void> {
   const enabledCheckbox = document.getElementById("calendarEnabled") as HTMLInputElement;
   const feedList = document.getElementById("calendarFeedList") as HTMLElement;
@@ -839,13 +851,6 @@ async function initSpotifySettings(): Promise<void> {
 }
 
 /** mm:ss formatting for track progress/duration. */
-function formatMs(ms: number): string {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
 const NOW_PLAYING_POLL_MS = 5000;
 /**
  * A same-window custom event nudging the now-playing card to refresh
@@ -1146,17 +1151,6 @@ function initNowPlayingCard(): void {
 
 const TRIGGER_TYPES: TriggerConfig["type"][] = ["applicationOpened", "websiteOpened", "folderOpened"];
 
-function triggerSummary(trigger: TriggerConfig): string {
-  switch (trigger.type) {
-    case "applicationOpened":
-      return `App opened: ${trigger.application}`;
-    case "websiteOpened":
-      return `Website ${trigger.matchField} contains: ${trigger.pattern}`;
-    case "folderOpened":
-      return `Folder path contains: ${trigger.path}`;
-  }
-}
-
 function buildTriggerFromForm(): TriggerConfig | null {
   const type = (document.getElementById("routineTriggerType") as HTMLSelectElement)
     .value as TriggerConfig["type"];
@@ -1170,12 +1164,6 @@ function buildTriggerFromForm(): TriggerConfig | null {
   }
   const path = (document.getElementById("routineFolderPath") as HTMLInputElement).value.trim();
   return path ? { type: "folderOpened", path, matchMode: "contains" } : null;
-}
-
-/** Adds/removes the "actionsNotAlreadyActive" condition to match the "Skip if already active" checkbox, preserving any other conditions untouched (e.g. ones set outside this UI). */
-function withSkipIfActiveCondition(existing: RoutineCondition[], shouldInclude: boolean): RoutineCondition[] {
-  const withoutIt = existing.filter((c) => c.type !== "actionsNotAlreadyActive");
-  return shouldInclude ? [...withoutIt, { type: "actionsNotAlreadyActive" }] : withoutIt;
 }
 
 const ROUTINE_RUN_ICON_SVG = `<svg width="11" height="12" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 3,15 15,8"/></svg>`;
@@ -1918,15 +1906,6 @@ const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   high: "High",
 };
 
-function formatTaskDue(task: TaskItem): { text: string; overdue: boolean } | null {
-  if (!task.dueAt) return null;
-  const due = new Date(task.dueAt);
-  const text = task.dueIsDateOnly
-    ? due.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-    : due.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  return { text, overdue: task.category === "overdue" };
-}
-
 /**
  * The Tasks tab — list/grid view, sorting, and create/edit/complete/
  * delete, all writing straight through to Todoist (see
@@ -2417,12 +2396,6 @@ function initBriefing(): void {
  * arbitrarily-shaped data (nested objects, arrays) and this still shows
  * something reasonable without the UI needing per-provider rendering code.
  */
-function formatContextValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
 function renderContextSnapshot(snapshot: ContextSnapshot): void {
   document.getElementById("contextGeneratedAt")!.textContent =
     `Last updated: ${new Date(snapshot.generatedAt).toLocaleString()}`;
@@ -2493,24 +2466,6 @@ async function loadContext(): Promise<void> {
 function initContext(): void {
   loadContext();
   document.getElementById("refreshContextBtn")?.addEventListener("click", loadContext);
-}
-
-function formatEventTime(iso: string, timezone: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    timeZone: timezone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(iso));
-}
-
-function formatEventDateLabel(iso: string, timezone: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    timeZone: timezone,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(new Date(iso));
 }
 
 function renderEventList(
