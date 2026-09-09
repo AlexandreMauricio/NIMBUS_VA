@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { DesktopActivityMonitor } from "./desktopActivityMonitor";
 import { ContextEventBus } from "../../events/eventBus";
 import { RawActivitySnapshot, emptySnapshot } from "./activitySnapshot";
+import { PowerShellRunner } from "./powerShellSession";
 
 test("the first poll after starting establishes a baseline and publishes no events", async () => {
   const bus = new ContextEventBus();
@@ -101,4 +102,98 @@ test("stopping the monitor resets its baseline — restarting requires a fresh b
   monitor.stop();
 
   assert.deepEqual(received, []); // both were baseline polls (steam.exe never "changed") — no events either time
+});
+
+/**
+ * A stub for the persistent PowerShell session — records how often it
+ * was created and run, and can be made to fail on demand.
+ */
+class StubSession implements PowerShellRunner {
+  static created = 0;
+  static disposed = 0;
+  runs = 0;
+  shouldFail = false;
+
+  constructor() {
+    StubSession.created++;
+  }
+  async run(): Promise<string> {
+    this.runs++;
+    if (this.shouldFail) throw new Error("session died");
+    return "{}";
+  }
+  dispose(): void {
+    StubSession.disposed++;
+  }
+}
+
+test("repeated polls reuse one PowerShell session rather than starting one each tick", async () => {
+  StubSession.created = 0;
+  const session = new StubSession();
+  const bus = new ContextEventBus();
+  let runScriptRef: ((script: string) => Promise<string>) | undefined;
+
+  const poll = async (runScript?: (script: string) => Promise<string>) => {
+    runScriptRef = runScript;
+    if (runScript) await runScript("dummy");
+    return emptySnapshot();
+  };
+  const monitor = new DesktopActivityMonitor(bus, poll, 999_999, () => new Date(), () => session);
+
+  monitor.start();
+  await new Promise((r) => setImmediate(r));
+  await runScriptRef!("dummy");
+  await runScriptRef!("dummy");
+
+  assert.equal(StubSession.created, 1, "the session should be constructed once, not per poll");
+  assert.equal(session.runs, 3);
+  monitor.stop();
+});
+
+test("stopping the monitor disposes the PowerShell session", async () => {
+  StubSession.disposed = 0;
+  const session = new StubSession();
+  const bus = new ContextEventBus();
+  const poll = async (runScript?: (script: string) => Promise<string>) => {
+    if (runScript) await runScript("dummy");
+    return emptySnapshot();
+  };
+  const monitor = new DesktopActivityMonitor(bus, poll, 999_999, () => new Date(), () => session);
+
+  monitor.start();
+  await new Promise((r) => setImmediate(r));
+  monitor.stop();
+
+  assert.equal(StubSession.disposed, 1);
+});
+
+test("a failing session stops being retried after repeated failures", async () => {
+  StubSession.disposed = 0;
+  const session = new StubSession();
+  session.shouldFail = true;
+  const bus = new ContextEventBus();
+  let runScriptRef: ((script: string) => Promise<string>) | undefined;
+
+  const poll = async (runScript?: (script: string) => Promise<string>) => {
+    runScriptRef = runScript;
+    return emptySnapshot();
+  };
+  const monitor = new DesktopActivityMonitor(bus, poll, 999_999, () => new Date(), () => session);
+
+  monitor.start();
+  await new Promise((r) => setImmediate(r));
+
+  // Each call falls back to the one-shot path, which has no PowerShell
+  // here — what matters is that the session is abandoned, not the result.
+  for (let i = 0; i < 3; i++) {
+    await runScriptRef!("dummy").catch(() => undefined);
+  }
+
+  assert.equal(session.runs, 3, "the session should be tried three times, then abandoned");
+  assert.equal(StubSession.disposed >= 1, true);
+
+  await runScriptRef!("dummy").catch(() => undefined);
+  assert.equal(session.runs, 3, "no further attempts once the session has been given up on");
+
+  monitor.stop();
 });

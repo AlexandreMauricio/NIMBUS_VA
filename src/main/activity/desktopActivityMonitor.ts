@@ -3,10 +3,14 @@ import { promisify } from "util";
 import { logger } from "../../logging/logger";
 import { ContextEventBus } from "../../events/eventBus";
 import { diffActivitySnapshot, emptySnapshot, RawActivitySnapshot, KNOWN_BROWSER_EXECUTABLES } from "./activitySnapshot";
+import { PowerShellRunner, PowerShellSession } from "./powerShellSession";
 
 const execAsync = promisify(exec);
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
+
+/** Consecutive session failures after which NIMBUS stops trying to use one. */
+const MAX_SESSION_FAILURES = 3;
 
 /**
  * One PowerShell round-trip per poll, gathering everything a tick needs:
@@ -54,20 +58,40 @@ function asArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-async function pollRealActivity(): Promise<RawActivitySnapshot> {
+const POLL_TIMEOUT_MS = 8000;
+
+/**
+ * The one-shot path, kept as a fallback for when the persistent session
+ * can't be used (it failed to start, or died repeatedly). Slower per
+ * call — a fresh PowerShell pays its own startup cost — but it has no
+ * state to get wedged, so it always works.
+ *
+ * -EncodedCommand (Base64 of the UTF-16LE script) rather than -Command
+ * with escaped quotes: a multi-line script full of quotes does not
+ * survive being re-quoted through cmd.exe (which is what Node's exec()
+ * shells out through on Windows) — the command silently produces empty
+ * output instead of erroring, which is exactly the kind of failure that
+ * must never be allowed to look like "nothing is running." Encoding
+ * sidesteps quoting entirely.
+ */
+async function runOneShot(script: string): Promise<string> {
+  const encodedScript = Buffer.from(script, "utf16le").toString("base64");
+  const { stdout } = await execAsync(
+    `powershell -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ${encodedScript}`,
+    { timeout: POLL_TIMEOUT_MS, windowsHide: true }
+  );
+  return stdout;
+}
+
+/**
+ * Reads one activity snapshot through `runScript` — the persistent
+ * session in production (see powerShellSession.ts), a stub in tests.
+ */
+async function pollRealActivity(
+  runScript: (script: string) => Promise<string> = runOneShot
+): Promise<RawActivitySnapshot> {
   try {
-    // -EncodedCommand (Base64 of the UTF-16LE script) rather than -Command
-    // with escaped quotes: a multi-line script full of quotes does not
-    // survive being re-quoted through cmd.exe (which is what Node's
-    // exec() shells out through on Windows) — the command silently
-    // produces empty output instead of erroring, which is exactly the
-    // kind of failure that must never be allowed to look like "nothing
-    // is running." Encoding sidesteps quoting entirely.
-    const encodedScript = Buffer.from(POWERSHELL_SCRIPT, "utf16le").toString("base64");
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ${encodedScript}`,
-      { timeout: 8000, windowsHide: true }
-    );
+    const stdout = await runScript(POWERSHELL_SCRIPT);
 
     const parsed = stdout.trim() ? (JSON.parse(stdout) as RawPollResult) : {};
 
@@ -107,13 +131,50 @@ export class DesktopActivityMonitor {
   private previous: RawActivitySnapshot | null = null;
   private timer: NodeJS.Timeout | null = null;
   private polling = false;
+  private session: PowerShellRunner | null = null;
+  private sessionFailures = 0;
 
   constructor(
     private readonly eventBus: ContextEventBus,
-    private readonly pollFn: () => Promise<RawActivitySnapshot> = pollRealActivity,
+    private readonly pollFn: (runScript?: (script: string) => Promise<string>) => Promise<RawActivitySnapshot> = pollRealActivity,
     private readonly intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    /** Injectable so tests can drive the session paths without a real PowerShell. */
+    private readonly createSession: () => PowerShellRunner = () => new PowerShellSession()
   ) {}
+
+  /**
+   * Runs one script through the long-lived PowerShell session, falling
+   * back to a one-shot `powershell.exe` when the session isn't usable.
+   *
+   * After MAX_SESSION_FAILURES consecutive session errors NIMBUS stops
+   * retrying it for good and stays on the one-shot path: a session that
+   * keeps dying would otherwise pay a process spawn *and* a failed poll
+   * every tick, which is strictly worse than the original behaviour.
+   * Polls are best-effort either way — nothing here is allowed to be
+   * the reason NIMBUS stops working.
+   */
+  private runScript = async (script: string): Promise<string> => {
+    if (this.sessionFailures < MAX_SESSION_FAILURES) {
+      if (!this.session) this.session = this.createSession();
+      try {
+        const output = await this.session.run(script, POLL_TIMEOUT_MS);
+        this.sessionFailures = 0;
+        return output;
+      } catch (err) {
+        this.sessionFailures++;
+        logger.warn("PowerShell session poll failed — falling back to a one-shot call", {
+          error: String(err),
+          consecutiveFailures: this.sessionFailures,
+        });
+        if (this.sessionFailures >= MAX_SESSION_FAILURES) {
+          logger.warn("Giving up on the persistent PowerShell session — using one-shot calls from now on");
+          this.disposeSession();
+        }
+      }
+    }
+    return runOneShot(script);
+  };
 
   start(): void {
     if (this.timer) return;
@@ -130,6 +191,16 @@ export class DesktopActivityMonitor {
       this.timer = null;
     }
     this.previous = null;
+    // The monitor only runs while Routines are enabled — leaving a
+    // PowerShell process alive after the user turns them off would keep
+    // a visible background process around for a feature they just
+    // switched off.
+    this.disposeSession();
+  }
+
+  private disposeSession(): void {
+    this.session?.dispose();
+    this.session = null;
   }
 
   /** The most recent poll's raw snapshot, or null before the first poll completes — a debugging aid for "why didn't my trigger fire" (see nimbus:get-activity-snapshot in lifecycle.ts). Never exposes more than what the monitor already reads (process/window names, folder paths). */
@@ -141,7 +212,7 @@ export class DesktopActivityMonitor {
     if (this.polling) return; // a slow poll (e.g. COM enumeration hiccup) should never stack up concurrent ticks
     this.polling = true;
     try {
-      const current = await this.pollFn();
+      const current = await this.pollFn(this.runScript);
       const events = diffActivitySnapshot(this.previous, current, this.now());
       this.previous = current;
       for (const event of events) this.eventBus.publish(event);
