@@ -22,7 +22,19 @@ import { httpTimeoutSignal } from "../../../common/timeout";
  * treated as a local file path — useful for testing with a fixture
  * file, or for a user who exports/syncs a `.ics` file locally rather
  * than publishing one.
+ *
+ * A local path must actually name a calendar file (see
+ * CALENDAR_FILE_EXTENSIONS). Without that check, "anything that is not
+ * a URL is a file path" quietly makes this a read-any-file-on-disk
+ * capability whose contents get parsed and surfaced in the briefing —
+ * far broader than "read a calendar feed", and reachable by a typo (a
+ * half-typed address, a bare Windows path) as easily as on purpose. The
+ * restriction costs the real use case nothing: an exported calendar is
+ * a `.ics` file by definition.
  */
+
+/** Extensions a local calendar file is allowed to have. `.ifb` is the free/busy variant of the same format. */
+const CALENDAR_FILE_EXTENSIONS = [".ics", ".ical", ".ifb"];
 export class IcsCalendarSource {
   constructor(
     private readonly address: string,
@@ -38,6 +50,18 @@ export class IcsCalendarSource {
       }
       return response.text();
     }
+    if (!isCalendarFilePath(this.address)) {
+      throw new Error("Calendar feed address must be an http(s):// URL or a path to a .ics file");
+    }
     return this.readFileFn(this.address);
   }
+}
+
+/** True when `address` names a local calendar file NIMBUS is willing to read. */
+function isCalendarFilePath(address: string): boolean {
+  // Compared against the path with any query/fragment ignored — a local
+  // path has none, and stripping them keeps a stray "?" from defeating
+  // the extension check.
+  const withoutSuffix = address.split(/[?#]/)[0].trim().toLowerCase();
+  return CALENDAR_FILE_EXTENSIONS.some((ext) => withoutSuffix.endsWith(ext));
 }
