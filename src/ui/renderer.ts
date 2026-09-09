@@ -1423,16 +1423,24 @@ async function initRoutinesSettings(): Promise<void> {
     actionListEl.innerHTML = "";
     pendingActions.forEach((step, index) => {
       const row = document.createElement("div");
-      row.className = "calendar-feed-row";
+      row.className = "action-row";
 
+      // The step number is a tag rather than a "1." prefix on the label,
+      // so the order of a multi-step routine reads at a glance.
       const info = document.createElement("span");
-      info.className = "calendar-feed-row-label";
+      info.className = "action-row-label";
+      const badge = document.createElement("span");
+      badge.className = "tag tag-accent action-row-index";
+      badge.textContent = String(index + 1);
+      info.appendChild(badge);
       const def = availableActions.find((a) => a.id === step.actionId);
-      info.textContent = `${index + 1}. ${def?.name ?? step.actionId}`;
+      const name = document.createElement("span");
+      name.textContent = def?.name ?? step.actionId;
+      info.appendChild(name);
       row.appendChild(info);
 
       const actions = document.createElement("div");
-      actions.className = "calendar-feed-row-actions";
+      actions.className = "action-row-actions";
 
       if (index > 0) {
         const up = document.createElement("button");
@@ -1470,7 +1478,7 @@ async function initRoutinesSettings(): Promise<void> {
       actions.appendChild(edit);
 
       const remove = document.createElement("button");
-      remove.className = "calendar-feed-remove";
+      remove.className = "btn btn-ghost action-row-remove";
       remove.textContent = "Remove";
       remove.addEventListener("click", () => {
         if (editingActionIndex === index) stopEditingAction(); // the step being edited is the one being removed

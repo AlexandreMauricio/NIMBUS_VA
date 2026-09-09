@@ -1,3 +1,8 @@
 dist/
 node_modules/
 package-lock.json
+
+# Vendored from the Claude Design export — kept verbatim (apart from the
+# documented font change) so it stays diffable against upstream when the
+# design system is re-synced. Reformatting it would defeat that.
+src/ui/nocturne.css

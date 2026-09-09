@@ -7,6 +7,7 @@
       content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' https://*.scdn.co https://*.spotifycdn.com"
     />
     <title>NIMBUS</title>
+    <link rel="stylesheet" href="nocturne.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -287,8 +288,8 @@
                 <span class="setting-desc">
                   Lets NIMBUS notice things like a configured app starting or a configured website opening,
                   and quietly suggest a Routine — never acting without your approval. Turning this on starts a
-                  lightweight local check of running app/window names; see the README for exactly what is (and
-                  isn't) observed.
+                  lightweight local check of running app/window names; see docs/routines.md for exactly what
+                  is (and isn't) observed.
                 </span>
               </span>
               <input type="checkbox" id="routinesEnabled" />
@@ -317,90 +318,146 @@
           </div>
 
           <div id="routinesEditView" hidden>
-            <button class="btn btn-ghost" id="backToRoutineListBtn">&larr; Back to routines</button>
-
-            <div class="manual-location-fields">
-              <div class="setting-title" id="routineFormHeading">New routine</div>
-              <label class="field-row">
-                <span class="setting-title">Name</span>
-                <input type="text" id="routineName" placeholder="e.g. Study" />
-              </label>
-              <label class="field-row">
-                <span class="setting-title">Trigger</span>
-                <select id="routineTriggerType" class="select">
-                  <option value="applicationOpened">Application opened</option>
-                  <option value="websiteOpened">Website opened</option>
-                  <option value="folderOpened">Folder opened</option>
-                </select>
-              </label>
-
-              <div id="routineTriggerFields-applicationOpened" class="field-row">
-                <span class="setting-title">Application (.exe name) — comma-separated for more than one</span>
-                <input type="text" id="routineAppName" placeholder="e.g. steam.exe, epicgameslauncher.exe" />
-              </div>
-              <div id="routineTriggerFields-websiteOpened" class="field-row" hidden>
-                <span class="setting-title">Website contains — comma-separated for more than one</span>
-                <input type="text" id="routineWebsitePattern" placeholder="e.g. skillcert, nowuniversity" />
-              </div>
-              <div id="routineTriggerFields-folderOpened" class="field-row" hidden>
-                <span class="setting-title">Folder path contains — comma-separated for more than one</span>
-                <input type="text" id="routineFolderPath" placeholder="e.g. Projects, Coursework" />
-              </div>
-
-              <label class="field-row">
-                <span class="setting-title">Suggestion title</span>
-                <input type="text" id="routineSuggestionTitle" placeholder="e.g. Study mode?" />
-              </label>
-              <label class="field-row">
-                <span class="setting-title">Suggestion message</span>
-                <input
-                  type="text"
-                  id="routineSuggestionMessage"
-                  placeholder="e.g. Play your Study playlist?"
+            <button class="back-link" id="backToRoutineListBtn">
+              <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,1,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,1,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"
                 />
-              </label>
-              <label class="field-row">
-                <span class="setting-title">Cooldown (minutes)</span>
-                <input type="number" id="routineCooldown" min="0" value="30" />
-              </label>
-              <label class="setting-row">
-                <span>
-                  <span class="setting-title">Skip if already active</span>
-                  <span class="setting-desc">
+              </svg>
+              Back to routines
+            </button>
+
+            <div class="page-head">
+              <h6 class="page-kicker">Routines</h6>
+              <h2 id="routineFormHeading">New routine</h2>
+            </div>
+
+            <div class="panel-card">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="routineName">Name</label>
+                  <input class="input" type="text" id="routineName" placeholder="e.g. Study" />
+                </div>
+                <div class="field">
+                  <label for="routineTriggerType">Trigger</label>
+                  <select id="routineTriggerType" class="input">
+                    <option value="applicationOpened">Application opened</option>
+                    <option value="websiteOpened">Website opened</option>
+                    <option value="folderOpened">Folder opened</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div id="routineTriggerFields-applicationOpened" class="field">
+                  <label for="routineAppName">
+                    Application (.exe name) — comma-separated for more than one
+                  </label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineAppName"
+                    placeholder="e.g. steam.exe, epicgameslauncher.exe"
+                  />
+                </div>
+                <div id="routineTriggerFields-websiteOpened" class="field" hidden>
+                  <label for="routineWebsitePattern">
+                    Website contains — comma-separated for more than one
+                  </label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineWebsitePattern"
+                    placeholder="e.g. skillcert, nowuniversity"
+                  />
+                </div>
+                <div id="routineTriggerFields-folderOpened" class="field" hidden>
+                  <label for="routineFolderPath">
+                    Folder path contains — comma-separated for more than one
+                  </label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineFolderPath"
+                    placeholder="e.g. Projects, Coursework"
+                  />
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="routineSuggestionTitle">Suggestion title</label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineSuggestionTitle"
+                    placeholder="e.g. Study mode?"
+                  />
+                </div>
+                <div class="field">
+                  <label for="routineSuggestionMessage">Suggestion message</label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineSuggestionMessage"
+                    placeholder="e.g. Play your Study playlist?"
+                  />
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field field-narrow">
+                  <label for="routineCooldown">Cooldown (minutes)</label>
+                  <input class="input" type="number" id="routineCooldown" min="0" value="30" />
+                </div>
+              </div>
+            </div>
+
+            <div class="opt-card">
+              <div class="opt-row">
+                <div>
+                  <p class="opt-title">Skip if already active</p>
+                  <p class="opt-desc">
                     Don't suggest again while this routine's own configured playlist/timer already appear to
                     be running — e.g. you briefly opened the site by accident, dismissed it, then actually
                     started studying yourself; NIMBUS won't offer it again once it can see you're already
                     doing it.
-                  </span>
-                </span>
-                <input type="checkbox" id="routineSkipIfActive" />
-              </label>
-              <label class="setting-row">
-                <span>
-                  <span class="setting-title">Run automatically, no confirmation</span>
-                  <span class="setting-desc">
+                  </p>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="routineSkipIfActive" />
+                  <span class="track"></span>
+                </label>
+              </div>
+              <div class="opt-row">
+                <div>
+                  <p class="opt-title">Run automatically, no confirmation</p>
+                  <p class="opt-desc">
                     Skip the "would you like me to?" popup entirely and just run this routine's actions the
                     moment it triggers. Only use this for actions you're comfortable happening without asking
                     — e.g. opening a companion website when a game launches. Cooldown still applies.
-                  </span>
-                </span>
-                <input type="checkbox" id="routineAutoRun" />
-              </label>
-
-              <div class="setting-title">Actions</div>
-              <div id="routineActionList" class="calendar-feed-list"></div>
-              <div class="action-picker-row">
-                <select id="routineActionServiceSelect" class="select"></select>
-                <select id="routineActionSelect" class="select"></select>
-                <button class="btn btn-secondary" id="routineAddActionBtn">Add action</button>
-                <button class="btn btn-ghost" id="routineCancelActionEditBtn" hidden>Cancel</button>
+                  </p>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" id="routineAutoRun" />
+                  <span class="track"></span>
+                </label>
               </div>
-              <div id="routineActionParamFields"></div>
+            </div>
 
-              <div class="field-row">
-                <button class="btn btn-secondary" id="addRoutineBtn">Save routine</button>
-                <button class="btn btn-ghost" id="cancelRoutineEditBtn" hidden>Cancel</button>
-              </div>
+            <h6 class="section-kicker">Actions</h6>
+            <div id="routineActionList"></div>
+            <div class="action-picker-row">
+              <select id="routineActionServiceSelect" class="input"></select>
+              <select id="routineActionSelect" class="input"></select>
+              <button class="btn btn-secondary" id="routineAddActionBtn">Add action</button>
+              <button class="btn btn-ghost" id="routineCancelActionEditBtn" hidden>Cancel</button>
+            </div>
+            <div id="routineActionParamFields"></div>
+
+            <div class="form-footer">
+              <button class="btn btn-primary" id="addRoutineBtn">Save routine</button>
+              <button class="btn btn-ghost" id="cancelRoutineEditBtn" hidden>Cancel</button>
             </div>
 
             <p class="setting-note">
@@ -603,7 +660,7 @@
               <span class="setting-title">Enable Spotify control</span>
               <span class="setting-desc">
                 Lets NIMBUS control Spotify playback and know what's currently playing. Requires a free
-                Spotify Developer app — see the README for setup steps.
+                Spotify Developer app — see docs/spotify.md for setup steps.
               </span>
             </span>
             <input type="checkbox" id="spotifyEnabled" />

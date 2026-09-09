@@ -1,40 +1,28 @@
 :root {
   color-scheme: dark;
 
-  /* Design tokens — matches the "nocturne" styling from the Nimbus Home
-     design (Claude Design). Concrete values are NIMBUS's own approximation
-     (the design system's own stylesheet wasn't available at implementation
-     time), tuned to match the provided reference render. */
-  --color-bg: #0c0b13;
-  --color-surface: #16141f;
-  --color-surface-alt: #1b1826;
-  --color-divider: rgba(255, 255, 255, 0.08);
-  --color-text: #f0eef7;
+  /* Design tokens come from nocturne.css, the vendored Nocturne design
+     system linked ahead of this file — colors, ramps, spacing, radii,
+     shadows and the Inter type stack all live there. Do not redeclare
+     them here; retune the system upstream and re-vendor it.
 
-  --color-neutral-400: #8d8aa5;
-  --color-neutral-500: #67637d;
+     What remains below is only what NIMBUS needs and Nocturne, as a
+     deliberately mono system, does not carry. */
 
-  --color-accent-300: #b9acff;
-  --color-accent-400: #a292fc;
-  --color-accent-500: #8b78f5;
-  --color-accent-700: #4a3f8a;
+  /* A second, slightly raised surface for controls sitting ON a card
+     (inputs, chips, segmented buttons). Taken from the neutral ramp
+     rather than an ad-hoc mix, per the system's own guidance. */
+  --color-surface-alt: var(--color-neutral-900);
 
+  /* Spotify's brand green. Outside the palette on purpose: it identifies
+     a third party rather than expressing NIMBUS's own hierarchy, and the
+     system has no role for it. */
   --color-spotify-green: #1db954;
   --color-spotify-green-700: #14532d;
 
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
-
-  --radius-sm: 8px;
-  --radius-md: 12px;
-
-  --font-body: "Segoe UI", "Inter", system-ui, sans-serif;
-
-  /* Legacy status colors, unrelated to the theme swap. */
+  /* Status colors. Nocturne is a mono palette with no semantic
+     success/error/warning roles, but a task list and a failed action
+     genuinely need to read as different states, so these stay. */
   --color-success: #4caf50;
   --color-error: #ef5350;
   --color-warning: #ffb74d;
@@ -62,19 +50,13 @@ body {
   height: 100%;
 }
 
-body {
-  margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-body);
-}
+/* Background, text color, font stack and heading/paragraph typography all
+   come from nocturne.css. What is left here is the app-shell requirement
+   the design system has no opinion about: a full-height, non-scrolling
+   window whose panels scroll internally.
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
+   The margin reset is kept but narrowed to the elements NIMBUS lays out
+   itself with flex/grid gaps — headings keep the system's own rhythm. */
 p,
 dl,
 dd {
@@ -270,56 +252,14 @@ dd {
 
 /* ---------- Buttons & tags ---------- */
 
-.btn {
-  appearance: none;
-  font-family: inherit;
-  border-radius: var(--radius-sm);
-  font-size: 0.8rem;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  border: 1px solid transparent;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-secondary {
-  background: var(--color-surface-alt);
-  border-color: var(--color-divider);
-  color: var(--color-text);
-}
-
-.btn-secondary:hover {
-  border-color: var(--color-accent-500);
-  color: var(--color-accent-300);
-}
-
-.btn-ghost {
-  background: none;
-  border: none;
-  color: var(--color-accent-300);
-  padding: 0;
-  font-size: 0.8rem;
-}
-
-.btn-ghost:hover {
-  text-decoration: underline;
-}
+/* .btn, .btn-primary, .btn-secondary, .btn-ghost, .tag and .tag-* all come
+   from nocturne.css — including their hover, active, focus-visible and
+   disabled states, which the system asks not to be restyled per page.
+   NIMBUS used to carry its own approximations of these; they are gone.
+   Only layout utilities the system has no equivalent for remain here. */
 
 .btn-spaced {
   margin-top: var(--space-4);
-}
-
-.tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  display: inline-block;
-}
-
-.tag-neutral {
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-  color: var(--color-neutral-400);
 }
 
 /* ---------- Briefing: hero + tile grid ---------- */
@@ -704,8 +644,15 @@ dd {
 .action-picker-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+
+/* .input is width:100% for the stacked form fields above; the two pickers
+   here sit inline next to a button and must not stretch to fill the row. */
+.action-picker-row .input {
+  max-width: 160px;
 }
 
 .field-row input {
@@ -1158,4 +1105,224 @@ dd {
 .calendar-empty {
   color: var(--color-neutral-500);
   font-size: 0.82rem;
+}
+
+/* ---------- Routine editor ----------
+   The single-routine editing page, built to the Claude Design mockup for
+   it. The toggle switch, option row and their type sizes are the
+   mockup's own CSS, kept verbatim so the page matches what was designed;
+   everything else composes Nocturne's .field/.input/.btn/.tag with the
+   layout the mockup lays out inline. */
+
+/* A back affordance that reads as a link but is a real <button> — it
+   moves between two views in the same page, it does not navigate. */
+.back-link {
+  appearance: none;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--color-accent-300);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin-bottom: var(--space-4);
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.page-head {
+  margin-bottom: var(--space-6);
+}
+
+.page-kicker {
+  color: var(--color-neutral-400);
+  margin: 0 0 var(--space-1);
+}
+
+/* The form's own surface. Distinct from .card (Nocturne's content card)
+   because this one is a full-width container for field rows rather than
+   a piece of content with a title and body. */
+.panel-card {
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Two equal columns that collapse to one when the window is narrow.
+   minmax(0,1fr) rather than 1fr so a long value in an input can't push
+   the column wider than its share. */
+.field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+/* A field that shouldn't stretch to fill its column — a minute count
+   next to a full-width text input looks broken at equal width. */
+.field-narrow {
+  max-width: 200px;
+}
+
+/* Two columns is the designed layout and must hold at NIMBUS's default
+   1000px window (which leaves the panel ~735px after the 220px sidebar
+   and padding). Below that the pair gets too cramped for labels like
+   "Application (.exe name) — comma-separated for more than one", so the
+   grid drops to a single column.
+
+   A fixed two-column track rather than auto-fit: when only one of the
+   three trigger fields is visible, it should occupy the left half as
+   designed, and auto-fit would stretch a lone child across the row. */
+@media (max-width: 900px) {
+  .field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Options card: rows separated by rules, label and description on the
+   left, switch on the right. */
+.opt-card {
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-2) var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.opt-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.opt-row + .opt-row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.opt-title {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.opt-desc {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+  margin: 0;
+  max-width: 640px;
+}
+
+/* Switch, built on a real checkbox so it stays keyboard- and
+   screen-reader-operable — the input is moved out of sight, never
+   `display: none`, which would take it out of the tab order. */
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle .track {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-divider);
+  background: transparent;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.toggle .track::after {
+  content: "";
+  display: block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--color-neutral-400);
+  margin: 2px;
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+
+.toggle input:checked + .track {
+  background: var(--color-accent-700);
+  border-color: var(--color-accent);
+}
+
+.toggle input:checked + .track::after {
+  background: var(--color-accent-300);
+  transform: translateX(14px);
+}
+
+.toggle input:focus-visible + .track {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.section-kicker {
+  color: var(--color-neutral-400);
+  margin: 0 0 var(--space-3);
+}
+
+/* One configured action in the routine's ordered list. */
+.action-row {
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.action-row-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 14px;
+  min-width: 0;
+}
+
+.action-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* The step number. A tag rather than plain text so the order reads at a
+   glance when a routine has several steps. */
+.action-row-index {
+  flex-shrink: 0;
+}
+
+.action-row-remove {
+  color: var(--color-accent-300);
+}
+
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
 }
