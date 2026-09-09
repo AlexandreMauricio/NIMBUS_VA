@@ -25,7 +25,7 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 
-/** One per BrowserWindow NIMBUS opens; each becomes a standalone <script src> in its own HTML file. */
+/** One per BrowserWindow NIMBUS opens; each becomes a standalone `<script src="NAME.bundle.js">` in its own HTML file. */
 const ENTRY_POINTS = ["renderer", "suggestionRenderer", "timerRenderer"];
 
 // `npm run dev` watches types with tsc -w; this is the matching watcher
@@ -38,7 +38,13 @@ async function main() {
     ENTRY_POINTS.map((name) => {
       const options = {
         entryPoints: [path.join(ROOT, "src", "ui", `${name}.ts`)],
-        outfile: path.join(ROOT, "dist", "ui", `${name}.js`),
+        // NOT `${name}.js`: tsc emits its own CommonJS file at that
+        // path, so any later `tsc` run (npm test recompiles before
+        // running) would silently overwrite the bundle and break the UI
+        // with "exports is not defined". A distinct name means tsc's
+        // output for these entry points is simply unused, and the two
+        // build steps can run in any order.
+        outfile: path.join(ROOT, "dist", "ui", `${name}.bundle.js`),
         bundle: true,
         // An IIFE, not ESM: the HTML loads these with a plain
         // <script src>, and nothing outside them consumes their exports.

@@ -194,8 +194,9 @@ are also available individually as `npm run lint`, `npm run format:check`
 (`npm run format` rewrites) and `npm test`.
 
 Tests run on the compiled output under `dist/`, so `npm test` compiles
-first. Note that it runs `tsc` only, not the UI bundler — run
-`npm run build` before launching the app after a test run.
+first. It runs `tsc` only, not the UI bundler — which is why the bundler
+writes `dist/ui/*.bundle.js` rather than over tsc's own output for those
+files. The two build steps are independent and can run in any order.
 
 ## Logs & settings location
 
