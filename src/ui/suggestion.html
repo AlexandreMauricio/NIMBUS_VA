@@ -23,7 +23,7 @@
         margin: 0;
         height: 100%;
         overflow: hidden;
-        font-family: "Segoe UI", "Inter", system-ui, sans-serif;
+        font-family: var(--font-body);
         background: transparent;
       }
       .card {
@@ -92,31 +92,21 @@
         margin-top: 12px;
         -webkit-app-region: no-drag;
       }
-      button {
+      /* .btn/.btn-primary/.btn-secondary — including hover, active and
+         focus-visible — come from nocturne.css. This window used to
+         hand-roll its own versions, which had drifted from the system
+         (a filled accent primary, which Nocturne explicitly rules out in
+         favour of an accent outline). Nothing popup-specific is needed
+         here: these two buttons size to their labels. */
+      /* Same adaptation styles.css makes for the main window: the
+         system's .btn is written for <a class="btn">, so it leaves
+         `appearance: auto` in place. On a real <button> that lets
+         Windows paint its own grey control behind an outline variant
+         that sets no background. This window doesn't load styles.css
+         (it is deliberately self-contained), so it repeats the rule. */
+      button.btn {
         appearance: none;
-        font-family: inherit;
-        border-radius: 8px;
-        font-size: 12.5px;
-        padding: 7px 14px;
-        cursor: pointer;
-        border: 1px solid transparent;
-        flex: 1;
-      }
-      .btn-primary {
-        background: var(--color-accent-500);
-        color: #0c0b13;
-        font-weight: 600;
-      }
-      .btn-primary:hover {
-        background: var(--color-accent-300);
-      }
-      .btn-secondary {
-        background: var(--color-surface);
-        border-color: var(--color-divider);
-        color: var(--color-text);
-      }
-      .btn-secondary:hover {
-        border-color: var(--color-accent-500);
+        background: transparent;
       }
     </style>
   </head>
@@ -127,8 +117,8 @@
       <div class="message" id="suggestionMessage"></div>
       <div class="actions-summary" id="actionsSummary"></div>
       <div class="buttons">
-        <button class="btn-primary" id="primaryBtn"></button>
-        <button class="btn-secondary" id="secondaryBtn"></button>
+        <button class="btn btn-primary" id="primaryBtn"></button>
+        <button class="btn btn-secondary" id="secondaryBtn"></button>
       </div>
     </div>
     <script src="suggestionRenderer.bundle.js"></script>

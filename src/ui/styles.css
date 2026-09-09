@@ -256,7 +256,20 @@ dd {
    from nocturne.css — including their hover, active, focus-visible and
    disabled states, which the system asks not to be restyled per page.
    NIMBUS used to carry its own approximations of these; they are gone.
-   Only layout utilities the system has no equivalent for remain here. */
+   Only what the system genuinely doesn't cover remains here. */
+
+/* The system's .btn is written for the <a class="btn"> in its own
+   component pages, so it never disables native form-control rendering.
+   NIMBUS's buttons are real <button> elements (they act, they don't
+   navigate), and a <button> keeps `appearance: auto` — which on Windows
+   lets the platform paint its own grey control behind an outline variant
+   that sets no background of its own. Turning it off here, once, is the
+   adaptation the system needs to sit on real buttons; everything visual
+   still comes from .btn. */
+button.btn {
+  appearance: none;
+  background: transparent;
+}
 
 .btn-spaced {
   margin-top: var(--space-4);

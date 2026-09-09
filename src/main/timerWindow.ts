@@ -3,7 +3,12 @@ import * as path from "path";
 import { logger } from "../logging/logger";
 
 const WINDOW_WIDTH = 220;
-const WINDOW_HEIGHT = 190;
+// Sized to the card's tallest state — the one that also shows a status
+// line ("Paused"/"Complete"). At 190 the content was 217px tall and
+// `overflow: hidden` simply clipped it: the progress bar got flex-shrunk
+// to nothing and the buttons ended up jammed against the bottom edge.
+// Measured: the tallest state renders 216px, so this leaves a little slack.
+const WINDOW_HEIGHT = 220;
 const MARGIN = 16;
 
 let timerWindow: BrowserWindow | null = null;
