@@ -2,6 +2,7 @@ import { WeatherLocation, DailyForecast, WeatherContext } from "./types";
 import { describeWeatherCode } from "./weatherCodes";
 
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+import { httpTimeoutSignal } from "../../../common/timeout";
 const FORECAST_DAYS = 3;
 
 interface OpenMeteoResponse {
@@ -44,7 +45,7 @@ export class OpenMeteoClient {
     url.searchParams.set("timezone", "auto");
     url.searchParams.set("forecast_days", String(FORECAST_DAYS));
 
-    const response = await this.fetchFn(url.toString());
+    const response = await this.fetchFn(url.toString(), { signal: httpTimeoutSignal() });
     if (!response.ok) {
       throw new Error(`Open-Meteo request failed with status ${response.status}`);
     }

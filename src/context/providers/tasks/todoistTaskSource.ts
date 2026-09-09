@@ -1,3 +1,4 @@
+import { httpTimeoutSignal } from "../../../common/timeout";
 // Todoist retired the old /rest/v2 API (it now returns 410 Gone) in favor
 // of a unified /api/v1 API. The underlying data model (task/project/due
 // fields) is unchanged — what changed is the base path and that list
@@ -105,6 +106,16 @@ export class TodoistTaskSource {
     private readonly fetchFn: typeof fetch = fetch
   ) {}
 
+  /**
+   * Every Todoist request goes through here rather than calling
+   * `fetchFn` directly, so the per-request timeout cannot be forgotten
+   * on a call site added later — Node's `fetch` applies none of its own,
+   * and a stalled request would otherwise hang the whole task provider.
+   */
+  private send(url: string, init: RequestInit = {}): Promise<Response> {
+    return this.fetchFn(url, { ...init, signal: httpTimeoutSignal() });
+  }
+
   async fetchActiveTasks(): Promise<RawTaskItem[]> {
     const [tasks, projects] = await Promise.all([this.fetchTasks(), this.fetchProjectsSafe()]);
     const projectNames = new Map(projects.map((p) => [p.id, p.name]));
@@ -118,7 +129,7 @@ export class TodoistTaskSource {
   }
 
   async createTask(input: TaskWriteInput): Promise<RawTaskItem> {
-    const response = await this.fetchFn(`${API_BASE}/tasks`, {
+    const response = await this.send(`${API_BASE}/tasks`, {
       method: "POST",
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(toWritePayload(input)),
@@ -131,7 +142,7 @@ export class TodoistTaskSource {
   }
 
   async updateTask(taskId: string, input: Partial<TaskWriteInput>): Promise<RawTaskItem> {
-    const response = await this.fetchFn(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await this.send(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
       method: "POST",
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(toWritePayload(input)),
@@ -152,7 +163,7 @@ export class TodoistTaskSource {
   }
 
   async deleteTask(taskId: string): Promise<void> {
-    const response = await this.fetchFn(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await this.send(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
       method: "DELETE",
       headers: this.authHeaders(),
     });
@@ -162,7 +173,7 @@ export class TodoistTaskSource {
   }
 
   private async postAction(taskId: string, endpoint: "close" | "reopen", verb: string): Promise<void> {
-    const response = await this.fetchFn(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/${endpoint}`, {
+    const response = await this.send(`${API_BASE}/tasks/${encodeURIComponent(taskId)}/${endpoint}`, {
       method: "POST",
       headers: this.authHeaders(),
     });
@@ -176,7 +187,7 @@ export class TodoistTaskSource {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const response = await this.fetchFn(pagedUrl(`${API_BASE}/tasks`, cursor), { headers: this.authHeaders() });
+      const response = await this.send(pagedUrl(`${API_BASE}/tasks`, cursor), { headers: this.authHeaders() });
       if (!response.ok) {
         throw new Error(`Todoist tasks request failed with status ${response.status}`);
       }
@@ -193,7 +204,7 @@ export class TodoistTaskSource {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const response = await this.fetchFn(pagedUrl(`${API_BASE}/projects`, cursor), { headers: this.authHeaders() });
+      const response = await this.send(pagedUrl(`${API_BASE}/projects`, cursor), { headers: this.authHeaders() });
       if (!response.ok) {
         throw new Error(`Todoist projects request failed with status ${response.status}`);
       }

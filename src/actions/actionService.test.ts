@@ -26,7 +26,7 @@ function successResult(actionId: string, message = "Done."): ActionResult {
 class StubProvider implements ActionProvider {
   readonly id = "demo";
   readonly displayName = "Demo";
-  available = true;
+  available: boolean | Promise<boolean> = true;
   executeImpl: (actionId: string, params: Record<string, unknown>) => Promise<ActionResult> = async (actionId) =>
     successResult(actionId);
   validateImpl: (actionId: string, params: Record<string, unknown>) => ActionValidationResult = () => ({
@@ -177,4 +177,40 @@ test("registering two providers with the same id throws", () => {
   const service = new ActionService();
   service.register(new StubProvider());
   assert.throws(() => service.register(new StubProvider()));
+});
+
+test("an action provider hanging in execute resolves to a timeout failure", async () => {
+  const service = new ActionService(20);
+  const provider = new StubProvider();
+  provider.executeImpl = () => new Promise<ActionResult>(() => {});
+  service.register(provider);
+
+  const result = await service.executeAction("demo.doThing");
+
+  assert.equal(result.status, "failure");
+  assert.equal(result.error?.category, "timeout");
+});
+
+test("an action provider hanging in isAvailable reports the action as not available", async () => {
+  const service = new ActionService(20);
+  const provider = new StubProvider();
+  provider.available = new Promise<boolean>(() => {});
+  service.register(provider);
+
+  const result = await service.executeAction("demo.doThing");
+
+  assert.equal(result.status, "failure");
+  assert.equal(result.error?.category, "not_available");
+});
+
+test("a timed-out action still lands in history like any other result", async () => {
+  const service = new ActionService(20);
+  const provider = new StubProvider();
+  provider.executeImpl = () => new Promise<ActionResult>(() => {});
+  service.register(provider);
+
+  await service.executeAction("demo.doThing");
+
+  assert.equal(service.getHistory().length, 1);
+  assert.equal(service.getHistory()[0].error?.category, "timeout");
 });

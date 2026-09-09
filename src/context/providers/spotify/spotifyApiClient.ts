@@ -16,6 +16,7 @@
  */
 
 import { SpotifyPlaylistSummary } from "./types";
+import { httpTimeoutSignal } from "../../../common/timeout";
 
 const API_BASE = "https://api.spotify.com/v1";
 
@@ -204,6 +205,12 @@ export class SpotifyApiClient {
     try {
       return await this.fetchFn(`${API_BASE}${path}`, {
         ...init,
+        // Node's fetch has no default request timeout — without this a
+        // Spotify endpoint that accepts the connection and then stalls
+        // would hang the now-playing poll (and any action awaiting it)
+        // indefinitely. An abort surfaces as the "network" error the
+        // catch below already produces.
+        signal: httpTimeoutSignal(),
         headers: { Authorization: `Bearer ${token}`, ...init.headers },
       });
     } catch (err) {

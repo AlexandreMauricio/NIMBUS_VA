@@ -1,5 +1,6 @@
 import { logger } from "../logging/logger";
 import { ContextProvider, ContextProviderResult, ContextSnapshot } from "./types";
+import { withTimeout, DEFAULT_PROVIDER_TIMEOUT_MS } from "../common/timeout";
 
 /**
  * Aggregates registered ContextProviders into a single structured snapshot.
@@ -18,6 +19,12 @@ import { ContextProvider, ContextProviderResult, ContextSnapshot } from "./types
 export class ContextService {
   private readonly providers = new Map<string, ContextProvider>();
   private readonly lastGood = new Map<string, ContextProviderResult>();
+
+  /**
+   * `providerTimeoutMs` is injectable purely so tests can assert the
+   * hang path without actually waiting the real budget.
+   */
+  constructor(private readonly providerTimeoutMs: number = DEFAULT_PROVIDER_TIMEOUT_MS) {}
 
   register(provider: ContextProvider): void {
     if (this.providers.has(provider.id)) {
@@ -58,9 +65,13 @@ export class ContextService {
 
     let available: boolean;
     try {
-      available = await provider.isAvailable();
+      available = await withTimeout(
+        Promise.resolve(provider.isAvailable()),
+        this.providerTimeoutMs,
+        `Context provider "${provider.id}" isAvailable()`
+      );
     } catch (err) {
-      logger.warn(`Context provider "${provider.id}" threw from isAvailable()`, {
+      logger.warn(`Context provider "${provider.id}" failed or hung in isAvailable()`, {
         error: String(err),
       });
       available = false;
@@ -78,7 +89,15 @@ export class ContextService {
     }
 
     try {
-      const data = await provider.getContext();
+      // Bounded so a provider that never settles degrades to the same
+      // stale-or-error result as one that throws. Without this the
+      // `Promise.all` in getSnapshot() never resolves, which hangs
+      // briefing generation and the nimbus:get-context IPC for good.
+      const data = await withTimeout(
+        Promise.resolve(provider.getContext()),
+        this.providerTimeoutMs,
+        `Context provider "${provider.id}" getContext()`
+      );
       const result: ContextProviderResult = {
         providerId: provider.id,
         displayName: provider.displayName,

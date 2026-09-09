@@ -1,3 +1,4 @@
+import { httpTimeoutSignal } from "../../../common/timeout";
 import { WeatherLocation } from "./types";
 
 const GEOLOCATION_URL = "https://get.geojs.io/v1/ip/geo.json";
@@ -18,7 +19,7 @@ export class IpGeolocationClient {
   constructor(private readonly fetchFn: typeof fetch = fetch) {}
 
   async locate(): Promise<Omit<WeatherLocation, "source">> {
-    const response = await this.fetchFn(GEOLOCATION_URL);
+    const response = await this.fetchFn(GEOLOCATION_URL, { signal: httpTimeoutSignal() });
     if (!response.ok) {
       throw new Error(`IP geolocation request failed with status ${response.status}`);
     }

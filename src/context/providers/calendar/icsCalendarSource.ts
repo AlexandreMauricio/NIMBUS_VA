@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { httpTimeoutSignal } from "../../../common/timeout";
 
 /**
  * Fetches the raw text of one ICS ("iCalendar") feed. This is the
@@ -32,7 +33,7 @@ export class IcsCalendarSource {
 
   async fetchRaw(): Promise<string> {
     if (/^https?:\/\//i.test(this.address)) {
-      const response = await this.fetchFn(this.address);
+      const response = await this.fetchFn(this.address, { signal: httpTimeoutSignal() });
       if (!response.ok) {
         throw new Error(`Calendar feed request failed with status ${response.status}`);
       }

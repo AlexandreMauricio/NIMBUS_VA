@@ -1,5 +1,6 @@
 import { logger } from "../logging/logger";
 import { ActionDefinition, ActionError, ActionProvider, ActionResult } from "./types";
+import { withTimeout, TimeoutError, DEFAULT_PROVIDER_TIMEOUT_MS } from "../common/timeout";
 
 const MAX_HISTORY_ENTRIES = 50;
 
@@ -22,6 +23,12 @@ const MAX_HISTORY_ENTRIES = 50;
 export class ActionService {
   private readonly providers = new Map<string, ActionProvider>();
   private readonly history: ActionResult[] = [];
+
+  /**
+   * `providerTimeoutMs` is injectable purely so tests can assert the
+   * hang path without actually waiting the real budget.
+   */
+  constructor(private readonly providerTimeoutMs: number = DEFAULT_PROVIDER_TIMEOUT_MS) {}
 
   register(provider: ActionProvider): void {
     if (this.providers.has(provider.id)) {
@@ -58,9 +65,13 @@ export class ActionService {
 
     let available: boolean;
     try {
-      available = await provider.isAvailable();
+      available = await withTimeout(
+        Promise.resolve(provider.isAvailable()),
+        this.providerTimeoutMs,
+        `Action provider "${provider.id}" isAvailable()`
+      );
     } catch (err) {
-      logger.warn(`Action provider "${provider.id}" threw from isAvailable()`, { error: String(err) });
+      logger.warn(`Action provider "${provider.id}" failed or hung in isAvailable()`, { error: String(err) });
       available = false;
     }
 
@@ -80,17 +91,31 @@ export class ActionService {
     }
 
     try {
-      const result = await provider.execute(actionId, params);
+      // Bounded for the same reason ContextService bounds its providers:
+      // an action that never settles would leave the caller (a routine
+      // step, or a renderer awaiting nimbus:execute-action) waiting
+      // forever, with no result and no error to show.
+      const result = await withTimeout(
+        Promise.resolve(provider.execute(actionId, params)),
+        this.providerTimeoutMs,
+        `Action provider "${provider.id}" execute()`
+      );
       return this.finish(result);
     } catch (err) {
       // A provider should already return a "failure" ActionResult for
       // anything expected (see ActionProvider.execute's contract) — this
       // catch exists only for the unexpected, so a provider bug can never
       // crash NIMBUS or leave a caller without a result.
-      logger.error(`Action provider "${provider.id}" threw from execute()`, { actionId, error: String(err) });
+      logger.error(`Action provider "${provider.id}" threw from or hung in execute()`, {
+        actionId,
+        error: String(err),
+      });
+      const timedOut = err instanceof TimeoutError;
       return this.finish(failure(actionId, startedAt, new Date(), {
-        category: "unknown",
-        message: "Something went wrong performing that action.",
+        category: timedOut ? "timeout" : "unknown",
+        message: timedOut
+          ? "That action took too long and was given up on."
+          : "Something went wrong performing that action.",
       }));
     }
   }

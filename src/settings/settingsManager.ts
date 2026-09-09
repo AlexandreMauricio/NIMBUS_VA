@@ -288,11 +288,43 @@ export function loadSettings(): NimbusSettings {
   return structuredClone(DEFAULT_SETTINGS);
 }
 
+/**
+ * Writes settings atomically: serialize to a temp file in the same
+ * directory, flush it to disk, then `rename` over the real one (an
+ * atomic replace on NTFS as long as both paths share a volume, which a
+ * sibling temp file always does).
+ *
+ * A plain `writeFileSync` to the real path truncates it first, so a
+ * crash or power loss mid-write leaves a half-written file. `loadSettings`
+ * cannot tell that from corruption — it catches the parse error and
+ * falls back to defaults, silently discarding every routine, account and
+ * credential the user had configured. The rename dance means the real
+ * file is only ever the old complete version or the new complete one.
+ */
 export function saveSettings(settings: NimbusSettings): void {
   const filePath = getSettingsFilePath();
+  const tempPath = `${filePath}.tmp`;
   try {
-    fs.writeFileSync(filePath, JSON.stringify(settings, null, 2), "utf-8");
+    const serialized = JSON.stringify(settings, null, 2);
+    // Written through an explicit fd so the contents can be fsync'd before
+    // the rename — without that, the rename can land ahead of the data on
+    // a crash, which produces exactly the empty/truncated file this is
+    // meant to prevent.
+    const fd = fs.openSync(tempPath, "w");
+    try {
+      fs.writeFileSync(fd, serialized, "utf-8");
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tempPath, filePath);
   } catch (err) {
     logger.error("Failed to write settings.json", { error: String(err) });
+    // Never leave a stray temp file behind to be mistaken for real state.
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {
+      // Best effort — the write already failed and was logged above.
+    }
   }
 }

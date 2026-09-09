@@ -28,8 +28,12 @@ import { showTimerWindow, closeTimerWindow } from "./timerWindow";
 
 const BRIEFING_UPDATED_CHANNEL = "nimbus:briefing-updated";
 
+/** How long resizing must stay quiet before window bounds are written to disk. */
+const RESIZE_SAVE_DEBOUNCE_MS = 500;
+
 let mainWindow: BrowserWindow | null = null;
 let settings: NimbusSettings;
+let resizeSaveTimer: NodeJS.Timeout | null = null;
 let isQuitting = false;
 const briefingService = new BriefingService(contextService);
 let spotifyAuth: SpotifyAuthManager;
@@ -61,10 +65,20 @@ function createMainWindow(show: boolean): void {
     logger.debug("Renderer console", { level, message, line, sourceId });
   });
 
+  // Debounced rather than saved on every resize event (which fires
+  // continuously while a drag is in progress) — and actually saved, not
+  // just held in memory. Relying on `before-quit` to persist bounds
+  // means an OS-forced kill, a crash, or a power loss loses them, which
+  // reads as "NIMBUS forgets my window size at random."
   mainWindow.on("resize", () => {
     if (!mainWindow) return;
     const [width, height] = mainWindow.getSize();
     settings.windowsClient.windowBounds = { width, height };
+    if (resizeSaveTimer) clearTimeout(resizeSaveTimer);
+    resizeSaveTimer = setTimeout(() => {
+      resizeSaveTimer = null;
+      saveSettings(settings);
+    }, RESIZE_SAVE_DEBOUNCE_MS);
   });
 
   // Closing the window is treated as "hide to tray", not quitting — that's
@@ -753,6 +767,10 @@ export function startApp(): void {
 
   app.on("before-quit", () => {
     isQuitting = true;
+    if (resizeSaveTimer) {
+      clearTimeout(resizeSaveTimer);
+      resizeSaveTimer = null;
+    }
     if (settings) {
       saveSettings(settings);
     }

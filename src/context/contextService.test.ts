@@ -132,3 +132,65 @@ test("listProviderIds reflects registered providers", () => {
   service.register(okProvider("b", {}));
   assert.deepEqual(service.listProviderIds().sort(), ["a", "b"]);
 });
+
+/** Never settles — stands in for a provider hung on a stalled socket or an await that never returns. */
+function hangingProvider(id: string, hangIn: "isAvailable" | "getContext"): ContextProvider {
+  const forever = new Promise<never>(() => {});
+  return {
+    id,
+    displayName: id,
+    isAvailable: () => (hangIn === "isAvailable" ? forever : true),
+    getContext: () => (hangIn === "getContext" ? forever : {}),
+  };
+}
+
+test("a provider hanging in getContext degrades to an error result instead of hanging the snapshot", async () => {
+  const service = new ContextService(20);
+  service.register(hangingProvider("stalled", "getContext"));
+
+  const snapshot = await service.getSnapshot();
+
+  assert.equal(snapshot.providers.stalled.status, "error");
+  assert.match(String(snapshot.providers.stalled.error), /timed out/);
+});
+
+test("a provider hanging in isAvailable is treated as unavailable", async () => {
+  const service = new ContextService(20);
+  service.register(hangingProvider("stalled", "isAvailable"));
+
+  const snapshot = await service.getSnapshot();
+
+  assert.equal(snapshot.providers.stalled.status, "unavailable");
+});
+
+test("one hanging provider does not delay or degrade the others", async () => {
+  const service = new ContextService(20);
+  service.register(hangingProvider("stalled", "getContext"));
+  service.register(okProvider("greeting", { hello: "world" }));
+
+  const snapshot = await service.getSnapshot();
+
+  assert.equal(snapshot.providers.stalled.status, "error");
+  assert.equal(snapshot.providers.greeting.status, "ok");
+  assert.deepEqual(snapshot.providers.greeting.data, { hello: "world" });
+});
+
+test("a provider that hangs after a good result falls back to the stale last-known-good value", async () => {
+  const service = new ContextService(20);
+  let hang = false;
+  const forever = new Promise<never>(() => {});
+  service.register({
+    id: "flaky",
+    displayName: "Flaky",
+    isAvailable: () => true,
+    getContext: () => (hang ? forever : { reading: 1 }),
+  });
+
+  await service.getSnapshot();
+  hang = true;
+  const snapshot = await service.getSnapshot();
+
+  assert.equal(snapshot.providers.flaky.status, "error");
+  assert.equal(snapshot.providers.flaky.stale, true);
+  assert.deepEqual(snapshot.providers.flaky.data, { reading: 1 });
+});

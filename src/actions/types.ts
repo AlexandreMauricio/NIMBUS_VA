@@ -23,6 +23,7 @@ export type ActionErrorCategory =
   | "no_active_device" // service has no active player/target to act on
   | "rate_limited"
   | "network"
+  | "timeout" // provider never settled within ActionService's budget
   | "unknown";
 
 export interface ActionError {

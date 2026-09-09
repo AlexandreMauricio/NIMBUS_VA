@@ -3,6 +3,7 @@ import { shell } from "electron";
 import { logger } from "../../logging/logger";
 import { SpotifyTokenStore, StoredSpotifyTokens } from "./spotifyTokenStore";
 import { generateCodeVerifier, codeChallengeFromVerifier, generateState, buildAuthorizeUrl } from "./spotifyPkce";
+import { httpTimeoutSignal } from "../../common/timeout";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 
@@ -138,6 +139,9 @@ export class SpotifyAuthManager {
     this.refreshPromise = (async () => {
       try {
         const response = await this.fetchFn(TOKEN_URL, {
+          // See httpTimeoutSignal — a stalled token exchange must not
+          // hang the auth flow (or the refresh every API call awaits).
+          signal: httpTimeoutSignal(),
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: clientId }),
@@ -212,6 +216,9 @@ export class SpotifyAuthManager {
 
   private async exchangeCode(code: string, verifier: string, redirectUri: string, clientId: string): Promise<void> {
     const response = await this.fetchFn(TOKEN_URL, {
+      // See httpTimeoutSignal — a stalled token exchange must not hang
+      // the auth flow (or the refresh that every API call awaits).
+      signal: httpTimeoutSignal(),
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
