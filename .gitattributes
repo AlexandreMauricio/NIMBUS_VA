@@ -1,0 +1,8 @@
+# Normalize to LF in the repository; Git checks out CRLF on Windows where
+# the platform expects it. Without this, every commit from a Windows
+# working copy warns about line-ending conversion.
+* text=auto eol=lf
+
+# Binary — never touch these.
+*.png binary
+*.ico binary
