@@ -336,7 +336,7 @@ function formatMinutesUntil(minutes: number): string {
 function buildTasksItem(tasks: TaskContext | null, now: Date): BriefingItem | null {
   if (!tasks) return null;
 
-  const { overdueCount, dueTodayCount, overdueTasks, dueTodayTasks } = tasks;
+  const { overdueCount, dueTodayCount, dueTodayTasks } = tasks;
 
   // A task whose deadline is about to hit is the single most useful thing
   // to say, regardless of how many other tasks exist — same reasoning as

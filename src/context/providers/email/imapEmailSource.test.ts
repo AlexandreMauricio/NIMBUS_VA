@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "stream";
-import { ImapEmailSource, RawEmailMessage } from "./imapEmailSource";
+import { ImapEmailSource } from "./imapEmailSource";
 
 const CONFIG = { host: "imap.example.com", port: 993, secure: true, username: "me@example.com", password: "secret" };
 

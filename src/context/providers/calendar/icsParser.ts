@@ -42,7 +42,7 @@ export function parseIcs(raw: string, defaultTimeZone: string): ParsedIcsCalenda
   const lines = unfoldLines(raw);
 
   let calendarName: string | null = null;
-  let events: ParsedIcsEvent[] = [];
+  const events: ParsedIcsEvent[] = [];
   let skippedCount = 0;
 
   let inEvent = false;
