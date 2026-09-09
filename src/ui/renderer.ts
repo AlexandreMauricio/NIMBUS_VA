@@ -1,0 +1,2639 @@
+/**
+ * Renderer script for the placeholder UI. Talks to the main process
+ * only through the `window.nimbus` API exposed by the preload script —
+ * it has no Node/Electron access of its own.
+ */
+interface AppInfo {
+  name: string;
+  fullName: string;
+  version: string;
+  environment: string;
+}
+
+interface StartupSettings {
+  launchWithWindows: boolean;
+  startMinimized: boolean;
+}
+
+interface AssistantEvent {
+  id: string;
+  type: "message" | "notification" | "briefing" | "actionRequest" | "suggestion";
+  createdAt: string;
+  source: string;
+  [key: string]: unknown;
+}
+
+type ContextStatus = "ok" | "error" | "unavailable";
+
+interface ContextProviderResult {
+  providerId: string;
+  displayName: string;
+  status: ContextStatus;
+  data: Record<string, unknown> | null;
+  error?: string;
+  timestamp: string;
+  stale: boolean;
+}
+
+interface ContextSnapshot {
+  generatedAt: string;
+  providers: Record<string, ContextProviderResult>;
+}
+
+interface ManualLocation {
+  latitude: number;
+  longitude: number;
+  label: string;
+}
+
+interface WeatherSettings {
+  locationMode: "auto" | "manual";
+  manualLocation: ManualLocation | null;
+}
+
+interface CalendarFeed {
+  id: string;
+  label: string;
+  address: string;
+  enabled: boolean;
+}
+
+interface CalendarSettings {
+  enabled: boolean;
+  feeds: CalendarFeed[];
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  isAllDay: boolean;
+  location: string | null;
+  calendarName: string | null;
+}
+
+interface CalendarContext {
+  retrievedAt: string;
+  timezone: string;
+  todayEvents: CalendarEvent[];
+  laterEvents: CalendarEvent[];
+  nextEvent: CalendarEvent | null;
+}
+
+interface EmailAccount {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  sinceDays: number;
+  enabled: boolean;
+  /** Never a real password — just whether one is already saved. */
+  hasPassword: boolean;
+}
+
+interface EmailSettings {
+  enabled: boolean;
+  defaultSinceDays: number;
+  accounts: EmailAccount[];
+}
+
+interface TaskAccount {
+  id: string;
+  label: string;
+  provider: "todoist";
+  enabled: boolean;
+  /** Never a real API token — just whether one is already saved. */
+  hasApiToken: boolean;
+}
+
+interface TaskSettings {
+  enabled: boolean;
+  accounts: TaskAccount[];
+}
+
+type TaskPriority = "none" | "low" | "medium" | "high";
+type TaskCategory = "overdue" | "dueToday" | "upcoming" | "noDeadline";
+
+/** The renderer-facing shape of a task — mirrors TaskItem in src/context/providers/tasks/types.ts. */
+interface TaskItem {
+  id: string;
+  title: string;
+  description: string | null;
+  dueAt: string | null;
+  dueIsDateOnly: boolean;
+  completed: boolean;
+  completedAt: string | null;
+  priority: TaskPriority;
+  reminderAt: string | null;
+  source: string;
+  listName: string | null;
+  createdAt: string | null;
+  category: TaskCategory;
+}
+
+interface TaskAccountInfo {
+  id: string;
+  label: string;
+  provider: string;
+}
+
+interface TodoistProjectSummary {
+  id: string;
+  name: string;
+}
+
+interface TaskWriteRequest {
+  title: string;
+  description?: string | null;
+  dueDate?: string | null;
+  priority?: TaskPriority;
+  projectId?: string | null;
+}
+
+interface SpotifySettings {
+  enabled: boolean;
+  preferredDeviceId: string | null;
+  connected: boolean;
+}
+
+interface ActionParameterSchema {
+  name: string;
+  type: "string" | "number" | "boolean";
+  required: boolean;
+  description?: string;
+}
+
+interface ActionDefinition {
+  id: string;
+  name: string;
+  description: string;
+  parameters: ActionParameterSchema[];
+  readOnly: boolean;
+  changesExternalState: boolean;
+  requiresConfirmation: boolean;
+  affectsService: string;
+}
+
+interface ActionError {
+  category: string;
+  message: string;
+}
+
+interface ActionResult<T = unknown> {
+  actionId: string;
+  status: "success" | "failure";
+  data?: T;
+  message?: string;
+  error?: ActionError;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+}
+
+interface SpotifyTrackInfo {
+  id: string;
+  name: string;
+  artists: string[];
+  album: string | null;
+  durationMs: number;
+  imageUrl: string | null;
+}
+
+interface SpotifyDeviceInfo {
+  id: string | null;
+  name: string | null;
+  type: string | null;
+  isActive: boolean;
+  supportsVolume: boolean;
+}
+
+interface SpotifyPlaybackContext {
+  retrievedAt: string;
+  isAuthenticated: boolean;
+  playbackState: "playing" | "paused" | "stopped";
+  track: SpotifyTrackInfo | null;
+  progressMs: number | null;
+  volumePercent: number | null;
+  device: SpotifyDeviceInfo | null;
+  context: { type: string; uri: string } | null;
+}
+
+interface SpotifyPlaylistSummary {
+  id: string;
+  name: string;
+  uri: string;
+  ownerName: string | null;
+  imageUrl: string | null;
+  trackCount: number | null;
+}
+
+// --- Routines ---
+
+/** The renderer-facing shape of DesktopActivityMonitor's last poll — see src/main/activity/activitySnapshot.ts's RawActivitySnapshot. Surfaced read-only in the Routines tab so a trigger pattern can be checked against what NIMBUS actually detects instead of guessed at. */
+interface RawActivitySnapshot {
+  processNames: string[];
+  browserWindows: Array<{ executable: string; title: string }>;
+  explorerFolders: string[];
+}
+
+type StringMatchMode = "exact" | "contains";
+
+interface ApplicationTriggerConfig {
+  type: "applicationOpened";
+  application: string;
+  matchMode: StringMatchMode;
+}
+interface WebsiteTriggerConfig {
+  type: "websiteOpened";
+  matchField: "domain" | "url" | "windowTitle";
+  pattern: string;
+  matchMode: StringMatchMode;
+}
+interface FolderTriggerConfig {
+  type: "folderOpened";
+  path: string;
+  matchMode: StringMatchMode;
+}
+type TriggerConfig = ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig;
+
+interface RoutineCondition {
+  type: "timeOfDay" | "weekdaysOnly" | "spotifyNotAlreadyPlaying" | "actionsNotAlreadyActive";
+  startHour?: number;
+  endHour?: number;
+}
+
+interface RoutineActionStep {
+  actionId: string;
+  params: Record<string, unknown>;
+}
+
+interface RoutineSuggestionConfig {
+  title: string;
+  message: string;
+  primaryLabel: string;
+  secondaryLabel: string;
+}
+
+interface Routine {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: TriggerConfig;
+  conditions: RoutineCondition[];
+  suggestion: RoutineSuggestionConfig;
+  actions: RoutineActionStep[];
+  cooldownMinutes: number;
+  autoRun?: boolean;
+}
+
+interface RoutineSettings {
+  enabled: boolean;
+  routines: Routine[];
+}
+
+type BriefingCategory =
+  | "greeting"
+  | "dateTime"
+  | "weather"
+  | "calendar"
+  | "email"
+  | "tasks"
+  | "meals"
+  | "other";
+
+interface BriefingAction {
+  label: string;
+  actionId: string;
+}
+
+interface BriefingItem {
+  id: string;
+  category: BriefingCategory;
+  message: string;
+  importance: number;
+  relevance: number;
+  timestamp: string;
+  action?: BriefingAction;
+}
+
+interface Briefing {
+  id: string;
+  generatedAt: string;
+  items: BriefingItem[];
+}
+
+interface NimbusApi {
+  getAppInfo: () => Promise<AppInfo>;
+  getSettings: () => Promise<StartupSettings>;
+  updateSettings: (partial: Partial<StartupSettings>) => Promise<StartupSettings>;
+  hideWindow: () => Promise<void>;
+  getContext: () => Promise<ContextSnapshot>;
+  getWeatherSettings: () => Promise<WeatherSettings>;
+  updateWeatherSettings: (partial: Partial<WeatherSettings>) => Promise<WeatherSettings>;
+  getCalendarSettings: () => Promise<CalendarSettings>;
+  updateCalendarSettings: (partial: Partial<CalendarSettings>) => Promise<CalendarSettings>;
+  getEmailSettings: () => Promise<EmailSettings>;
+  updateEmailSettings: (partial: {
+    enabled?: boolean;
+    defaultSinceDays?: number;
+    accounts?: Array<Omit<EmailAccount, "hasPassword"> & { newPassword?: string }>;
+  }) => Promise<EmailSettings>;
+  getTaskSettings: () => Promise<TaskSettings>;
+  updateTaskSettings: (partial: {
+    enabled?: boolean;
+    accounts?: Array<Omit<TaskAccount, "hasApiToken"> & { newApiToken?: string }>;
+  }) => Promise<TaskSettings>;
+  listTasks: () => Promise<{ tasks: TaskItem[]; accounts: TaskAccountInfo[] }>;
+  listTaskProjects: () => Promise<TodoistProjectSummary[]>;
+  createTask: (request: TaskWriteRequest) => Promise<TaskItem>;
+  updateTask: (taskId: string, request: Partial<TaskWriteRequest>) => Promise<TaskItem>;
+  completeTask: (taskId: string) => Promise<void>;
+  reopenTask: (taskId: string) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
+  getSpotifySettings: () => Promise<SpotifySettings>;
+  updateSpotifySettings: (partial: { enabled?: boolean; preferredDeviceId?: string | null }) => Promise<SpotifySettings>;
+  connectSpotify: () => Promise<{ connected: boolean; error: string | null }>;
+  disconnectSpotify: () => Promise<{ connected: boolean }>;
+  listActions: () => Promise<ActionDefinition[]>;
+  executeAction: (actionId: string, params?: Record<string, unknown>) => Promise<ActionResult>;
+  listSpotifyPlaylists: () => Promise<SpotifyPlaylistSummary[]>;
+  getRoutineSettings: () => Promise<RoutineSettings>;
+  updateRoutineSettings: (partial: { enabled?: boolean; routines?: Routine[] }) => Promise<RoutineSettings>;
+  testRoutine: (routineId: string) => Promise<ActionResult[]>;
+  getActivitySnapshot: () => Promise<RawActivitySnapshot | null>;
+  getActiveSuggestions: () => Promise<AssistantEvent[]>;
+  acceptSuggestion: (suggestionId: string) => Promise<ActionResult[]>;
+  dismissSuggestion: (suggestionId: string) => Promise<void>;
+  onAssistantEvent: (callback: (event: AssistantEvent) => void) => () => void;
+  onNowPlayingChanged: (callback: () => void) => () => void;
+  getBriefing: () => Promise<Briefing | null>;
+  regenerateBriefing: () => Promise<Briefing | null>;
+  onBriefingUpdated: (callback: () => void) => () => void;
+}
+
+interface Window {
+  nimbus: NimbusApi;
+}
+
+function initTabs(): void {
+  const tabs = document.querySelectorAll<HTMLButtonElement>(".side-link");
+  const panels = document.querySelectorAll<HTMLElement>(".panel");
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabs.forEach((t) => t.classList.remove("active"));
+      panels.forEach((p) => p.classList.remove("active"));
+
+      tab.classList.add("active");
+      document.getElementById(`tab-${tab.dataset.tab}`)?.classList.add("active");
+      // Catches up the now-playing card the moment Home becomes visible
+      // again, rather than waiting for its next polling tick — covers
+      // e.g. testing a Spotify routine from Settings, then switching
+      // over to check Home.
+      if (tab.dataset.tab === "home") {
+        window.dispatchEvent(new Event(NOW_PLAYING_REFRESH_EVENT));
+      } else if (tab.dataset.tab === "tasks") {
+        // Catches up the Tasks tab the moment it becomes visible — e.g.
+        // completing/creating a task, switching away, then back.
+        window.dispatchEvent(new Event(TASK_REFRESH_EVENT));
+      }
+    });
+  });
+}
+
+async function initAppInfo(): Promise<void> {
+  try {
+    const info = await window.nimbus.getAppInfo();
+    document.getElementById("fullName")!.textContent = info.fullName;
+    document.getElementById("version")!.textContent = info.version;
+    document.getElementById("environment")!.textContent = info.environment;
+  } catch (err) {
+    document.getElementById("statusText")!.textContent = "Error";
+    console.error("Failed to load app info", err);
+  }
+}
+
+async function initSettings(): Promise<void> {
+  const launchCheckbox = document.getElementById("launchWithWindows") as HTMLInputElement;
+  const minimizedCheckbox = document.getElementById("startMinimized") as HTMLInputElement;
+
+  try {
+    const settings = await window.nimbus.getSettings();
+    launchCheckbox.checked = settings.launchWithWindows;
+    minimizedCheckbox.checked = settings.startMinimized;
+  } catch (err) {
+    console.error("Failed to load settings", err);
+  }
+
+  launchCheckbox.addEventListener("change", () => {
+    window.nimbus.updateSettings({ launchWithWindows: launchCheckbox.checked });
+  });
+
+  minimizedCheckbox.addEventListener("change", () => {
+    window.nimbus.updateSettings({ startMinimized: minimizedCheckbox.checked });
+  });
+}
+
+async function initWeatherSettings(): Promise<void> {
+  const modeSelect = document.getElementById("locationModeSelect") as HTMLSelectElement;
+  const manualFields = document.getElementById("manualLocationFields") as HTMLElement;
+  const labelInput = document.getElementById("manualLocationLabel") as HTMLInputElement;
+  const latInput = document.getElementById("manualLocationLat") as HTMLInputElement;
+  const lonInput = document.getElementById("manualLocationLon") as HTMLInputElement;
+  const saveBtn = document.getElementById("saveManualLocationBtn") as HTMLButtonElement;
+
+  function syncManualFieldsVisibility(): void {
+    manualFields.hidden = modeSelect.value !== "manual";
+  }
+
+  try {
+    const weatherSettings = await window.nimbus.getWeatherSettings();
+    modeSelect.value = weatherSettings.locationMode;
+    if (weatherSettings.manualLocation) {
+      labelInput.value = weatherSettings.manualLocation.label;
+      latInput.value = String(weatherSettings.manualLocation.latitude);
+      lonInput.value = String(weatherSettings.manualLocation.longitude);
+    }
+  } catch (err) {
+    console.error("Failed to load weather settings", err);
+  }
+
+  syncManualFieldsVisibility();
+
+  modeSelect.addEventListener("change", () => {
+    syncManualFieldsVisibility();
+    window.nimbus.updateWeatherSettings({ locationMode: modeSelect.value as "auto" | "manual" });
+  });
+
+  saveBtn.addEventListener("click", () => {
+    const latitude = Number(latInput.value);
+    const longitude = Number(lonInput.value);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      latInput.focus();
+      return;
+    }
+    window.nimbus.updateWeatherSettings({
+      manualLocation: {
+        latitude,
+        longitude,
+        label: labelInput.value.trim() || `${latitude}, ${longitude}`,
+      },
+    });
+  });
+}
+
+/** Shortens a feed address for display — it's a credential, not something to show in full in a settings list. */
+function maskAddress(address: string): string {
+  if (address.length <= 40) return address;
+  return `${address.slice(0, 24)}…${address.slice(-10)}`;
+}
+
+async function initCalendarSettings(): Promise<void> {
+  const enabledCheckbox = document.getElementById("calendarEnabled") as HTMLInputElement;
+  const feedList = document.getElementById("calendarFeedList") as HTMLElement;
+  const labelInput = document.getElementById("calendarFeedLabel") as HTMLInputElement;
+  const addressInput = document.getElementById("calendarFeedAddress") as HTMLInputElement;
+  const addBtn = document.getElementById("addCalendarFeedBtn") as HTMLButtonElement;
+
+  function renderFeeds(settings: CalendarSettings): void {
+    feedList.innerHTML = "";
+    for (const feed of settings.feeds) {
+      const row = document.createElement("div");
+      row.className = "calendar-feed-row";
+
+      const info = document.createElement("div");
+      const labelEl = document.createElement("span");
+      labelEl.className = "calendar-feed-row-label";
+      labelEl.textContent = feed.label;
+      const addressEl = document.createElement("span");
+      addressEl.className = "calendar-feed-row-address";
+      addressEl.textContent = maskAddress(feed.address);
+      info.appendChild(labelEl);
+      info.appendChild(addressEl);
+      row.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "calendar-feed-row-actions";
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = feed.enabled;
+      toggle.title = "Enabled";
+      toggle.addEventListener("change", async () => {
+        const updated = settings.feeds.map((f) =>
+          f.id === feed.id ? { ...f, enabled: toggle.checked } : f
+        );
+        const saved = await window.nimbus.updateCalendarSettings({ feeds: updated });
+        renderFeeds(saved);
+      });
+      actions.appendChild(toggle);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "calendar-feed-remove";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", async () => {
+        const updated = settings.feeds.filter((f) => f.id !== feed.id);
+        const saved = await window.nimbus.updateCalendarSettings({ feeds: updated });
+        renderFeeds(saved);
+      });
+      actions.appendChild(removeBtn);
+
+      row.appendChild(actions);
+      feedList.appendChild(row);
+    }
+  }
+
+  try {
+    const settings = await window.nimbus.getCalendarSettings();
+    enabledCheckbox.checked = settings.enabled;
+    renderFeeds(settings);
+  } catch (err) {
+    console.error("Failed to load calendar settings", err);
+  }
+
+  enabledCheckbox.addEventListener("change", () => {
+    window.nimbus.updateCalendarSettings({ enabled: enabledCheckbox.checked });
+  });
+
+  addBtn.addEventListener("click", async () => {
+    const label = labelInput.value.trim();
+    const address = addressInput.value.trim();
+    if (!label || !address) {
+      (label ? addressInput : labelInput).focus();
+      return;
+    }
+
+    const current = await window.nimbus.getCalendarSettings();
+    const newFeed: CalendarFeed = {
+      id: `feed-${Date.now()}`,
+      label,
+      address,
+      enabled: true,
+    };
+    const saved = await window.nimbus.updateCalendarSettings({
+      feeds: [...current.feeds, newFeed],
+    });
+    renderFeeds(saved);
+    labelInput.value = "";
+    addressInput.value = "";
+  });
+}
+
+async function initEmailSettings(): Promise<void> {
+  const enabledCheckbox = document.getElementById("emailEnabled") as HTMLInputElement;
+  const accountList = document.getElementById("emailAccountList") as HTMLElement;
+  const labelInput = document.getElementById("emailAccountLabel") as HTMLInputElement;
+  const hostInput = document.getElementById("emailAccountHost") as HTMLInputElement;
+  const portInput = document.getElementById("emailAccountPort") as HTMLInputElement;
+  const secureInput = document.getElementById("emailAccountSecure") as HTMLInputElement;
+  const usernameInput = document.getElementById("emailAccountUsername") as HTMLInputElement;
+  const passwordInput = document.getElementById("emailAccountPassword") as HTMLInputElement;
+  const addBtn = document.getElementById("addEmailAccountBtn") as HTMLButtonElement;
+
+  // The password never comes back from getEmailSettings() — every update
+  // must resubmit every account so we don't accidentally drop one, and
+  // must never include a password unless the user is actually changing it.
+  function toUpdatePayload(account: EmailAccount): Omit<EmailAccount, "hasPassword"> {
+    const { hasPassword: _hasPassword, ...rest } = account;
+    return rest;
+  }
+
+  function renderAccounts(settings: EmailSettings): void {
+    accountList.innerHTML = "";
+    for (const account of settings.accounts) {
+      const row = document.createElement("div");
+      row.className = "calendar-feed-row";
+
+      const info = document.createElement("div");
+      const labelEl = document.createElement("span");
+      labelEl.className = "calendar-feed-row-label";
+      labelEl.textContent = account.label;
+      const metaEl = document.createElement("span");
+      metaEl.className = "calendar-feed-row-address";
+      metaEl.textContent = `${account.username} · ${account.host}:${account.port}${account.hasPassword ? "" : " · no password saved"}`;
+      info.appendChild(labelEl);
+      info.appendChild(metaEl);
+      row.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "calendar-feed-row-actions";
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = account.enabled;
+      toggle.title = "Enabled";
+      toggle.addEventListener("change", async () => {
+        const updated = settings.accounts.map((a) =>
+          a.id === account.id ? toUpdatePayload({ ...a, enabled: toggle.checked }) : toUpdatePayload(a)
+        );
+        const saved = await window.nimbus.updateEmailSettings({ accounts: updated });
+        renderAccounts(saved);
+      });
+      actions.appendChild(toggle);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "calendar-feed-remove";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", async () => {
+        const updated = settings.accounts.filter((a) => a.id !== account.id).map(toUpdatePayload);
+        const saved = await window.nimbus.updateEmailSettings({ accounts: updated });
+        renderAccounts(saved);
+      });
+      actions.appendChild(removeBtn);
+
+      row.appendChild(actions);
+      accountList.appendChild(row);
+    }
+  }
+
+  try {
+    const settings = await window.nimbus.getEmailSettings();
+    enabledCheckbox.checked = settings.enabled;
+    renderAccounts(settings);
+  } catch (err) {
+    console.error("Failed to load email settings", err);
+  }
+
+  enabledCheckbox.addEventListener("change", () => {
+    window.nimbus.updateEmailSettings({ enabled: enabledCheckbox.checked });
+  });
+
+  addBtn.addEventListener("click", async () => {
+    const label = labelInput.value.trim();
+    const host = hostInput.value.trim();
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value; // not trimmed — a password could legitimately have leading/trailing spaces
+    const port = Number(portInput.value) || 993;
+
+    if (!label || !host || !username || !password) {
+      (label ? (host ? (username ? passwordInput : usernameInput) : hostInput) : labelInput).focus();
+      return;
+    }
+
+    const current = await window.nimbus.getEmailSettings();
+    const newAccount = {
+      id: `account-${Date.now()}`,
+      label,
+      host,
+      port,
+      secure: secureInput.checked,
+      username,
+      sinceDays: 0,
+      enabled: true,
+      newPassword: password,
+    };
+    const saved = await window.nimbus.updateEmailSettings({
+      accounts: [...current.accounts.map(toUpdatePayload), newAccount],
+    });
+    renderAccounts(saved);
+    labelInput.value = "";
+    hostInput.value = "";
+    usernameInput.value = "";
+    passwordInput.value = "";
+    portInput.value = "993";
+    secureInput.checked = true;
+  });
+}
+
+async function initTaskSettings(): Promise<void> {
+  const enabledCheckbox = document.getElementById("tasksEnabled") as HTMLInputElement;
+  const accountList = document.getElementById("taskAccountList") as HTMLElement;
+  const labelInput = document.getElementById("taskAccountLabel") as HTMLInputElement;
+  const tokenInput = document.getElementById("taskAccountToken") as HTMLInputElement;
+  const addBtn = document.getElementById("addTaskAccountBtn") as HTMLButtonElement;
+
+  // The API token never comes back from getTaskSettings() — every update
+  // must resubmit every account so we don't accidentally drop one, and
+  // must never include a token unless the user is actually changing it.
+  function toUpdatePayload(account: TaskAccount): Omit<TaskAccount, "hasApiToken"> {
+    const { hasApiToken: _hasApiToken, ...rest } = account;
+    return rest;
+  }
+
+  function renderAccounts(settings: TaskSettings): void {
+    accountList.innerHTML = "";
+    for (const account of settings.accounts) {
+      const row = document.createElement("div");
+      row.className = "calendar-feed-row";
+
+      const info = document.createElement("div");
+      const labelEl = document.createElement("span");
+      labelEl.className = "calendar-feed-row-label";
+      labelEl.textContent = account.label;
+      const metaEl = document.createElement("span");
+      metaEl.className = "calendar-feed-row-address";
+      metaEl.textContent = `Todoist${account.hasApiToken ? "" : " · no API token saved"}`;
+      info.appendChild(labelEl);
+      info.appendChild(metaEl);
+      row.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "calendar-feed-row-actions";
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = account.enabled;
+      toggle.title = "Enabled";
+      toggle.addEventListener("change", async () => {
+        const updated = settings.accounts.map((a) =>
+          a.id === account.id ? toUpdatePayload({ ...a, enabled: toggle.checked }) : toUpdatePayload(a)
+        );
+        const saved = await window.nimbus.updateTaskSettings({ accounts: updated });
+        renderAccounts(saved);
+      });
+      actions.appendChild(toggle);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "calendar-feed-remove";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", async () => {
+        const updated = settings.accounts.filter((a) => a.id !== account.id).map(toUpdatePayload);
+        const saved = await window.nimbus.updateTaskSettings({ accounts: updated });
+        renderAccounts(saved);
+      });
+      actions.appendChild(removeBtn);
+
+      row.appendChild(actions);
+      accountList.appendChild(row);
+    }
+  }
+
+  try {
+    const settings = await window.nimbus.getTaskSettings();
+    enabledCheckbox.checked = settings.enabled;
+    renderAccounts(settings);
+  } catch (err) {
+    console.error("Failed to load task settings", err);
+  }
+
+  enabledCheckbox.addEventListener("change", () => {
+    window.nimbus.updateTaskSettings({ enabled: enabledCheckbox.checked });
+  });
+
+  addBtn.addEventListener("click", async () => {
+    const label = labelInput.value.trim();
+    const apiToken = tokenInput.value.trim();
+
+    if (!label || !apiToken) {
+      (label ? tokenInput : labelInput).focus();
+      return;
+    }
+
+    const current = await window.nimbus.getTaskSettings();
+    const newAccount = {
+      id: `task-account-${Date.now()}`,
+      label,
+      provider: "todoist" as const,
+      enabled: true,
+      newApiToken: apiToken,
+    };
+    const saved = await window.nimbus.updateTaskSettings({
+      accounts: [...current.accounts.map(toUpdatePayload), newAccount],
+    });
+    renderAccounts(saved);
+    labelInput.value = "";
+    tokenInput.value = "";
+  });
+}
+
+async function initSpotifySettings(): Promise<void> {
+  const enabledCheckbox = document.getElementById("spotifyEnabled") as HTMLInputElement;
+  const statusEl = document.getElementById("spotifyStatus") as HTMLElement;
+  const connectBtn = document.getElementById("spotifyConnectBtn") as HTMLButtonElement;
+  const disconnectBtn = document.getElementById("spotifyDisconnectBtn") as HTMLButtonElement;
+
+  function renderConnectionState(settings: SpotifySettings): void {
+    statusEl.textContent = settings.connected ? "Connected" : "Not connected";
+    connectBtn.hidden = settings.connected;
+    disconnectBtn.hidden = !settings.connected;
+  }
+
+  try {
+    const settings = await window.nimbus.getSpotifySettings();
+    enabledCheckbox.checked = settings.enabled;
+    renderConnectionState(settings);
+  } catch (err) {
+    console.error("Failed to load Spotify settings", err);
+  }
+
+  enabledCheckbox.addEventListener("change", async () => {
+    const settings = await window.nimbus.updateSpotifySettings({ enabled: enabledCheckbox.checked });
+    renderConnectionState(settings);
+  });
+
+  connectBtn.addEventListener("click", async () => {
+    connectBtn.disabled = true;
+    statusEl.textContent = "Connecting… complete sign-in in your browser";
+    try {
+      const result = await window.nimbus.connectSpotify();
+      const settings = await window.nimbus.getSpotifySettings();
+      renderConnectionState(settings);
+      if (result.error) statusEl.textContent = result.error;
+    } finally {
+      connectBtn.disabled = false;
+    }
+  });
+
+  disconnectBtn.addEventListener("click", async () => {
+    await window.nimbus.disconnectSpotify();
+    const settings = await window.nimbus.getSpotifySettings();
+    renderConnectionState(settings);
+  });
+}
+
+/** mm:ss formatting for track progress/duration. */
+function formatMs(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+const NOW_PLAYING_POLL_MS = 5000;
+/**
+ * A same-window custom event nudging the now-playing card to refresh
+ * immediately instead of waiting for its next poll — dispatched locally
+ * after this window's own "Test routine" button runs a Spotify action,
+ * and also whenever the main process pushes `onNowPlayingChanged` (see
+ * below), which is what covers a Spotify action accepted from the
+ * separate suggestion popup window.
+ */
+const NOW_PLAYING_REFRESH_EVENT = "nimbus:refresh-now-playing";
+
+// A Spotify action can now be accepted from the suggestion popup — a
+// completely separate BrowserWindow with no direct link to this one's
+// DOM. Without this, the Home now-playing card only learned about it on
+// its own next 5-second poll. See `onActionExecuted` in lifecycle.ts,
+// which pushes this to every open window right after a Spotify action
+// runs, regardless of which window (or none) triggered it.
+window.nimbus.onNowPlayingChanged(() => window.dispatchEvent(new Event(NOW_PLAYING_REFRESH_EVENT)));
+
+/**
+ * The Home tab's compact "currently playing" area — makes Spotify feel
+ * like part of the assistant rather than a separate app, without turning
+ * Home into a music player. Reads the existing SpotifyContextProvider
+ * data (already in every getContext() snapshot) and drives playback
+ * through the existing generic executeAction — no Spotify-specific IPC
+ * of its own beyond what Settings already added.
+ */
+function initNowPlayingCard(): void {
+  const card = document.getElementById("nowPlayingCard") as HTMLElement;
+  const clickzone = document.getElementById("nowPlayingClickzone") as HTMLButtonElement;
+  const artEl = document.getElementById("nowPlayingArt") as HTMLElement;
+  const kickerEl = document.getElementById("nowPlayingKicker") as HTMLElement;
+  const titleEl = document.getElementById("nowPlayingTitle") as HTMLElement;
+  const artistEl = document.getElementById("nowPlayingArtist") as HTMLElement;
+  const elapsedEl = document.getElementById("nowPlayingElapsed") as HTMLElement;
+  const durationEl = document.getElementById("nowPlayingDuration") as HTMLElement;
+  const progressFillEl = document.getElementById("nowPlayingProgressFill") as HTMLElement;
+  const playPauseBtn = document.getElementById("nowPlayingPlayPauseBtn") as HTMLButtonElement;
+  // Inline SVG (matching the sidebar nav icons) instead of a Unicode
+  // glyph — Windows' Segoe UI Emoji renders ▶/⏸ in full color regardless
+  // of the text-presentation variation selector, which clashed badly
+  // against this button's own accent-colored background. SVG with
+  // fill="currentColor" always follows the button's actual text color.
+  const PLAY_ICON_SVG = `<svg width="12" height="13" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 3,15 15,8"/></svg>`;
+  const PAUSE_ICON_SVG = `<svg width="12" height="13" viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="1" width="4" height="14"/><rect x="10" y="1" width="4" height="14"/></svg>`;
+  function setPlayPauseIcon(isPlaying: boolean): void {
+    playPauseBtn.innerHTML = isPlaying ? PAUSE_ICON_SVG : PLAY_ICON_SVG;
+  }
+  const prevBtn = document.getElementById("nowPlayingPrevBtn") as HTMLButtonElement;
+  const nextBtn = document.getElementById("nowPlayingNextBtn") as HTMLButtonElement;
+  const volumeSlider = document.getElementById("nowPlayingVolumeSlider") as HTMLInputElement;
+  const errorEl = document.getElementById("nowPlayingError") as HTMLElement;
+  const playlistDropdown = document.getElementById("nowPlayingPlaylistDropdown") as HTMLElement;
+
+  let knownPlaylists: SpotifyPlaylistSummary[] = [];
+  let playlistsLoaded = false;
+  let errorTimer: ReturnType<typeof setTimeout> | null = null;
+  let volumeSliderBeingDragged = false;
+  let lastPlaybackSignature = "";
+  let reconcilePollToken = 0;
+
+  function showError(message: string): void {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+    if (errorTimer) clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => {
+      errorEl.hidden = true;
+    }, 4000);
+  }
+
+  function closePlaylistDropdown(): void {
+    playlistDropdown.hidden = true;
+    playlistDropdown.innerHTML = "";
+  }
+
+  async function openPlaylistDropdown(): Promise<void> {
+    if (!playlistDropdown.hidden) {
+      closePlaylistDropdown();
+      return;
+    }
+
+    playlistDropdown.innerHTML = "";
+    playlistDropdown.hidden = false;
+
+    if (!playlistsLoaded) {
+      const loading = document.createElement("div");
+      loading.className = "now-playing-playlist-message";
+      loading.textContent = "Loading playlists…";
+      playlistDropdown.appendChild(loading);
+      try {
+        knownPlaylists = await window.nimbus.listSpotifyPlaylists();
+        playlistsLoaded = true;
+      } catch (err) {
+        console.error("Failed to load Spotify playlists", err);
+        playlistDropdown.innerHTML = "";
+        const errorMsg = document.createElement("div");
+        errorMsg.className = "now-playing-playlist-message";
+        errorMsg.textContent = "Couldn't load playlists.";
+        playlistDropdown.appendChild(errorMsg);
+        return;
+      }
+    }
+
+    playlistDropdown.innerHTML = "";
+    if (knownPlaylists.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "now-playing-playlist-message";
+      empty.textContent = "No playlists found.";
+      playlistDropdown.appendChild(empty);
+      return;
+    }
+
+    for (const playlist of knownPlaylists) {
+      const item = document.createElement("div");
+      item.className = "now-playing-playlist-item";
+
+      const art = document.createElement("div");
+      art.className = "now-playing-playlist-item-art";
+      if (playlist.imageUrl) art.style.backgroundImage = `url("${playlist.imageUrl}")`;
+      item.appendChild(art);
+
+      const info = document.createElement("div");
+      info.className = "now-playing-playlist-item-info";
+      const name = document.createElement("div");
+      name.className = "now-playing-playlist-item-name";
+      name.textContent = playlist.name;
+      info.appendChild(name);
+      if (playlist.trackCount !== null) {
+        const meta = document.createElement("div");
+        meta.className = "now-playing-playlist-item-meta";
+        meta.textContent = `${playlist.trackCount} track${playlist.trackCount === 1 ? "" : "s"}`;
+        info.appendChild(meta);
+      }
+      item.appendChild(info);
+
+      item.addEventListener("click", () => {
+        closePlaylistDropdown();
+        runAction("spotify.playPlaylist", { playlistUri: playlist.uri });
+      });
+
+      playlistDropdown.appendChild(item);
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!playlistDropdown.hidden && !card.contains(event.target as Node)) {
+      closePlaylistDropdown();
+    }
+  });
+
+  function render(context: SpotifyPlaybackContext | null, connected: boolean): void {
+    if (!connected) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+
+    const supportsVolume = context?.device?.supportsVolume ?? true;
+    volumeSlider.disabled = !supportsVolume;
+    volumeSlider.title = supportsVolume ? "Volume" : "This device doesn't support remote volume control";
+
+    if (!context || context.playbackState === "stopped" || !context.track) {
+      artEl.style.backgroundImage = "";
+      titleEl.textContent = "Nothing is playing";
+      artistEl.textContent = "";
+      elapsedEl.textContent = "";
+      durationEl.textContent = "";
+      progressFillEl.style.width = "0%";
+      setPlayPauseIcon(false);
+      playPauseBtn.title = "Play";
+      return;
+    }
+
+    artEl.style.backgroundImage = context.track.imageUrl ? `url("${context.track.imageUrl}")` : "";
+    titleEl.textContent = context.track.name;
+    artistEl.textContent = context.track.artists.join(", ") || "";
+
+    const playlistName =
+      context.context?.type === "playlist" ? knownPlaylists.find((p) => p.uri === context.context!.uri)?.name : null;
+    kickerEl.textContent = playlistName ? `Spotify · ${playlistName}` : "Spotify";
+
+    const progress = context.progressMs ?? 0;
+    const duration = context.track.durationMs || 1;
+    elapsedEl.textContent = formatMs(progress);
+    durationEl.textContent = formatMs(duration);
+    progressFillEl.style.width = `${Math.min(100, (progress / duration) * 100)}%`;
+
+    const isPlaying = context.playbackState === "playing";
+    setPlayPauseIcon(isPlaying);
+    playPauseBtn.title = isPlaying ? "Pause" : "Play";
+
+    if (!volumeSliderBeingDragged && context.volumePercent !== null) {
+      volumeSlider.value = String(context.volumePercent);
+    }
+  }
+
+  async function refresh(): Promise<void> {
+    try {
+      const [spotifySettings, snapshot] = await Promise.all([window.nimbus.getSpotifySettings(), window.nimbus.getContext()]);
+      if (!spotifySettings.connected) {
+        render(null, false);
+        return;
+      }
+      const spotify = snapshot.providers.spotify;
+      // ContextService falls back to the last known-good result (with
+      // `status: "error"`, `stale: true`) on a transient fetch failure
+      // rather than returning no data — treating only `status === "ok"`
+      // as real data threw that stale-but-valid snapshot away on every
+      // hiccup, which both blanked the card unnecessarily and (worse)
+      // fed refreshUntilChanged below a bogus "" signature that looked
+      // like a genuine change and made it give up early.
+      const data = spotify?.data ? (spotify.data as unknown as SpotifyPlaybackContext) : null;
+      lastPlaybackSignature = `${data?.context?.uri ?? ""}::${data?.track?.id ?? ""}`;
+      render(data, true);
+    } catch (err) {
+      console.error("Failed to load Spotify now-playing", err);
+    }
+  }
+
+  /**
+   * Used instead of a single `refresh()` right after a Spotify action —
+   * Spotify's own `/me/player` endpoint can lag behind the actual device
+   * state right after a playback-changing command (most noticeably after
+   * switching playlists via a Routine), sometimes by more than the ~15s
+   * this used to give up after — that looked like "the Home card just
+   * never updates" even though it was still quietly retrying. Keeps
+   * re-fetching every 2s for up to a full minute, which is patient
+   * enough to survive one of these longer stretches while still not
+   * polling forever.
+   */
+  async function refreshUntilChanged(): Promise<void> {
+    const myToken = ++reconcilePollToken; // a newer call (e.g. the user clicked Next) supersedes this one
+    const before = lastPlaybackSignature;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await refresh();
+      if (myToken !== reconcilePollToken || lastPlaybackSignature !== before) return;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+
+  async function runAction(actionId: string, params?: Record<string, unknown>): Promise<void> {
+    try {
+      const result = await window.nimbus.executeAction(actionId, params);
+      if (result.status !== "success") {
+        console.warn(`Spotify action "${actionId}" failed`, result.error);
+        showError(result.error?.message || "That didn't work — try again.");
+      } else {
+        errorEl.hidden = true;
+      }
+    } catch (err) {
+      console.error(`Failed to execute action "${actionId}"`, err);
+      showError("That didn't work — try again.");
+    } finally {
+      await refresh();
+    }
+  }
+
+  clickzone.addEventListener("click", () => {
+    openPlaylistDropdown();
+  });
+  playPauseBtn.addEventListener("click", () => {
+    const isPlaying = playPauseBtn.title === "Pause";
+    runAction(isPlaying ? "spotify.pause" : "spotify.play");
+  });
+  prevBtn.addEventListener("click", () => runAction("spotify.previous"));
+  nextBtn.addEventListener("click", () => runAction("spotify.next"));
+  volumeSlider.addEventListener("mousedown", () => {
+    volumeSliderBeingDragged = true;
+  });
+  volumeSlider.addEventListener("change", () => {
+    volumeSliderBeingDragged = false;
+    if (volumeSlider.disabled) return;
+    runAction("spotify.setVolume", { volumePercent: Number(volumeSlider.value) });
+  });
+
+  window.nimbus
+    .listSpotifyPlaylists()
+    .then((playlists) => {
+      knownPlaylists = playlists;
+      playlistsLoaded = true;
+    })
+    .catch(() => {}); // pre-fetched for the kicker label and a snappier first dropdown open — safe to skip if unavailable, openPlaylistDropdown re-fetches on demand otherwise
+
+  refresh();
+  // Only worth polling while the user can actually see it — the Home tab.
+  setInterval(() => {
+    if (document.getElementById("tab-home")?.classList.contains("active")) {
+      refresh();
+    }
+  }, NOW_PLAYING_POLL_MS);
+  window.addEventListener(NOW_PLAYING_REFRESH_EVENT, () => refreshUntilChanged());
+}
+
+const TRIGGER_TYPES: TriggerConfig["type"][] = ["applicationOpened", "websiteOpened", "folderOpened"];
+
+function triggerSummary(trigger: TriggerConfig): string {
+  switch (trigger.type) {
+    case "applicationOpened":
+      return `App opened: ${trigger.application}`;
+    case "websiteOpened":
+      return `Website ${trigger.matchField} contains: ${trigger.pattern}`;
+    case "folderOpened":
+      return `Folder path contains: ${trigger.path}`;
+  }
+}
+
+function buildTriggerFromForm(): TriggerConfig | null {
+  const type = (document.getElementById("routineTriggerType") as HTMLSelectElement).value as TriggerConfig["type"];
+  if (type === "applicationOpened") {
+    const application = (document.getElementById("routineAppName") as HTMLInputElement).value.trim();
+    return application ? { type, application, matchMode: "contains" } : null;
+  }
+  if (type === "websiteOpened") {
+    const pattern = (document.getElementById("routineWebsitePattern") as HTMLInputElement).value.trim();
+    return pattern ? { type, matchField: "windowTitle", pattern, matchMode: "contains" } : null;
+  }
+  const path = (document.getElementById("routineFolderPath") as HTMLInputElement).value.trim();
+  return path ? { type: "folderOpened", path, matchMode: "contains" } : null;
+}
+
+/** Adds/removes the "actionsNotAlreadyActive" condition to match the "Skip if already active" checkbox, preserving any other conditions untouched (e.g. ones set outside this UI). */
+function withSkipIfActiveCondition(existing: RoutineCondition[], shouldInclude: boolean): RoutineCondition[] {
+  const withoutIt = existing.filter((c) => c.type !== "actionsNotAlreadyActive");
+  return shouldInclude ? [...withoutIt, { type: "actionsNotAlreadyActive" }] : withoutIt;
+}
+
+const ROUTINE_RUN_ICON_SVG = `<svg width="11" height="12" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 3,15 15,8"/></svg>`;
+const ROUTINE_RUNNING_ICON_SVG = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6" stroke-dasharray="28" stroke-dashoffset="10"/></svg>`;
+const ROUTINE_RUN_SUCCESS_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,9 6,13 14,3"/></svg>`;
+const ROUTINE_RUN_FAILURE_ICON_SVG = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
+
+/**
+ * Wires the whole Routines configuration flow: create/enable-disable/
+ * delete/test a Routine, choose a trigger + its parameters, and build an
+ * ordered action sequence from NIMBUS's existing, already-registered
+ * Actions — never anything Routines invents or hard-codes itself (see
+ * "Generic configuration" in README's Routines section).
+ */
+async function initRoutinesSettings(): Promise<void> {
+  const enabledCheckbox = document.getElementById("routinesEnabled") as HTMLInputElement;
+  const disabledWarningEl = document.getElementById("routinesDisabledWarning") as HTMLElement;
+  const routineListEl = document.getElementById("routineList") as HTMLElement;
+  const nameInput = document.getElementById("routineName") as HTMLInputElement;
+  const triggerTypeSelect = document.getElementById("routineTriggerType") as HTMLSelectElement;
+  const suggestionTitleInput = document.getElementById("routineSuggestionTitle") as HTMLInputElement;
+  const suggestionMessageInput = document.getElementById("routineSuggestionMessage") as HTMLInputElement;
+  const cooldownInput = document.getElementById("routineCooldown") as HTMLInputElement;
+  const skipIfActiveCheckbox = document.getElementById("routineSkipIfActive") as HTMLInputElement;
+  const autoRunCheckbox = document.getElementById("routineAutoRun") as HTMLInputElement;
+  const actionListEl = document.getElementById("routineActionList") as HTMLElement;
+  const actionServiceSelect = document.getElementById("routineActionServiceSelect") as HTMLSelectElement;
+  const actionSelect = document.getElementById("routineActionSelect") as HTMLSelectElement;
+  const addActionBtn = document.getElementById("routineAddActionBtn") as HTMLButtonElement;
+  const cancelActionEditBtn = document.getElementById("routineCancelActionEditBtn") as HTMLButtonElement;
+  const actionParamFieldsEl = document.getElementById("routineActionParamFields") as HTMLElement;
+  const saveBtn = document.getElementById("addRoutineBtn") as HTMLButtonElement;
+  const cancelEditBtn = document.getElementById("cancelRoutineEditBtn") as HTMLButtonElement;
+  const formHeadingEl = document.getElementById("routineFormHeading") as HTMLElement;
+  const listViewEl = document.getElementById("routinesListView") as HTMLElement;
+  const editViewEl = document.getElementById("routinesEditView") as HTMLElement;
+  const newRoutineBtn = document.getElementById("newRoutineBtn") as HTMLButtonElement;
+  const backToListBtn = document.getElementById("backToRoutineListBtn") as HTMLButtonElement;
+  const viewListBtn = document.getElementById("routinesViewListBtn") as HTMLButtonElement;
+  const viewGridBtn = document.getElementById("routinesViewGridBtn") as HTMLButtonElement;
+  const routineListEmptyEl = document.getElementById("routineListEmpty") as HTMLElement;
+  const activityDebugDetails = document.querySelector(".activity-debug") as HTMLDetailsElement;
+  const activitySnapshotContentEl = document.getElementById("activitySnapshotContent") as HTMLElement;
+  const refreshActivitySnapshotBtn = document.getElementById("refreshActivitySnapshotBtn") as HTMLButtonElement;
+
+  function showListView(): void {
+    listViewEl.hidden = false;
+    editViewEl.hidden = true;
+  }
+
+  function showEditView(): void {
+    listViewEl.hidden = true;
+    editViewEl.hidden = false;
+  }
+
+  const CARD_LAYOUT_STORAGE_KEY = "nimbus:routines-card-layout";
+  function applyCardLayout(layout: "list" | "grid"): void {
+    routineListEl.classList.toggle("grid-view", layout === "grid");
+    viewListBtn.classList.toggle("active", layout === "list");
+    viewGridBtn.classList.toggle("active", layout === "grid");
+    try {
+      localStorage.setItem(CARD_LAYOUT_STORAGE_KEY, layout);
+    } catch {
+      // per-viewer convenience only — fine if storage is unavailable (private window, etc.)
+    }
+  }
+  viewListBtn.addEventListener("click", () => applyCardLayout("list"));
+  viewGridBtn.addEventListener("click", () => applyCardLayout("grid"));
+  let savedLayout: string | null = null;
+  try {
+    savedLayout = localStorage.getItem(CARD_LAYOUT_STORAGE_KEY);
+  } catch {
+    // ignore — defaults to list view below
+  }
+  applyCardLayout(savedLayout === "grid" ? "grid" : "list");
+
+  let availableActions: ActionDefinition[] = [];
+  let availablePlaylists: SpotifyPlaylistSummary[] = [];
+  let pendingActions: RoutineActionStep[] = [];
+  // Index into pendingActions currently loaded into the picker row for
+  // editing — null means the picker is building a brand new step to
+  // append, matching the "Save routine"/"Update routine" duality above.
+  let editingActionIndex: number | null = null;
+  // Set only while editing an existing routine — the same create form
+  // above doubles as the editor (see this function's doc comment); this
+  // is the one bit of state that changes "Save routine" from appending a
+  // new routine to replacing this one in place.
+  let editingRoutineId: string | null = null;
+
+  function syncTriggerFieldsVisibility(): void {
+    for (const type of TRIGGER_TYPES) {
+      const el = document.getElementById(`routineTriggerFields-${type}`) as HTMLElement;
+      el.hidden = type !== triggerTypeSelect.value;
+    }
+  }
+
+  function paramFieldId(name: string): string {
+    return `routineParam-${name}`;
+  }
+
+  /**
+   * A service-first picker for the action dropdown — with every action
+   * from every provider in one flat list, a routine only interested in
+   * "open a website" had to scroll past every Spotify action first (and
+   * will have to scroll past even more once more providers exist).
+   * Services come entirely from `ActionDefinition.affectsService`, never
+   * a hard-coded list — a brand new provider shows up here with no
+   * changes to this file.
+   */
+  function populateActionServiceSelect(): void {
+    const previousValue = actionServiceSelect.value;
+    actionServiceSelect.innerHTML = "";
+    const services = [...new Set(availableActions.map((a) => a.affectsService))].sort();
+    for (const service of services) {
+      const option = document.createElement("option");
+      option.value = service;
+      option.textContent = capitalize(service);
+      actionServiceSelect.appendChild(option);
+    }
+    if (services.includes(previousValue)) actionServiceSelect.value = previousValue;
+  }
+
+  function populateActionSelectForService(service: string): void {
+    actionSelect.innerHTML = "";
+    for (const def of availableActions.filter((a) => a.affectsService === service)) {
+      const option = document.createElement("option");
+      option.value = def.id;
+      option.textContent = def.name;
+      actionSelect.appendChild(option);
+    }
+  }
+
+  function capitalize(s: string): string {
+    return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // Fields declare their choices in plain English in ActionDefinition's
+  // own `description` (e.g. "single | pomodoro — defaults to single") —
+  // an existing convention (see spotify.search's "type" param) reused
+  // here rather than invented for Timer specifically. Parsing it into a
+  // dropdown works for any action's enum-shaped string param, current or
+  // future, without the Routine editor needing to special-case which
+  // action or param it is.
+  function parseEnumOptions(description: string): string[] | null {
+    const beforeDash = description.split("—")[0];
+    const candidates = beforeDash.split("|").map((s) => s.trim());
+    if (candidates.length < 2 || candidates.some((c) => c.length === 0 || /\s/.test(c))) return null;
+    return candidates;
+  }
+
+  // timer.start's params fall into two groups depending on `mode` — a
+  // single duration/type/title, or a Pomodoro studyMinutes/breakMinutes/
+  // cycles plan. Both sets are always sent to collectActionParams (a
+  // hidden field simply isn't filled in, same as any other optional
+  // field left blank), this only avoids showing the user irrelevant
+  // fields for the mode they didn't pick.
+  const TIMER_SINGLE_ONLY_PARAMS = new Set(["duration", "type"]);
+  const TIMER_POMODORO_ONLY_PARAMS = new Set(["studyMinutes", "breakMinutes", "cycles"]);
+
+  function updateTimerModeVisibility(mode: string): void {
+    for (const [name, row] of paramRowsByName) {
+      if (TIMER_SINGLE_ONLY_PARAMS.has(name)) row.hidden = mode !== "single";
+      else if (TIMER_POMODORO_ONLY_PARAMS.has(name)) row.hidden = mode !== "pomodoro";
+    }
+  }
+
+  let paramRowsByName = new Map<string, HTMLElement>();
+
+  function renderActionParamFields(actionDef: ActionDefinition | undefined): void {
+    actionParamFieldsEl.innerHTML = "";
+    paramRowsByName = new Map();
+    if (!actionDef) return;
+
+    for (const param of actionDef.parameters) {
+      const row = document.createElement("label");
+      row.className = "field-row";
+      const label = document.createElement("span");
+      label.className = "setting-title";
+      label.textContent = param.required ? param.name : `${param.name} (optional)`;
+      row.appendChild(label);
+
+      const enumOptions = param.type === "string" && param.description ? parseEnumOptions(param.description) : null;
+
+      // A picked-playlist affordance for Spotify's playPlaylist action —
+      // still just filling in a plain action parameter, not a special
+      // routine concept (see "Generic configuration" in README).
+      if (actionDef.id === "spotify.playPlaylist" && param.name === "playlistUri" && availablePlaylists.length > 0) {
+        const select = document.createElement("select");
+        select.className = "select";
+        select.id = paramFieldId(param.name);
+        const blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "(search by name instead)";
+        select.appendChild(blank);
+        for (const playlist of availablePlaylists) {
+          const option = document.createElement("option");
+          option.value = playlist.uri;
+          option.textContent = playlist.name;
+          select.appendChild(option);
+        }
+        row.appendChild(select);
+      } else if (enumOptions) {
+        const select = document.createElement("select");
+        select.className = "select";
+        select.id = paramFieldId(param.name);
+        if (!param.required) {
+          const blank = document.createElement("option");
+          blank.value = "";
+          blank.textContent = "(default)";
+          select.appendChild(blank);
+        }
+        for (const optionValue of enumOptions) {
+          const option = document.createElement("option");
+          option.value = optionValue;
+          option.textContent = optionValue;
+          select.appendChild(option);
+        }
+        if (actionDef.id === "timer.start" && param.name === "mode") {
+          select.addEventListener("change", () => updateTimerModeVisibility(select.value || "single"));
+        }
+        row.appendChild(select);
+      } else {
+        const input = document.createElement("input");
+        input.id = paramFieldId(param.name);
+        input.type = param.type === "number" ? "number" : "text";
+        row.appendChild(input);
+      }
+
+      actionParamFieldsEl.appendChild(row);
+      paramRowsByName.set(param.name, row);
+    }
+
+    if (actionDef.id === "timer.start") {
+      updateTimerModeVisibility("single"); // matches the mode select's own default first option
+    }
+  }
+
+  function collectActionParams(actionDef: ActionDefinition): Record<string, unknown> {
+    const params: Record<string, unknown> = {};
+    for (const param of actionDef.parameters) {
+      const el = document.getElementById(paramFieldId(param.name)) as HTMLInputElement | HTMLSelectElement | null;
+      if (!el || !el.value) continue;
+      params[param.name] = param.type === "number" ? Number(el.value) : el.value;
+    }
+    return params;
+  }
+
+  function renderPendingActions(): void {
+    actionListEl.innerHTML = "";
+    pendingActions.forEach((step, index) => {
+      const row = document.createElement("div");
+      row.className = "calendar-feed-row";
+
+      const info = document.createElement("span");
+      info.className = "calendar-feed-row-label";
+      const def = availableActions.find((a) => a.id === step.actionId);
+      info.textContent = `${index + 1}. ${def?.name ?? step.actionId}`;
+      row.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "calendar-feed-row-actions";
+
+      if (index > 0) {
+        const up = document.createElement("button");
+        up.className = "btn btn-ghost";
+        up.textContent = "↑";
+        up.addEventListener("click", () => {
+          stopEditingAction(); // reordering while the picker has one of these steps loaded would edit the wrong one after the swap
+          [pendingActions[index - 1], pendingActions[index]] = [pendingActions[index], pendingActions[index - 1]];
+          renderPendingActions();
+        });
+        actions.appendChild(up);
+      }
+      if (index < pendingActions.length - 1) {
+        const down = document.createElement("button");
+        down.className = "btn btn-ghost";
+        down.textContent = "↓";
+        down.addEventListener("click", () => {
+          stopEditingAction();
+          [pendingActions[index + 1], pendingActions[index]] = [pendingActions[index], pendingActions[index + 1]];
+          renderPendingActions();
+        });
+        actions.appendChild(down);
+      }
+
+      const edit = document.createElement("button");
+      edit.className = "btn btn-ghost";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => startEditingAction(index));
+      actions.appendChild(edit);
+
+      const remove = document.createElement("button");
+      remove.className = "calendar-feed-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        if (editingActionIndex === index) stopEditingAction(); // the step being edited is the one being removed
+        pendingActions = pendingActions.filter((_, i) => i !== index);
+        renderPendingActions();
+      });
+      actions.appendChild(remove);
+
+      row.appendChild(actions);
+      actionListEl.appendChild(row);
+    });
+  }
+
+  /**
+   * Loads one already-added action step back into the picker row so it
+   * can be changed in place — without this, changing a single param
+   * meant Remove-then-re-Add-from-scratch, retyping everything. Reuses
+   * the exact same service/action selects and param fields "Add action"
+   * already builds; only what happens on click (replace vs. append)
+   * differs, mirroring how the routine-level form doubles as create/edit.
+   */
+  function startEditingAction(index: number): void {
+    const step = pendingActions[index];
+    const def = availableActions.find((a) => a.id === step.actionId);
+    if (!def) return;
+
+    editingActionIndex = index;
+    actionServiceSelect.value = def.affectsService;
+    populateActionSelectForService(def.affectsService);
+    actionSelect.value = def.id;
+    renderActionParamFields(def);
+    for (const param of def.parameters) {
+      const value = step.params[param.name];
+      if (value === undefined) continue;
+      const el = document.getElementById(paramFieldId(param.name)) as HTMLInputElement | HTMLSelectElement | null;
+      if (el) el.value = String(value);
+    }
+
+    addActionBtn.textContent = "Update action";
+    cancelActionEditBtn.hidden = false;
+    actionServiceSelect.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function stopEditingAction(): void {
+    editingActionIndex = null;
+    addActionBtn.textContent = "Add action";
+    cancelActionEditBtn.hidden = true;
+  }
+
+  function resetForm(): void {
+    stopEditingAction();
+    editingRoutineId = null;
+    formHeadingEl.textContent = "New routine";
+    saveBtn.textContent = "Save routine";
+    cancelEditBtn.hidden = true;
+
+    nameInput.value = "";
+    triggerTypeSelect.value = "applicationOpened";
+    (document.getElementById("routineAppName") as HTMLInputElement).value = "";
+    (document.getElementById("routineWebsitePattern") as HTMLInputElement).value = "";
+    (document.getElementById("routineFolderPath") as HTMLInputElement).value = "";
+    syncTriggerFieldsVisibility();
+    suggestionTitleInput.value = "";
+    suggestionMessageInput.value = "";
+    cooldownInput.value = "30";
+    skipIfActiveCheckbox.checked = false;
+    autoRunCheckbox.checked = false;
+    pendingActions = [];
+    renderPendingActions();
+    renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
+  }
+
+  /**
+   * Loads an existing routine's fields into the same create form above,
+   * so Edit reuses one form/save-path instead of a second editor (see
+   * this function's doc comment / task's own "reuse the create UI"
+   * requirement). Only application/website/folder triggers have form
+   * fields today — a routine with any other trigger type still opens
+   * for editing, just with the trigger section left on its default.
+   */
+  function populateFormForEdit(routine: Routine): void {
+    showEditView();
+    stopEditingAction();
+    editingRoutineId = routine.id;
+    formHeadingEl.textContent = `Editing "${routine.name}"`;
+    saveBtn.textContent = "Update routine";
+    cancelEditBtn.hidden = false;
+
+    nameInput.value = routine.name;
+    suggestionTitleInput.value = routine.suggestion.title;
+    suggestionMessageInput.value = routine.suggestion.message;
+    cooldownInput.value = String(routine.cooldownMinutes);
+    skipIfActiveCheckbox.checked = routine.conditions.some((c) => c.type === "actionsNotAlreadyActive");
+    autoRunCheckbox.checked = routine.autoRun ?? false;
+
+    (document.getElementById("routineAppName") as HTMLInputElement).value = "";
+    (document.getElementById("routineWebsitePattern") as HTMLInputElement).value = "";
+    (document.getElementById("routineFolderPath") as HTMLInputElement).value = "";
+    if (routine.trigger.type === "applicationOpened") {
+      triggerTypeSelect.value = "applicationOpened";
+      (document.getElementById("routineAppName") as HTMLInputElement).value = routine.trigger.application;
+    } else if (routine.trigger.type === "websiteOpened") {
+      triggerTypeSelect.value = "websiteOpened";
+      (document.getElementById("routineWebsitePattern") as HTMLInputElement).value = routine.trigger.pattern;
+    } else if (routine.trigger.type === "folderOpened") {
+      triggerTypeSelect.value = "folderOpened";
+      (document.getElementById("routineFolderPath") as HTMLInputElement).value = routine.trigger.path;
+    }
+    syncTriggerFieldsVisibility();
+
+    pendingActions = routine.actions.map((step) => ({ ...step, params: { ...step.params } }));
+    renderPendingActions();
+    renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
+
+    document.getElementById("routineName")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function renderRoutineList(settings: RoutineSettings): void {
+    // Surfaces the "your routine exists but can't fire" trap directly in
+    // the UI instead of leaving it silently confusing — see the
+    // save-routine handler below for the other half of this fix.
+    disabledWarningEl.hidden = settings.enabled || settings.routines.length === 0;
+    routineListEmptyEl.hidden = settings.routines.length > 0;
+
+    routineListEl.innerHTML = "";
+    for (const routine of settings.routines) {
+      const card = document.createElement("div");
+      card.className = "routine-card";
+
+      // The card's own name/summary area opens it for editing — the
+      // same "click the thing to open it" pattern as any list of
+      // editable items, so a click anywhere except an explicit control
+      // (toggle/Test/Delete) below opens the editor, matching "open a
+      // single one and edit/customize" without needing a separate "Edit"
+      // button to hunt for.
+      const body = document.createElement("button");
+      body.type = "button";
+      body.className = "routine-card-body";
+      body.addEventListener("click", () => populateFormForEdit(routine));
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "routine-card-name";
+      nameEl.textContent = routine.name;
+      body.appendChild(nameEl);
+
+      const metaEl = document.createElement("span");
+      metaEl.className = "routine-card-meta";
+      const actionCount = `${routine.actions.length} action${routine.actions.length === 1 ? "" : "s"}`;
+      metaEl.textContent = routine.autoRun
+        ? `${triggerSummary(routine.trigger)} · ${actionCount} · runs automatically`
+        : `${triggerSummary(routine.trigger)} · ${actionCount}`;
+      body.appendChild(metaEl);
+
+      card.appendChild(body);
+
+      const actions = document.createElement("div");
+      actions.className = "routine-card-actions";
+
+      const toggleLabel = document.createElement("label");
+      toggleLabel.className = "routine-active-toggle";
+      toggleLabel.title = "Disable to stop this routine from triggering, without deleting it";
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = routine.enabled;
+      toggle.addEventListener("change", async () => {
+        const updated = settings.routines.map((r) => (r.id === routine.id ? { ...r, enabled: toggle.checked } : r));
+        const saved = await window.nimbus.updateRoutineSettings({ routines: updated });
+        renderRoutineList(saved);
+      });
+      toggleLabel.appendChild(toggle);
+      const toggleText = document.createElement("span");
+      toggleText.textContent = "Active";
+      toggleLabel.appendChild(toggleText);
+      actions.appendChild(toggleLabel);
+
+      // Runs the routine's actions immediately — bypasses trigger match,
+      // cooldown, and conditions entirely (same as the old "Test"
+      // button, just presented as a small play icon per-card so forcing
+      // a routine to run doesn't need opening it for editing first).
+      const runBtn = document.createElement("button");
+      runBtn.className = "now-playing-btn routine-run-btn";
+      runBtn.title = "Run now";
+      runBtn.innerHTML = ROUTINE_RUN_ICON_SVG;
+      runBtn.addEventListener("click", async () => {
+        runBtn.disabled = true;
+        runBtn.innerHTML = ROUTINE_RUNNING_ICON_SVG;
+        try {
+          const results = await window.nimbus.testRoutine(routine.id);
+          const failed = results.filter((r) => r.status === "failure");
+          runBtn.title = failed.length === 0 ? "Ran successfully" : `${failed.length} action${failed.length === 1 ? "" : "s"} failed`;
+          runBtn.innerHTML = failed.length === 0 ? ROUTINE_RUN_SUCCESS_ICON_SVG : ROUTINE_RUN_FAILURE_ICON_SVG;
+          window.dispatchEvent(new Event(NOW_PLAYING_REFRESH_EVENT));
+        } catch {
+          runBtn.title = "Failed to run";
+          runBtn.innerHTML = ROUTINE_RUN_FAILURE_ICON_SVG;
+        } finally {
+          setTimeout(() => {
+            runBtn.title = "Run now";
+            runBtn.innerHTML = ROUTINE_RUN_ICON_SVG;
+            runBtn.disabled = false;
+          }, 2000);
+        }
+      });
+      actions.appendChild(runBtn);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "calendar-feed-remove";
+      removeBtn.textContent = "Delete";
+      removeBtn.addEventListener("click", async () => {
+        const updated = settings.routines.filter((r) => r.id !== routine.id);
+        const saved = await window.nimbus.updateRoutineSettings({ routines: updated });
+        if (editingRoutineId === routine.id) resetForm(); // the routine being edited no longer exists — don't leave a stale edit form open
+        renderRoutineList(saved);
+      });
+      actions.appendChild(removeBtn);
+
+      card.appendChild(actions);
+      routineListEl.appendChild(card);
+    }
+  }
+
+  try {
+    const [settings, actions] = await Promise.all([window.nimbus.getRoutineSettings(), window.nimbus.listActions()]);
+    availableActions = actions;
+    populateActionServiceSelect();
+    populateActionSelectForService(actionServiceSelect.value);
+
+    enabledCheckbox.checked = settings.enabled;
+    renderRoutineList(settings);
+    syncTriggerFieldsVisibility();
+    renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
+  } catch (err) {
+    console.error("Failed to load routine settings/actions", err);
+  }
+
+  window.nimbus
+    .listSpotifyPlaylists()
+    .then((playlists) => {
+      availablePlaylists = playlists;
+    })
+    .catch(() => {}); // playlist picker is a nice-to-have; a manual query still works without it
+
+  enabledCheckbox.addEventListener("change", async () => {
+    const saved = await window.nimbus.updateRoutineSettings({ enabled: enabledCheckbox.checked });
+    disabledWarningEl.hidden = saved.enabled || saved.routines.length === 0;
+  });
+
+  triggerTypeSelect.addEventListener("change", syncTriggerFieldsVisibility);
+
+  actionServiceSelect.addEventListener("change", () => {
+    populateActionSelectForService(actionServiceSelect.value);
+    renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
+  });
+
+  actionSelect.addEventListener("change", () => {
+    renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
+  });
+
+  addActionBtn.addEventListener("click", () => {
+    const def = availableActions.find((a) => a.id === actionSelect.value);
+    if (!def) return;
+    const params = collectActionParams(def);
+    const missing = def.parameters.filter((p) => p.required && params[p.name] === undefined);
+    if (missing.length > 0) {
+      alert(`Please fill in: ${missing.map((p) => p.name).join(", ")}`);
+      return;
+    }
+    if (editingActionIndex !== null) {
+      pendingActions[editingActionIndex] = { actionId: def.id, params };
+      stopEditingAction();
+    } else {
+      pendingActions.push({ actionId: def.id, params });
+    }
+    renderPendingActions();
+  });
+
+  cancelActionEditBtn.addEventListener("click", () => stopEditingAction());
+
+  saveBtn.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    const trigger = buildTriggerFromForm();
+    const title = suggestionTitleInput.value.trim();
+    const message = suggestionMessageInput.value.trim();
+    const cooldownMinutes = Number(cooldownInput.value) || 0;
+
+    if (!name || !trigger || !title || !message || pendingActions.length === 0) {
+      alert("Please fill in a name, trigger, suggestion text, and at least one action.");
+      return;
+    }
+
+    try {
+      const current = await window.nimbus.getRoutineSettings();
+
+      let updatedRoutines: Routine[];
+      if (editingRoutineId) {
+        const existing = current.routines.find((r) => r.id === editingRoutineId);
+        if (!existing) {
+          alert("This routine no longer exists — it may have been deleted.");
+          resetForm();
+          showListView();
+          renderRoutineList(current);
+          return;
+        }
+        const updated: Routine = {
+          ...existing,
+          name,
+          trigger,
+          suggestion: { ...existing.suggestion, title, message },
+          actions: pendingActions,
+          cooldownMinutes,
+          conditions: withSkipIfActiveCondition(existing.conditions, skipIfActiveCheckbox.checked),
+          autoRun: autoRunCheckbox.checked,
+        };
+        updatedRoutines = current.routines.map((r) => (r.id === editingRoutineId ? updated : r));
+      } else {
+        const newRoutine: Routine = {
+          id: `routine-${Date.now()}`,
+          name,
+          enabled: true,
+          trigger,
+          conditions: withSkipIfActiveCondition([], skipIfActiveCheckbox.checked),
+          suggestion: { title, message, primaryLabel: "Yes", secondaryLabel: "Not now" },
+          actions: pendingActions,
+          cooldownMinutes,
+          autoRun: autoRunCheckbox.checked,
+        };
+        updatedRoutines = [...current.routines, newRoutine];
+      }
+
+      // A routine a user just created is obviously meant to actually run
+      // — but it only can if the master "Enable context-aware
+      // suggestions" switch above is also on (that's what starts the
+      // desktop activity monitor in the first place). Saving a routine
+      // without it produces a routine that Test can run but that can
+      // never fire from a real trigger, with nothing in the UI
+      // explaining why — auto-enabling here closes that trap. Editing an
+      // existing routine leaves the switch as the user already set it.
+      const saved = await window.nimbus.updateRoutineSettings(
+        editingRoutineId ? { routines: updatedRoutines } : { enabled: true, routines: updatedRoutines }
+      );
+      enabledCheckbox.checked = saved.enabled;
+      renderRoutineList(saved);
+      resetForm();
+      showListView();
+    } catch (err) {
+      alert(`Couldn't save routine: ${String(err)}`);
+    }
+  });
+
+  cancelEditBtn.addEventListener("click", () => {
+    resetForm();
+    showListView();
+  });
+  backToListBtn.addEventListener("click", () => {
+    resetForm();
+    showListView();
+  });
+  newRoutineBtn.addEventListener("click", () => {
+    resetForm();
+    showEditView();
+  });
+
+  async function refreshActivitySnapshot(): Promise<void> {
+    activitySnapshotContentEl.textContent = "Loading…";
+    try {
+      const snapshot = await window.nimbus.getActivitySnapshot();
+      renderActivitySnapshot(snapshot);
+    } catch (err) {
+      activitySnapshotContentEl.textContent = "Couldn't read current activity.";
+      console.error("Failed to load activity snapshot", err);
+    }
+  }
+
+  function renderActivitySnapshot(snapshot: RawActivitySnapshot | null): void {
+    activitySnapshotContentEl.innerHTML = "";
+    if (!snapshot) {
+      activitySnapshotContentEl.textContent = 'Turn on "Enable context-aware suggestions" above first — this only has anything to show while that\'s on.';
+      return;
+    }
+
+    const addSection = (label: string, items: string[]): void => {
+      const section = document.createElement("div");
+      const heading = document.createElement("div");
+      heading.className = "setting-title";
+      heading.textContent = label;
+      section.appendChild(heading);
+      if (items.length === 0) {
+        const none = document.createElement("div");
+        none.className = "activity-debug-empty";
+        none.textContent = "None right now.";
+        section.appendChild(none);
+      } else {
+        for (const item of items) {
+          const line = document.createElement("div");
+          line.className = "activity-debug-line";
+          line.textContent = item;
+          section.appendChild(line);
+        }
+      }
+      activitySnapshotContentEl.appendChild(section);
+    };
+
+    addSection(
+      "Browser tab titles (what a website trigger matches against)",
+      snapshot.browserWindows.map((w) => w.title)
+    );
+    addSection("Running applications (what an app trigger matches against)", snapshot.processNames);
+    addSection("Open Explorer folders (what a folder trigger matches against)", snapshot.explorerFolders);
+  }
+
+  refreshActivitySnapshotBtn.addEventListener("click", refreshActivitySnapshot);
+  activityDebugDetails.addEventListener("toggle", () => {
+    if (activityDebugDetails.open) refreshActivitySnapshot();
+  });
+}
+
+const TASK_REFRESH_EVENT = "nimbus:refresh-tasks";
+const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = { none: "", low: "Low", medium: "Medium", high: "High" };
+
+function formatTaskDue(task: TaskItem): { text: string; overdue: boolean } | null {
+  if (!task.dueAt) return null;
+  const due = new Date(task.dueAt);
+  const text = task.dueIsDateOnly
+    ? due.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : due.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return { text, overdue: task.category === "overdue" };
+}
+
+/**
+ * The Tasks tab — list/grid view, sorting, and create/edit/complete/
+ * delete, all writing straight through to Todoist (see
+ * src/context/providers/tasks/todoistTaskSource.ts's write methods).
+ * Mirrors initRoutinesSettings()'s own list-view/edit-view pattern
+ * (same show/hide toggle, same one-form-for-create-and-edit reuse) —
+ * deliberately not sharing code with it beyond that shape, since a task
+ * and a routine are unrelated concepts that just happen to want a
+ * similar management UI.
+ */
+function initTaskManagement(): void {
+  const listViewEl = document.getElementById("tasksListView") as HTMLElement;
+  const editViewEl = document.getElementById("tasksEditView") as HTMLElement;
+  const taskListEl = document.getElementById("taskList") as HTMLElement;
+  const taskListEmptyEl = document.getElementById("taskListEmpty") as HTMLElement;
+  const disabledWarningEl = document.getElementById("tasksDisabledWarning") as HTMLElement;
+  const viewListBtn = document.getElementById("tasksViewListBtn") as HTMLButtonElement;
+  const viewGridBtn = document.getElementById("tasksViewGridBtn") as HTMLButtonElement;
+  const sortSelect = document.getElementById("taskSortSelect") as HTMLSelectElement;
+  const newTaskBtn = document.getElementById("newTaskBtn") as HTMLButtonElement;
+  const backToListBtn = document.getElementById("backToTaskListBtn") as HTMLButtonElement;
+
+  const formHeadingEl = document.getElementById("taskFormHeading") as HTMLElement;
+  const titleInput = document.getElementById("taskTitleInput") as HTMLInputElement;
+  const descriptionInput = document.getElementById("taskDescriptionInput") as HTMLInputElement;
+  const dueDateInput = document.getElementById("taskDueDateInput") as HTMLInputElement;
+  const prioritySelect = document.getElementById("taskPrioritySelect") as HTMLSelectElement;
+  const projectSelect = document.getElementById("taskProjectSelect") as HTMLSelectElement;
+  const saveBtn = document.getElementById("saveTaskBtn") as HTMLButtonElement;
+  const cancelEditBtn = document.getElementById("cancelTaskEditBtn") as HTMLButtonElement;
+
+  let currentTasks: TaskItem[] = [];
+  let editingTaskId: string | null = null;
+  let projectsLoaded = false;
+
+  function showListView(): void {
+    listViewEl.hidden = false;
+    editViewEl.hidden = true;
+  }
+  function showEditView(): void {
+    listViewEl.hidden = true;
+    editViewEl.hidden = false;
+  }
+
+  const CARD_LAYOUT_STORAGE_KEY = "nimbus:tasks-card-layout";
+  function applyCardLayout(layout: "list" | "grid"): void {
+    taskListEl.classList.toggle("grid-view", layout === "grid");
+    viewListBtn.classList.toggle("active", layout === "list");
+    viewGridBtn.classList.toggle("active", layout === "grid");
+    try {
+      localStorage.setItem(CARD_LAYOUT_STORAGE_KEY, layout);
+    } catch {
+      // per-viewer convenience only
+    }
+  }
+  viewListBtn.addEventListener("click", () => applyCardLayout("list"));
+  viewGridBtn.addEventListener("click", () => applyCardLayout("grid"));
+  let savedLayout: string | null = null;
+  try {
+    savedLayout = localStorage.getItem(CARD_LAYOUT_STORAGE_KEY);
+  } catch {
+    // defaults to list below
+  }
+  applyCardLayout(savedLayout === "grid" ? "grid" : "list");
+
+  const SORT_STORAGE_KEY = "nimbus:tasks-sort";
+  try {
+    const savedSort = localStorage.getItem(SORT_STORAGE_KEY);
+    if (savedSort) sortSelect.value = savedSort;
+  } catch {
+    // defaults to the select's own first option
+  }
+
+  function sortTasks(tasks: TaskItem[]): TaskItem[] {
+    const sorted = [...tasks];
+    const priorityRank: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2, none: 3 };
+    switch (sortSelect.value) {
+      case "priority":
+        sorted.sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || (a.dueAt ?? "").localeCompare(b.dueAt ?? ""));
+        break;
+      case "title":
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "created":
+        sorted.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+        break;
+      default: // due date — tasks with no due date sort last, alphabetically among themselves
+        sorted.sort((a, b) => {
+          if (!a.dueAt && !b.dueAt) return a.title.localeCompare(b.title);
+          if (!a.dueAt) return 1;
+          if (!b.dueAt) return -1;
+          return a.dueAt.localeCompare(b.dueAt);
+        });
+    }
+    return sorted;
+  }
+
+  async function ensureProjectsLoaded(): Promise<void> {
+    if (projectsLoaded) return;
+    try {
+      const projects = await window.nimbus.listTaskProjects();
+      projectSelect.innerHTML = '<option value="">(default)</option>';
+      for (const p of projects) {
+        const option = document.createElement("option");
+        option.value = p.id;
+        option.textContent = p.name;
+        projectSelect.appendChild(option);
+      }
+      projectsLoaded = true;
+    } catch (err) {
+      console.error("Failed to load task lists", err);
+    }
+  }
+
+  function renderTaskCard(task: TaskItem): HTMLElement {
+    const card = document.createElement("div");
+    card.className = task.category === "overdue" ? "task-card task-card-overdue" : "task-card";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "task-card-checkbox";
+    checkbox.title = "Mark complete";
+    checkbox.addEventListener("change", async () => {
+      checkbox.disabled = true;
+      try {
+        await window.nimbus.completeTask(task.id);
+        await loadAndRenderTasks();
+      } catch (err) {
+        alert(`Couldn't complete task: ${String(err)}`);
+        checkbox.checked = false;
+        checkbox.disabled = false;
+      }
+    });
+    card.appendChild(checkbox);
+
+    const body = document.createElement("div");
+    body.className = "task-card-body";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "task-card-title";
+    titleEl.textContent = task.title;
+    body.appendChild(titleEl);
+
+    if (task.description) {
+      const descEl = document.createElement("div");
+      descEl.className = "task-card-description";
+      descEl.textContent = task.description;
+      body.appendChild(descEl);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "task-card-meta";
+    const due = formatTaskDue(task);
+    if (due) {
+      const dueEl = document.createElement("span");
+      if (due.overdue) dueEl.className = "task-due-overdue";
+      dueEl.textContent = due.text;
+      meta.appendChild(dueEl);
+    }
+    if (task.priority !== "none") {
+      const badge = document.createElement("span");
+      badge.className = `task-priority-badge task-priority-${task.priority}`;
+      badge.textContent = TASK_PRIORITY_LABELS[task.priority];
+      meta.appendChild(badge);
+    }
+    if (task.listName) {
+      const listEl = document.createElement("span");
+      listEl.textContent = task.listName;
+      meta.appendChild(listEl);
+    }
+    if (meta.children.length > 0) body.appendChild(meta);
+    card.appendChild(body);
+
+    const actions = document.createElement("div");
+    actions.className = "task-card-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn btn-ghost";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => populateFormForEdit(task));
+    actions.appendChild(editBtn);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "calendar-feed-remove";
+    removeBtn.textContent = "Delete";
+    removeBtn.addEventListener("click", async () => {
+      if (!confirm(`Delete "${task.title}"? This can't be undone.`)) return;
+      removeBtn.disabled = true;
+      try {
+        await window.nimbus.deleteTask(task.id);
+        if (editingTaskId === task.id) {
+          resetForm();
+          showListView();
+        }
+        await loadAndRenderTasks();
+      } catch (err) {
+        alert(`Couldn't delete task: ${String(err)}`);
+        removeBtn.disabled = false;
+      }
+    });
+    actions.appendChild(removeBtn);
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderList(): void {
+    const sorted = sortTasks(currentTasks);
+    taskListEl.innerHTML = "";
+    taskListEmptyEl.hidden = sorted.length > 0;
+    for (const task of sorted) {
+      taskListEl.appendChild(renderTaskCard(task));
+    }
+  }
+
+  async function loadAndRenderTasks(): Promise<void> {
+    try {
+      const { tasks } = await window.nimbus.listTasks();
+      currentTasks = tasks;
+      taskListEmptyEl.textContent = 'No active tasks. Click "+ New task" to add one — or enjoy being caught up.';
+      renderList();
+    } catch (err) {
+      console.error("Failed to load tasks", err);
+      currentTasks = [];
+      taskListEl.innerHTML = "";
+      taskListEmptyEl.hidden = false;
+      taskListEmptyEl.textContent = "Couldn't load tasks — check your Todoist connection in Settings.";
+    }
+  }
+
+  async function refreshEnabledState(): Promise<void> {
+    try {
+      const settings = await window.nimbus.getTaskSettings();
+      disabledWarningEl.hidden = settings.enabled && settings.accounts.some((a) => a.enabled);
+    } catch {
+      disabledWarningEl.hidden = true;
+    }
+  }
+
+  function resetForm(): void {
+    editingTaskId = null;
+    formHeadingEl.textContent = "New task";
+    saveBtn.textContent = "Save task";
+    cancelEditBtn.hidden = true;
+    titleInput.value = "";
+    descriptionInput.value = "";
+    dueDateInput.value = "";
+    prioritySelect.value = "none";
+    projectSelect.value = "";
+  }
+
+  async function populateFormForEdit(task: TaskItem): Promise<void> {
+    showEditView();
+    editingTaskId = task.id;
+    formHeadingEl.textContent = `Editing "${task.title}"`;
+    saveBtn.textContent = "Update task";
+    cancelEditBtn.hidden = false;
+
+    titleInput.value = task.title;
+    descriptionInput.value = task.description ?? "";
+    dueDateInput.value = task.dueAt ? task.dueAt.slice(0, 10) : "";
+    prioritySelect.value = task.priority;
+
+    await ensureProjectsLoaded();
+    // TaskItem only carries the project's resolved *name*, not its id
+    // (see todoistTaskSource.ts) — matching by name against the loaded
+    // project list is the best this form can do without a shape change
+    // there; project names are effectively unique per Todoist account in
+    // practice.
+    projectSelect.value = "";
+    if (task.listName) {
+      const match = Array.from(projectSelect.options).find((o) => o.textContent === task.listName);
+      if (match) projectSelect.value = match.value;
+    }
+  }
+
+  sortSelect.addEventListener("change", () => {
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, sortSelect.value);
+    } catch {
+      // per-viewer convenience only
+    }
+    renderList();
+  });
+
+  newTaskBtn.addEventListener("click", async () => {
+    resetForm();
+    showEditView();
+    await ensureProjectsLoaded();
+  });
+
+  backToListBtn.addEventListener("click", () => {
+    resetForm();
+    showListView();
+  });
+
+  cancelEditBtn.addEventListener("click", () => {
+    resetForm();
+    showListView();
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    const title = titleInput.value.trim();
+    if (!title) {
+      titleInput.focus();
+      return;
+    }
+
+    const request: TaskWriteRequest = {
+      title,
+      description: descriptionInput.value.trim() || null,
+      dueDate: dueDateInput.value || null,
+      priority: prioritySelect.value as TaskPriority,
+      projectId: projectSelect.value || null,
+    };
+
+    saveBtn.disabled = true;
+    try {
+      if (editingTaskId) {
+        await window.nimbus.updateTask(editingTaskId, request);
+      } else {
+        await window.nimbus.createTask(request);
+      }
+      resetForm();
+      showListView();
+      await loadAndRenderTasks();
+    } catch (err) {
+      alert(`Couldn't save task: ${String(err)}`);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  window.addEventListener(TASK_REFRESH_EVENT, () => loadAndRenderTasks());
+
+  refreshEnabledState();
+  loadAndRenderTasks();
+}
+
+function initMinimizeButton(): void {
+  document.getElementById("minimizeBtn")?.addEventListener("click", () => {
+    window.nimbus.hideWindow();
+  });
+}
+
+function switchToTab(tabName: string): void {
+  document.querySelector<HTMLButtonElement>(`.side-link[data-tab="${tabName}"]`)?.click();
+}
+
+/** Handles the small set of action ids a briefing item can currently carry. */
+function handleBriefingAction(actionId: string): void {
+  if (actionId === "view-context") {
+    switchToTab("context");
+  } else if (actionId === "view-calendar") {
+    switchToTab("calendar");
+  }
+}
+
+const CATEGORY_LABELS: Record<BriefingCategory, string> = {
+  greeting: "Greeting",
+  dateTime: "Datetime",
+  weather: "Weather",
+  calendar: "Calendar",
+  email: "Email",
+  tasks: "Tasks",
+  meals: "Meals",
+  other: "Other",
+};
+
+/** Icon per briefing category — falls back to a plain ring for anything not covered. */
+const CATEGORY_ICONS: Partial<Record<BriefingCategory, string>> = {
+  weather:
+    '<path d="M160,40a88.09,88.09,0,0,0-85.61,66.64A64,64,0,0,0,64,232H192a72,72,0,0,0,0-144h-1.13A88.15,88.15,0,0,0,160,40Zm32,176H64a48,48,0,0,1,0-96c1.1,0,2.2,0,3.31.14A88,88,0,0,0,64,152a8,8,0,0,0,16,0,72.11,72.11,0,0,1,72-72,72,72,0,0,1,0,144Z"/>',
+  dateTime:
+    '<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V96H208V208ZM48,80V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80Z"/>',
+  calendar:
+    '<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V96H208V208ZM48,80V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80Z"/>',
+  email:
+    '<path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM203.43,64,128,133.15,52.57,64ZM216,192H40V74.19l82.59,75.71a8,8,0,0,0,10.82,0L216,74.19V192Z"/>',
+  tasks:
+    '<path d="M226.83,74.83l-96,96a28,28,0,0,1-39.6,0l-40-40a4,4,0,0,1,0-5.66l17.17-17.17a4,4,0,0,1,5.66,0L104,137.94l86.83-86.83a4,4,0,0,1,5.66,0l17.17,17.17A4,4,0,0,1,226.83,74.83ZM216,128a8,8,0,0,0-8,8v72H48V80h96a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V136A8,8,0,0,0,216,128Z"/>',
+};
+const DEFAULT_ICON = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/>';
+
+function categoryIconSvg(category: BriefingCategory): string {
+  const path = CATEGORY_ICONS[category] ?? DEFAULT_ICON;
+  return `<svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">${path}</svg>`;
+}
+
+function renderBriefing(briefing: Briefing | null): void {
+  const container = document.getElementById("briefing")!;
+  container.innerHTML = "";
+
+  if (!briefing || briefing.items.length === 0) {
+    const status = document.createElement("p");
+    status.className = "briefing-status";
+    status.textContent = "Preparing your briefing…";
+    container.appendChild(status);
+    return;
+  }
+
+  const [greeting, ...rest] = briefing.items;
+
+  const hero = document.createElement("div");
+  hero.className = "hero-card";
+  const heroKicker = document.createElement("div");
+  heroKicker.className = "card-kicker";
+  heroKicker.textContent = CATEGORY_LABELS[greeting.category] ?? "Greeting";
+  const heroMessage = document.createElement("h2");
+  heroMessage.className = "hero-message";
+  heroMessage.textContent = greeting.message;
+  hero.appendChild(heroKicker);
+  hero.appendChild(heroMessage);
+  container.appendChild(hero);
+
+  if (rest.length === 0) return;
+
+  const grid = document.createElement("div");
+  grid.className = "tile-grid";
+
+  for (const item of rest) {
+    const tile = document.createElement("div");
+    tile.className = "tile";
+
+    const icon = document.createElement("div");
+    icon.className = "tile-icon";
+    icon.innerHTML = categoryIconSvg(item.category);
+    tile.appendChild(icon);
+
+    const kicker = document.createElement("div");
+    kicker.className = "card-kicker";
+    kicker.textContent = CATEGORY_LABELS[item.category] ?? item.category;
+    tile.appendChild(kicker);
+
+    const body = document.createElement("p");
+    body.className = "card-body";
+    body.textContent = item.message;
+    tile.appendChild(body);
+
+    if (item.action) {
+      const actionBtn = document.createElement("button");
+      actionBtn.className = "btn btn-ghost";
+      actionBtn.textContent = item.action.label;
+      actionBtn.addEventListener("click", () => handleBriefingAction(item.action!.actionId));
+      tile.appendChild(actionBtn);
+    }
+
+    grid.appendChild(tile);
+  }
+
+  container.appendChild(grid);
+}
+
+async function loadBriefing(): Promise<void> {
+  try {
+    const briefing = await window.nimbus.getBriefing();
+    renderBriefing(briefing);
+  } catch (err) {
+    console.error("Failed to load briefing", err);
+  }
+}
+
+function initBriefing(): void {
+  loadBriefing();
+
+  // The startup briefing is generated asynchronously in the main process
+  // and may not be ready the instant this window loads — this just
+  // re-pulls the (already-generated) result when it becomes available.
+  // It does not itself generate anything.
+  window.nimbus.onBriefingUpdated(loadBriefing);
+
+  document.getElementById("regenerateBriefingBtn")?.addEventListener("click", async () => {
+    const container = document.getElementById("briefing")!;
+    container.innerHTML = '<p class="briefing-status">Regenerating…</p>';
+    const briefing = await window.nimbus.regenerateBriefing();
+    renderBriefing(briefing);
+  });
+}
+
+/**
+ * Renders any context value generically — providers can contribute
+ * arbitrarily-shaped data (nested objects, arrays) and this still shows
+ * something reasonable without the UI needing per-provider rendering code.
+ */
+function formatContextValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function renderContextSnapshot(snapshot: ContextSnapshot): void {
+  document.getElementById("contextGeneratedAt")!.textContent =
+    `Last updated: ${new Date(snapshot.generatedAt).toLocaleString()}`;
+
+  const container = document.getElementById("contextProviders")!;
+  container.innerHTML = "";
+
+  for (const result of Object.values(snapshot.providers)) {
+    const card = document.createElement("div");
+    card.className = "context-card";
+
+    const header = document.createElement("div");
+    header.className = "context-card-header";
+
+    const title = document.createElement("span");
+    title.className = "context-card-title";
+    title.textContent = result.displayName;
+    header.appendChild(title);
+
+    const badges = document.createElement("span");
+    const badge = document.createElement("span");
+    badge.className = `context-badge ${result.status}`;
+    badge.textContent = result.status;
+    badges.appendChild(badge);
+    if (result.stale) {
+      const staleBadge = document.createElement("span");
+      staleBadge.className = "context-badge stale";
+      staleBadge.textContent = "stale";
+      badges.appendChild(staleBadge);
+    }
+    header.appendChild(badges);
+    card.appendChild(header);
+
+    if (result.error) {
+      const errorEl = document.createElement("p");
+      errorEl.className = "context-error";
+      errorEl.textContent = result.error;
+      card.appendChild(errorEl);
+    }
+
+    if (result.data) {
+      const dl = document.createElement("dl");
+      dl.className = "context-fields";
+      for (const [key, value] of Object.entries(result.data)) {
+        const dt = document.createElement("dt");
+        dt.textContent = key;
+        const dd = document.createElement("dd");
+        dd.textContent = formatContextValue(value);
+        dl.appendChild(dt);
+        dl.appendChild(dd);
+      }
+      card.appendChild(dl);
+    }
+
+    container.appendChild(card);
+  }
+}
+
+async function loadContext(): Promise<void> {
+  try {
+    const snapshot = await window.nimbus.getContext();
+    renderContextSnapshot(snapshot);
+  } catch (err) {
+    console.error("Failed to load context", err);
+  }
+}
+
+function initContext(): void {
+  loadContext();
+  document.getElementById("refreshContextBtn")?.addEventListener("click", loadContext);
+}
+
+function formatEventTime(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}
+
+function formatEventDateLabel(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: timezone,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(iso));
+}
+
+function renderEventList(container: HTMLElement, events: CalendarEvent[], timezone: string, showDate: boolean): void {
+  if (events.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "calendar-empty";
+    empty.textContent = "Nothing here.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "calendar-event-list";
+
+  for (const event of events) {
+    const row = document.createElement("div");
+    row.className = "calendar-event-row";
+
+    const time = document.createElement("span");
+    time.className = "calendar-event-time";
+    time.textContent = event.isAllDay
+      ? "All day"
+      : showDate
+        ? `${formatEventDateLabel(event.startsAt, timezone)}`
+        : formatEventTime(event.startsAt, timezone);
+    row.appendChild(time);
+
+    const body = document.createElement("div");
+    body.className = "calendar-event-body";
+
+    const title = document.createElement("span");
+    title.className = "calendar-event-title";
+    title.textContent = event.title;
+    body.appendChild(title);
+
+    const metaParts: string[] = [];
+    if (showDate && !event.isAllDay) metaParts.push(formatEventTime(event.startsAt, timezone));
+    if (event.location) metaParts.push(event.location);
+    if (event.calendarName) metaParts.push(event.calendarName);
+    if (metaParts.length > 0) {
+      const meta = document.createElement("span");
+      meta.className = "calendar-event-meta";
+      meta.textContent = metaParts.join(" · ");
+      body.appendChild(meta);
+    }
+
+    row.appendChild(body);
+    list.appendChild(row);
+  }
+
+  container.appendChild(list);
+}
+
+function renderCalendarTab(result: ContextProviderResult | undefined): void {
+  const container = document.getElementById("calendarTabContent")!;
+  container.innerHTML = "";
+
+  if (!result || result.status === "unavailable") {
+    const empty = document.createElement("p");
+    empty.className = "calendar-empty";
+    empty.textContent =
+      "Calendar isn't connected yet. Add a feed from the Settings tab to see your schedule here.";
+    container.appendChild(empty);
+    return;
+  }
+
+  if (result.status === "error" || !result.data) {
+    const empty = document.createElement("p");
+    empty.className = "calendar-empty";
+    empty.textContent = "Calendar is temporarily unavailable. Check the Context tab for details.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const data = result.data as unknown as CalendarContext;
+
+  const todaySection = document.createElement("div");
+  todaySection.className = "calendar-section";
+  const todayTitle = document.createElement("h3");
+  todayTitle.className = "calendar-section-title";
+  todayTitle.textContent = "Today";
+  todaySection.appendChild(todayTitle);
+  renderEventList(todaySection, data.todayEvents, data.timezone, false);
+  container.appendChild(todaySection);
+
+  const laterSection = document.createElement("div");
+  laterSection.className = "calendar-section";
+  const laterTitle = document.createElement("h3");
+  laterTitle.className = "calendar-section-title";
+  laterTitle.textContent = "Upcoming";
+  laterSection.appendChild(laterTitle);
+  renderEventList(laterSection, data.laterEvents, data.timezone, true);
+  container.appendChild(laterSection);
+
+  if (result.stale) {
+    const staleNote = document.createElement("p");
+    staleNote.className = "calendar-empty";
+    staleNote.textContent = "Showing the last successfully loaded schedule.";
+    container.appendChild(staleNote);
+  }
+}
+
+async function loadCalendarTab(): Promise<void> {
+  try {
+    const snapshot = await window.nimbus.getContext();
+    renderCalendarTab(snapshot.providers.calendar);
+  } catch (err) {
+    console.error("Failed to load calendar", err);
+  }
+}
+
+function initCalendarTab(): void {
+  loadCalendarTab();
+  document.getElementById("refreshCalendarBtn")?.addEventListener("click", loadCalendarTab);
+}
+
+function initAssistantFeed(): void {
+  const feed = document.getElementById("feed")!;
+  const countTag = document.getElementById("activityCount")!;
+  let count = 0;
+
+  window.nimbus.onAssistantEvent((event) => {
+    const empty = feed.querySelector(".feed-empty");
+    empty?.remove();
+
+    const item = document.createElement("div");
+    item.className = "feed-item";
+    // The interactive prompt for a suggestion is the NIMBUS-owned popup
+    // window (see src/main/suggestionWindow.ts) — this is just a passive
+    // record that it happened, same as every other event type here. A
+    // "notification" is what an `autoRun` routine's own completion
+    // shows up as instead of a suggestion — see Routine.autoRun.
+    if (event.type === "suggestion") {
+      item.textContent = `Suggested: ${event.title}`;
+    } else if (event.type === "notification") {
+      item.textContent = `${event.title}: ${event.body}`;
+    } else {
+      item.textContent = `[${event.source}] ${event.type}`;
+    }
+    feed.prepend(item);
+
+    count += 1;
+    countTag.textContent = `${count} event${count === 1 ? "" : "s"}`;
+  });
+}
+
+initTabs();
+initAppInfo();
+initSettings();
+initWeatherSettings();
+initCalendarSettings();
+initEmailSettings();
+initTaskSettings();
+initSpotifySettings();
+initRoutinesSettings();
+initTaskManagement();
+initMinimizeButton();
+initBriefing();
+initNowPlayingCard();
+initCalendarTab();
+initContext();
+initAssistantFeed();

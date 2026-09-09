@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' https://*.scdn.co https://*.spotifycdn.com"
+  />
+  <title>NIMBUS</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">NIMBUS</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="side-link active" data-tab="home">
+          <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M224,120v96a8,8,0,0,1-8,8H160a8,8,0,0,1-8-8V164a4,4,0,0,0-4-4H108a4,4,0,0,0-4,4v52a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V120a8,8,0,0,1,2.34-5.66l88-88a8,8,0,0,1,11.32,0l88,88A8,8,0,0,1,224,120Z"/></svg>
+          Home
+        </button>
+        <button class="side-link" data-tab="calendar">
+          <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V96H208V208ZM48,80V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80Z"/></svg>
+          Calendar
+        </button>
+        <button class="side-link" data-tab="tasks">
+          <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M226.83,58.83l-128,128a4,4,0,0,1-5.66,0l-56-56a4,4,0,0,1,5.66-5.66L96,178.34,221.17,53.17a4,4,0,1,1,5.66,5.66Z"/><path d="M208,40H72A16,16,0,0,0,56,56v16H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V184h16a16,16,0,0,0,16-16V56A16,16,0,0,0,208,40Zm-32,160H40V88H176Zm32-32H192V88a16,16,0,0,0-16-16H72V56H208Z"/></svg>
+          Tasks
+        </button>
+        <button class="side-link" data-tab="context">
+          <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>
+          Context
+        </button>
+        <button class="side-link" data-tab="routines">
+          <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M221.62,133.86,152,164.53V80a8,8,0,0,0-16,0v84.53L66.38,133.86a8,8,0,1,0-6.76,14.5l72,32.36V232a8,8,0,0,0,16,0V180.72l72-32.36a8,8,0,1,0-6.76-14.5ZM128,24A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/></svg>
+          Routines
+        </button>
+        <button class="side-link" data-tab="settings">
+          <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-4L196,66.61q-1.53-1.6-3.16-3.16L189.36,42.5a8,8,0,0,0-4-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L133.44,42q-2.16-.06-4.32,0L110.48,27.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,77.17,36.5a8,8,0,0,0-4,6L69.65,63.45q-1.6,1.53-3.16,3.16L45.5,66.61a8,8,0,0,0-6,4,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L42,123.56q-.06,2.16,0,4.32L27.11,146.52a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,4L63.45,186.4q1.53,1.6,3.16,3.16l.31,20.34a8,8,0,0,0,4,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L123.56,214q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.6,107.6,0,0,0,26.25-10.86,8,8,0,0,0,4-6l.35-20.35q1.6-1.53,3.16-3.16l20.34-.31a8,8,0,0,0,6-4,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Z"/></svg>
+          Settings
+        </button>
+      </nav>
+
+      <div class="sidebar-status">
+        <div class="status-row"><span class="status-dot"></span> <span id="statusText">Running</span></div>
+        <div class="status-kv"><span>Version</span><span id="version">&mdash;</span></div>
+        <div class="status-kv"><span>Environment</span><span id="environment">&mdash;</span></div>
+      </div>
+    </aside>
+
+    <main class="content-area">
+      <section id="tab-home" class="panel active">
+        <div class="panel-header">
+          <div>
+            <h6 class="kicker">Briefing</h6>
+            <p class="panel-subtitle" id="fullName">Loading&hellip;</p>
+          </div>
+          <button class="btn btn-secondary" id="regenerateBriefingBtn">Regenerate</button>
+        </div>
+
+        <div id="briefing">
+          <p class="briefing-status">Preparing your briefing&hellip;</p>
+        </div>
+
+        <div id="nowPlayingCard" class="now-playing-card" hidden>
+          <button class="now-playing-clickzone" id="nowPlayingClickzone" type="button" title="Choose a playlist to play">
+            <div class="now-playing-art" id="nowPlayingArt"></div>
+            <div class="now-playing-info">
+              <div class="card-kicker" id="nowPlayingKicker">Spotify</div>
+              <div class="now-playing-title" id="nowPlayingTitle">Nothing is playing</div>
+              <div class="now-playing-artist" id="nowPlayingArtist"></div>
+              <div class="now-playing-progress-row">
+                <span class="now-playing-time" id="nowPlayingElapsed"></span>
+                <div class="now-playing-progress-track">
+                  <div class="now-playing-progress-fill" id="nowPlayingProgressFill"></div>
+                </div>
+                <span class="now-playing-time" id="nowPlayingDuration"></span>
+              </div>
+              <div class="now-playing-error" id="nowPlayingError" hidden></div>
+            </div>
+          </button>
+          <div class="now-playing-controls">
+            <button class="now-playing-btn" id="nowPlayingPrevBtn" title="Previous" type="button">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><polygon points="8,2 8,14 1,8"/><polygon points="15,2 15,14 8,8"/></svg>
+            </button>
+            <button class="now-playing-btn now-playing-btn-primary" id="nowPlayingPlayPauseBtn" title="Play/Pause" type="button"></button>
+            <button class="now-playing-btn" id="nowPlayingNextBtn" title="Next" type="button">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><polygon points="1,2 1,14 8,8"/><polygon points="8,2 8,14 15,8"/></svg>
+            </button>
+            <input type="range" id="nowPlayingVolumeSlider" min="0" max="100" class="now-playing-volume" title="Volume" />
+          </div>
+          <div class="now-playing-playlist-dropdown" id="nowPlayingPlaylistDropdown" hidden></div>
+        </div>
+
+        <div class="activity-card">
+          <div class="activity-header">
+            <h6 class="kicker">Activity</h6>
+            <span class="tag tag-neutral" id="activityCount">0 events</span>
+          </div>
+          <div class="feed" id="feed">
+            <p class="feed-empty">
+              No other activity yet. This is where NIMBUS will surface
+              messages and notifications once those systems are connected.
+            </p>
+          </div>
+        </div>
+
+        <button class="btn btn-ghost btn-spaced" id="minimizeBtn">Minimize to tray</button>
+      </section>
+
+      <section id="tab-calendar" class="panel">
+        <div class="panel-header">
+          <h6 class="kicker">Calendar</h6>
+          <button class="btn btn-secondary" id="refreshCalendarBtn">Refresh</button>
+        </div>
+        <div id="calendarTabContent">
+          <p class="briefing-status">Loading&hellip;</p>
+        </div>
+      </section>
+
+      <section id="tab-tasks" class="panel">
+        <div id="tasksListView">
+          <div class="panel-header">
+            <h6 class="kicker">Tasks</h6>
+            <div class="routines-view-toggle">
+              <button class="btn btn-ghost routines-view-btn active" id="tasksViewListBtn" title="List view">List</button>
+              <button class="btn btn-ghost routines-view-btn" id="tasksViewGridBtn" title="Grid view">Grid</button>
+              <select id="taskSortSelect" class="select" title="Sort">
+                <option value="due">Sort: Due date</option>
+                <option value="priority">Sort: Priority</option>
+                <option value="title">Sort: Title (A-Z)</option>
+                <option value="created">Sort: Recently added</option>
+              </select>
+              <button class="btn btn-secondary" id="newTaskBtn">+ New task</button>
+            </div>
+          </div>
+
+          <p class="settings-warning" id="tasksDisabledWarning" hidden>
+            Tasks aren't connected yet — add a Todoist account in Settings
+            &rarr; Tasks first (and enable task awareness there).
+          </p>
+
+          <div id="taskList" class="task-cards"></div>
+          <p class="feed-empty" id="taskListEmpty" hidden>
+            No active tasks. Click "+ New task" to add one — or enjoy being
+            caught up.
+          </p>
+        </div>
+
+        <div id="tasksEditView" hidden>
+          <button class="btn btn-ghost" id="backToTaskListBtn">&larr; Back to tasks</button>
+
+          <div class="manual-location-fields">
+            <div class="setting-title" id="taskFormHeading">New task</div>
+            <label class="field-row">
+              <span class="setting-title">Title</span>
+              <input type="text" id="taskTitleInput" placeholder="e.g. Finish the report" />
+            </label>
+            <label class="field-row">
+              <span class="setting-title">Description (optional)</span>
+              <input type="text" id="taskDescriptionInput" placeholder="Any extra detail" />
+            </label>
+            <label class="field-row">
+              <span class="setting-title">Due date (optional)</span>
+              <input type="date" id="taskDueDateInput" />
+            </label>
+            <label class="field-row">
+              <span class="setting-title">Priority</span>
+              <select id="taskPrioritySelect" class="select">
+                <option value="none">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label class="field-row">
+              <span class="setting-title">List (optional)</span>
+              <select id="taskProjectSelect" class="select">
+                <option value="">(default)</option>
+              </select>
+            </label>
+
+            <div class="field-row">
+              <button class="btn btn-secondary" id="saveTaskBtn">Save task</button>
+              <button class="btn btn-ghost" id="cancelTaskEditBtn" hidden>Cancel</button>
+            </div>
+          </div>
+
+          <p class="setting-note">
+            Changes here go straight to Todoist — NIMBUS never keeps its
+            own separate copy of a task, so this always reflects (and
+            edits) the same list you see in the Todoist app.
+          </p>
+        </div>
+      </section>
+
+      <section id="tab-context" class="panel">
+        <div class="panel-header">
+          <h6 class="kicker">Current context</h6>
+          <button class="btn btn-secondary" id="refreshContextBtn">Refresh</button>
+        </div>
+        <p class="setting-note" id="contextGeneratedAt"></p>
+        <div id="contextProviders" class="context-providers"></div>
+      </section>
+
+      <section id="tab-routines" class="panel">
+        <div id="routinesListView">
+          <div class="panel-header">
+            <h6 class="kicker">Routines</h6>
+            <div class="routines-view-toggle">
+              <button class="btn btn-ghost routines-view-btn active" id="routinesViewListBtn" title="List view">List</button>
+              <button class="btn btn-ghost routines-view-btn" id="routinesViewGridBtn" title="Grid view">Grid</button>
+              <button class="btn btn-secondary" id="newRoutineBtn">+ New routine</button>
+            </div>
+          </div>
+
+          <label class="setting-row">
+            <span>
+              <span class="setting-title">Enable context-aware suggestions</span>
+              <span class="setting-desc">
+                Lets NIMBUS notice things like a configured app starting or
+                a configured website opening, and quietly suggest a
+                Routine — never acting without your approval. Turning this
+                on starts a lightweight local check of running app/window
+                names; see the README for exactly what is (and isn't)
+                observed.
+              </span>
+            </span>
+            <input type="checkbox" id="routinesEnabled" />
+          </label>
+
+          <p class="settings-warning" id="routinesDisabledWarning" hidden>
+            Context-aware suggestions are off — your routines are saved but
+            won't trigger automatically until you enable the switch above.
+            ("Test" below still runs a routine directly, bypassing this.)
+          </p>
+
+          <details class="activity-debug">
+            <summary>What NIMBUS currently sees (for building trigger patterns)</summary>
+            <p class="setting-desc">
+              A website trigger matches against the actual browser tab
+              title below — not the URL — since that's the only thing
+              NIMBUS can currently detect. If your pattern isn't
+              triggering, check it actually appears here first.
+            </p>
+            <button class="btn btn-ghost" id="refreshActivitySnapshotBtn" type="button">Refresh</button>
+            <div id="activitySnapshotContent" class="activity-debug-content"></div>
+          </details>
+
+          <div id="routineList" class="routine-cards"></div>
+          <p class="feed-empty" id="routineListEmpty" hidden>
+            No routines yet. Click "+ New routine" to create one.
+          </p>
+        </div>
+
+        <div id="routinesEditView" hidden>
+          <button class="btn btn-ghost" id="backToRoutineListBtn">&larr; Back to routines</button>
+
+          <div class="manual-location-fields">
+            <div class="setting-title" id="routineFormHeading">New routine</div>
+            <label class="field-row">
+              <span class="setting-title">Name</span>
+              <input type="text" id="routineName" placeholder="e.g. Study" />
+            </label>
+            <label class="field-row">
+              <span class="setting-title">Trigger</span>
+              <select id="routineTriggerType" class="select">
+                <option value="applicationOpened">Application opened</option>
+                <option value="websiteOpened">Website opened</option>
+                <option value="folderOpened">Folder opened</option>
+              </select>
+            </label>
+
+            <div id="routineTriggerFields-applicationOpened" class="field-row">
+              <span class="setting-title">Application (.exe name) — comma-separated for more than one</span>
+              <input type="text" id="routineAppName" placeholder="e.g. steam.exe, epicgameslauncher.exe" />
+            </div>
+            <div id="routineTriggerFields-websiteOpened" class="field-row" hidden>
+              <span class="setting-title">Website contains — comma-separated for more than one</span>
+              <input type="text" id="routineWebsitePattern" placeholder="e.g. skillcert, nowuniversity" />
+            </div>
+            <div id="routineTriggerFields-folderOpened" class="field-row" hidden>
+              <span class="setting-title">Folder path contains — comma-separated for more than one</span>
+              <input type="text" id="routineFolderPath" placeholder="e.g. Projects, Coursework" />
+            </div>
+
+            <label class="field-row">
+              <span class="setting-title">Suggestion title</span>
+              <input type="text" id="routineSuggestionTitle" placeholder="e.g. Study mode?" />
+            </label>
+            <label class="field-row">
+              <span class="setting-title">Suggestion message</span>
+              <input type="text" id="routineSuggestionMessage" placeholder="e.g. Play your Study playlist?" />
+            </label>
+            <label class="field-row">
+              <span class="setting-title">Cooldown (minutes)</span>
+              <input type="number" id="routineCooldown" min="0" value="30" />
+            </label>
+            <label class="setting-row">
+              <span>
+                <span class="setting-title">Skip if already active</span>
+                <span class="setting-desc">
+                  Don't suggest again while this routine's own configured
+                  playlist/timer already appear to be running — e.g. you
+                  briefly opened the site by accident, dismissed it, then
+                  actually started studying yourself; NIMBUS won't offer
+                  it again once it can see you're already doing it.
+                </span>
+              </span>
+              <input type="checkbox" id="routineSkipIfActive" />
+            </label>
+            <label class="setting-row">
+              <span>
+                <span class="setting-title">Run automatically, no confirmation</span>
+                <span class="setting-desc">
+                  Skip the "would you like me to?" popup entirely and just
+                  run this routine's actions the moment it triggers. Only
+                  use this for actions you're comfortable happening
+                  without asking — e.g. opening a companion website when a
+                  game launches. Cooldown still applies.
+                </span>
+              </span>
+              <input type="checkbox" id="routineAutoRun" />
+            </label>
+
+            <div class="setting-title">Actions</div>
+            <div id="routineActionList" class="calendar-feed-list"></div>
+            <div class="action-picker-row">
+              <select id="routineActionServiceSelect" class="select"></select>
+              <select id="routineActionSelect" class="select"></select>
+              <button class="btn btn-secondary" id="routineAddActionBtn">Add action</button>
+              <button class="btn btn-ghost" id="routineCancelActionEditBtn" hidden>Cancel</button>
+            </div>
+            <div id="routineActionParamFields"></div>
+
+            <div class="field-row">
+              <button class="btn btn-secondary" id="addRoutineBtn">Save routine</button>
+              <button class="btn btn-ghost" id="cancelRoutineEditBtn" hidden>Cancel</button>
+            </div>
+          </div>
+
+          <p class="setting-note">
+            A Routine only ever suggests — NIMBUS asks before it acts, and
+            only ever runs actions you've configured through NIMBUS's own
+            Action system. A dismissed or ignored suggestion won't repeat
+            until the routine's cooldown elapses.
+          </p>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="panel">
+        <h6 class="kicker">Startup</h6>
+
+        <label class="setting-row">
+          <span>
+            <span class="setting-title">Start with Windows</span>
+            <span class="setting-desc">Launch NIMBUS automatically when you sign in.</span>
+          </span>
+          <input type="checkbox" id="launchWithWindows" />
+        </label>
+
+        <label class="setting-row">
+          <span>
+            <span class="setting-title">Start minimized</span>
+            <span class="setting-desc">Start in the tray only — don't open the window on launch.</span>
+          </span>
+          <input type="checkbox" id="startMinimized" />
+        </label>
+
+        <p class="setting-note">
+          Closing this window doesn't quit NIMBUS — it keeps running in the
+          system tray. Use "Quit NIMBUS" from the tray icon to exit fully.
+        </p>
+
+        <h6 class="kicker settings-section-spaced">Weather location</h6>
+
+        <label class="setting-row" for="locationModeSelect">
+          <span>
+            <span class="setting-title">Location mode</span>
+            <span class="setting-desc">Automatic uses your approximate location (via IP); manual uses fixed coordinates.</span>
+          </span>
+          <select id="locationModeSelect" class="select">
+            <option value="auto">Automatic</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+
+        <div id="manualLocationFields" class="manual-location-fields" hidden>
+          <label class="field-row">
+            <span class="setting-title">Label</span>
+            <input type="text" id="manualLocationLabel" placeholder="e.g. Lisbon, Portugal" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Latitude</span>
+            <input type="number" id="manualLocationLat" step="any" placeholder="38.7223" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Longitude</span>
+            <input type="number" id="manualLocationLon" step="any" placeholder="-9.1393" />
+          </label>
+          <button class="btn btn-secondary" id="saveManualLocationBtn">Save location</button>
+        </div>
+
+        <h6 class="kicker settings-section-spaced">Calendar</h6>
+
+        <label class="setting-row">
+          <span>
+            <span class="setting-title">Enable calendar awareness</span>
+            <span class="setting-desc">
+              Lets NIMBUS mention today's schedule in the briefing. Add a
+              calendar's private ICS feed address below.
+            </span>
+          </span>
+          <input type="checkbox" id="calendarEnabled" />
+        </label>
+
+        <div id="calendarFeedList" class="calendar-feed-list"></div>
+
+        <div class="manual-location-fields">
+          <label class="field-row">
+            <span class="setting-title">Label</span>
+            <input type="text" id="calendarFeedLabel" placeholder="e.g. Work" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">ICS address</span>
+            <input type="text" id="calendarFeedAddress" placeholder="https://... or a local .ics file path" />
+          </label>
+          <button class="btn btn-secondary" id="addCalendarFeedBtn">Add feed</button>
+        </div>
+
+        <p class="setting-note">
+          The ICS address is treated as a credential — most calendar apps
+          (Google Calendar, Outlook, iCloud) can generate a private
+          "secret address in iCal format" for a calendar under their
+          sharing settings. It's stored locally and never logged.
+        </p>
+
+        <h6 class="kicker settings-section-spaced">Email</h6>
+
+        <label class="setting-row">
+          <span>
+            <span class="setting-title">Enable email awareness</span>
+            <span class="setting-desc">
+              Lets NIMBUS mention inbox activity in the briefing. Connect
+              an account via IMAP below — most providers (Gmail, Outlook,
+              iCloud) require an app-specific password, not your regular one.
+            </span>
+          </span>
+          <input type="checkbox" id="emailEnabled" />
+        </label>
+
+        <div id="emailAccountList" class="calendar-feed-list"></div>
+
+        <div class="manual-location-fields">
+          <label class="field-row">
+            <span class="setting-title">Label</span>
+            <input type="text" id="emailAccountLabel" placeholder="e.g. Personal" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">IMAP host</span>
+            <input type="text" id="emailAccountHost" placeholder="imap.gmail.com" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Port</span>
+            <input type="number" id="emailAccountPort" placeholder="993" value="993" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Use TLS</span>
+            <input type="checkbox" id="emailAccountSecure" checked />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Username</span>
+            <input type="text" id="emailAccountUsername" placeholder="you@example.com" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Password</span>
+            <input type="password" id="emailAccountPassword" placeholder="App password" autocomplete="new-password" />
+          </label>
+          <button class="btn btn-secondary" id="addEmailAccountBtn">Add account</button>
+        </div>
+
+        <p class="setting-note">
+          The password is a credential — it's never sent back to this
+          window once saved (the field always starts empty), never
+          logged, and never leaves this device. NIMBUS only reads
+          message metadata and short previews — it never sends, replies
+          to, deletes, or modifies anything in your inbox.
+        </p>
+
+        <h6 class="kicker settings-section-spaced">Tasks</h6>
+
+        <label class="setting-row">
+          <span>
+            <span class="setting-title">Enable task awareness</span>
+            <span class="setting-desc">
+              Lets NIMBUS mention tasks due today or overdue in the
+              briefing. Connect a Todoist account with a personal API
+              token below (Todoist Settings &rarr; Integrations &rarr;
+              Developer).
+            </span>
+          </span>
+          <input type="checkbox" id="tasksEnabled" />
+        </label>
+
+        <div id="taskAccountList" class="calendar-feed-list"></div>
+
+        <div class="manual-location-fields">
+          <label class="field-row">
+            <span class="setting-title">Label</span>
+            <input type="text" id="taskAccountLabel" placeholder="e.g. Personal" />
+          </label>
+          <label class="field-row">
+            <span class="setting-title">Todoist API token</span>
+            <input type="password" id="taskAccountToken" placeholder="Personal API token" autocomplete="new-password" />
+          </label>
+          <button class="btn btn-secondary" id="addTaskAccountBtn">Add account</button>
+        </div>
+
+        <p class="setting-note">
+          The API token is a credential — it's never sent back to this
+          window once saved (the field always starts empty), never
+          logged, and never leaves this device. NIMBUS only reads active
+          tasks and their due dates — it never creates, completes,
+          deletes, or otherwise modifies anything in your task list.
+        </p>
+
+        <h6 class="kicker settings-section-spaced">Spotify</h6>
+
+        <label class="setting-row">
+          <span>
+            <span class="setting-title">Enable Spotify control</span>
+            <span class="setting-desc">
+              Lets NIMBUS control Spotify playback and know what's
+              currently playing. Requires a free Spotify Developer app —
+              see the README for setup steps.
+            </span>
+          </span>
+          <input type="checkbox" id="spotifyEnabled" />
+        </label>
+
+        <div class="calendar-feed-row">
+          <div>
+            <span class="calendar-feed-row-label">Connection</span>
+            <span class="calendar-feed-row-address" id="spotifyStatus">Not connected</span>
+          </div>
+          <div class="calendar-feed-row-actions">
+            <button class="btn btn-secondary" id="spotifyConnectBtn">Connect</button>
+            <button class="btn btn-ghost" id="spotifyDisconnectBtn" hidden>Disconnect</button>
+          </div>
+        </div>
+
+        <p class="setting-note">
+          NIMBUS connects to your own Spotify account via Spotify's
+          standard sign-in — it never sees or stores your Spotify
+          password. The connection token is encrypted using this
+          computer's secure storage and never sent to this window.
+          NIMBUS only controls playback (play/pause/skip/volume/search)
+          — it never modifies your library, playlists, or account.
+          Current playback and controls appear on the Home tab once
+          connected.
+        </p>
+
+      </section>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

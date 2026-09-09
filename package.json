@@ -1,0 +1,25 @@
+{
+  "name": "nimbus",
+  "version": "0.1.0",
+  "description": "NIMBUS - Navigation & Intelligent Monitoring Base for User Systems. Personal desktop assistant foundation.",
+  "main": "dist/main/main.js",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && npm run copy-assets",
+    "copy-assets": "node scripts/copy-assets.js",
+    "start": "npm run build && electron .",
+    "dev": "tsc -p tsconfig.json -w",
+    "test": "tsc -p tsconfig.json && node --test \"dist/{context,briefing,actions,main,events,routines,timers}/**/*.test.js\""
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "imapflow": "^2.0.0"
+  }
+}

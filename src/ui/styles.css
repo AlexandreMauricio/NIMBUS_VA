@@ -1,0 +1,1152 @@
+:root {
+  color-scheme: dark;
+
+  /* Design tokens — matches the "nocturne" styling from the Nimbus Home
+     design (Claude Design). Concrete values are NIMBUS's own approximation
+     (the design system's own stylesheet wasn't available at implementation
+     time), tuned to match the provided reference render. */
+  --color-bg: #0c0b13;
+  --color-surface: #16141f;
+  --color-surface-alt: #1b1826;
+  --color-divider: rgba(255, 255, 255, 0.08);
+  --color-text: #f0eef7;
+
+  --color-neutral-400: #8d8aa5;
+  --color-neutral-500: #67637d;
+
+  --color-accent-300: #b9acff;
+  --color-accent-400: #a292fc;
+  --color-accent-500: #8b78f5;
+  --color-accent-700: #4a3f8a;
+
+  --color-spotify-green: #1db954;
+  --color-spotify-green-700: #14532d;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+
+  --font-body: "Segoe UI", "Inter", system-ui, sans-serif;
+
+  /* Legacy status colors, unrelated to the theme swap. */
+  --color-success: #4caf50;
+  --color-error: #ef5350;
+  --color-warning: #ffb74d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Without this, any element that also has its own `display` rule (most
+   of them — buttons, flex containers, etc.) silently defeats the
+   browser's built-in `[hidden]` styling, since an author stylesheet
+   always wins over the user-agent one regardless of selector order. That
+   turned `el.hidden = true/false` into a no-op for several toggles
+   (Spotify's connect/disconnect buttons, the manual-location fields, the
+   now-playing card, routine trigger fields). `!important` here is
+   deliberate and the only reliable fix — see MDN's own note on the
+   `hidden` attribute's cascade interaction. */
+[hidden] {
+  display: none !important;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6, p, dl, dd {
+  margin: 0;
+}
+
+/* ---------- App shell ---------- */
+
+.app-shell {
+  height: 100vh;
+  display: flex;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-divider);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-6);
+}
+
+.brand-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-accent-500);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--color-accent-500) 60%, transparent);
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.side-link {
+  appearance: none;
+  width: 100%;
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-400);
+  text-decoration: none;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-link svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.side-link:hover {
+  color: var(--color-text);
+}
+
+.side-link.active {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-accent-500) 12%, transparent);
+}
+
+.sidebar-status {
+  margin-top: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-divider);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-neutral-400);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-400);
+  box-shadow: 0 0 8px var(--color-accent-400);
+  display: inline-block;
+}
+
+.status-kv {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-neutral-500);
+}
+
+.status-kv span:last-child {
+  color: var(--color-text);
+}
+
+.content-area {
+  flex: 1;
+  padding: var(--space-8);
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.panel {
+  display: none;
+  /* The max-width lived on .content-area itself before, which capped
+     the whole scrolling container's width — on a wide window that left
+     the scrollbar stranded partway across the window with a large,
+     obviously-empty gap to its right. Moving the cap to .panel instead
+     keeps the scrollbar anchored to the window's actual right edge
+     while still centering readable content at a sane width. */
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.panel.active {
+  display: block;
+}
+
+/* ---------- Shared text/label styles ---------- */
+
+.kicker {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-neutral-400);
+  font-weight: 600;
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.panel-header .kicker {
+  margin-bottom: var(--space-1);
+}
+
+.panel-subtitle {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
+.settings-section-spaced {
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-4);
+  display: block;
+}
+
+.setting-note {
+  margin-top: var(--space-4);
+  font-size: 0.78rem;
+  color: var(--color-neutral-400);
+  line-height: 1.5;
+}
+
+.settings-warning {
+  margin: var(--space-2) 0 var(--space-4);
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  font-size: 0.78rem;
+  color: var(--color-warning);
+  line-height: 1.5;
+}
+
+/* ---------- Buttons & tags ---------- */
+
+.btn {
+  appearance: none;
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-secondary {
+  background: var(--color-surface-alt);
+  border-color: var(--color-divider);
+  color: var(--color-text);
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-accent-500);
+  color: var(--color-accent-300);
+}
+
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--color-accent-300);
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.btn-ghost:hover {
+  text-decoration: underline;
+}
+
+.btn-spaced {
+  margin-top: var(--space-4);
+}
+
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.tag-neutral {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  color: var(--color-neutral-400);
+}
+
+/* ---------- Briefing: hero + tile grid ---------- */
+
+.briefing-status {
+  color: var(--color-neutral-400);
+  font-size: 0.85rem;
+  margin-bottom: var(--space-4);
+}
+
+.hero-card {
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent-500) 16%, var(--color-surface)),
+    var(--color-surface)
+  );
+  border: 1px solid var(--color-accent-700);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--color-accent-500) 12%, transparent);
+}
+
+.hero-message {
+  margin-top: var(--space-2);
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.tile {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tile-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-accent-500) 14%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent-300);
+}
+
+.card-kicker {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-neutral-400);
+  font-weight: 600;
+}
+
+.card-body {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.tile .btn-ghost {
+  align-self: flex-start;
+  margin-top: auto;
+  padding-top: var(--space-1);
+}
+
+/* ---------- Now playing (Spotify) ---------- */
+
+.now-playing-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-spotify-green) 10%, var(--color-surface)),
+    var(--color-surface)
+  );
+  border: 1px solid var(--color-spotify-green-700);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--color-spotify-green) 18%, transparent);
+}
+
+.now-playing-clickzone {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.now-playing-clickzone:hover .now-playing-title {
+  color: var(--color-spotify-green);
+}
+
+.now-playing-playlist-dropdown {
+  position: absolute;
+  top: 100%;
+  left: var(--space-4);
+  right: var(--space-4);
+  margin-top: var(--space-2);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-spotify-green-700);
+  border-radius: var(--radius-md);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.now-playing-playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+}
+
+.now-playing-playlist-item:hover {
+  background: color-mix(in srgb, var(--color-spotify-green) 14%, transparent);
+}
+
+.now-playing-playlist-item-art {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background: var(--color-surface) center/cover no-repeat;
+  flex-shrink: 0;
+}
+
+.now-playing-playlist-item-info {
+  min-width: 0;
+}
+
+.now-playing-playlist-item-name {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-playing-playlist-item-meta {
+  font-size: 0.7rem;
+  color: var(--color-neutral-400);
+}
+
+.now-playing-playlist-message {
+  padding: 0.75rem 0.8rem;
+  font-size: 0.78rem;
+  color: var(--color-neutral-400);
+}
+
+.now-playing-art {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt) center/cover no-repeat;
+  flex-shrink: 0;
+}
+
+.now-playing-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.now-playing-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-playing-artist {
+  font-size: 0.78rem;
+  color: var(--color-neutral-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 0.1rem;
+}
+
+.now-playing-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.now-playing-time {
+  font-size: 0.68rem;
+  color: var(--color-neutral-500);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.now-playing-progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-divider);
+  overflow: hidden;
+}
+
+.now-playing-progress-fill {
+  height: 100%;
+  background: var(--color-accent-400);
+  border-radius: 999px;
+  width: 0%;
+}
+
+.now-playing-error {
+  font-size: 0.72rem;
+  color: var(--color-error);
+  margin-top: 0.35rem;
+}
+
+.now-playing-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.now-playing-btn {
+  appearance: none;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  font-size: 0.65rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.now-playing-btn:hover {
+  border-color: var(--color-accent-500);
+  color: var(--color-accent-300);
+}
+
+.now-playing-btn-primary {
+  background: var(--color-accent-500);
+  border-color: var(--color-accent-500);
+  color: var(--color-bg);
+}
+
+.now-playing-volume {
+  width: 70px;
+  accent-color: var(--color-spotify-green);
+}
+
+.now-playing-volume:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---------- Activity / feed ---------- */
+
+.activity-card {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-divider);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-2) var(--space-3);
+}
+
+.feed {
+  min-height: 60px;
+}
+
+.feed-empty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--color-neutral-500);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.feed-item {
+  padding: var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+  font-size: 0.85rem;
+}
+
+.feed-item:last-child {
+  border-bottom: none;
+}
+
+/* ---------- Settings rows ---------- */
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--color-divider);
+  cursor: pointer;
+}
+
+.setting-title {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.setting-desc {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--color-neutral-400);
+  margin-top: 0.15rem;
+}
+
+.setting-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent-500);
+  flex-shrink: 0;
+}
+
+.select {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+.manual-location-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/* Unlike .field-row (a label pinned left, one control pinned right),
+   this row packs several controls together left-to-right — .field-row's
+   space-between spread them across the whole row width with huge gaps
+   between them. */
+.action-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.field-row input {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  width: 180px;
+}
+
+.calendar-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.calendar-feed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+}
+
+.calendar-feed-row-label {
+  font-size: 0.85rem;
+}
+
+.calendar-feed-row-address {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-neutral-400);
+  font-family: monospace;
+}
+
+.calendar-feed-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.calendar-feed-remove {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--color-divider);
+  color: var(--color-error);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.calendar-feed-remove:hover {
+  border-color: var(--color-error);
+}
+
+/* ---------- Routines tab ---------- */
+
+.routines-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.routines-view-btn {
+  padding: 0.3rem 0.7rem;
+}
+
+.routines-view-btn.active {
+  background: var(--color-surface-alt);
+  border-color: var(--color-accent-500);
+  color: var(--color-accent-300);
+}
+
+.routine-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.routine-cards.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.routine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: 0.8rem 1rem;
+}
+
+.grid-view .routine-card {
+  height: 100%;
+}
+
+.routine-card-body {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.routine-card-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.routine-card-meta {
+  font-size: 0.75rem;
+  color: var(--color-neutral-400);
+}
+
+.routine-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.routine-run-btn {
+  width: 26px;
+  height: 26px;
+  background: var(--color-accent-500);
+  border-color: var(--color-accent-500);
+  color: var(--color-bg);
+}
+
+.routine-run-btn:hover {
+  background: var(--color-accent-300);
+  border-color: var(--color-accent-300);
+  color: var(--color-bg);
+}
+
+.routine-run-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.routine-active-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--color-neutral-400);
+  cursor: pointer;
+}
+
+.activity-debug {
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.8rem;
+  margin: 0.75rem 0;
+}
+
+.activity-debug summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--color-neutral-400);
+}
+
+.activity-debug summary:hover {
+  color: var(--color-text);
+}
+
+.activity-debug-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.activity-debug-line {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: var(--color-text);
+  padding: 0.15rem 0;
+  word-break: break-word;
+}
+
+.activity-debug-empty {
+  font-size: 0.72rem;
+  color: var(--color-neutral-400);
+}
+
+/* ---------- Tasks tab ---------- */
+
+/* Same card-list/grid mechanic as .routine-cards/.routine-card (see
+   "Routines tab" above) — kept as its own small set of rules rather than
+   sharing class names, since a task card and a routine card show
+   different, unrelated content and shouldn't be coupled just because
+   the layout happens to match today. */
+.task-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.task-cards.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.task-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: 0.8rem 1rem;
+}
+
+.task-card.task-card-overdue {
+  border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-divider));
+}
+
+.grid-view .task-card {
+  height: 100%;
+  flex-direction: column;
+}
+
+.task-card-checkbox {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.task-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.task-card-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.task-card-description {
+  font-size: 0.75rem;
+  color: var(--color-neutral-400);
+  word-break: break-word;
+}
+
+.task-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--color-neutral-400);
+}
+
+.task-priority-badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--color-divider);
+}
+
+.task-priority-high {
+  color: var(--color-error);
+  border-color: color-mix(in srgb, var(--color-error) 55%, var(--color-divider));
+}
+
+.task-priority-medium {
+  color: #e0a530;
+  border-color: color-mix(in srgb, #e0a530 55%, var(--color-divider));
+}
+
+.task-due-overdue {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.task-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.grid-view .task-card-actions {
+  margin-top: auto;
+  padding-top: 0.4rem;
+}
+
+/* ---------- Context tab ---------- */
+
+.context-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.context-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+}
+
+.context-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.context-card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.context-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.context-badge.ok {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.context-badge.error {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+}
+
+.context-badge.unavailable {
+  color: var(--color-neutral-400);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.context-badge.stale {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  margin-left: 0.4rem;
+}
+
+.context-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.2rem 1rem;
+  font-size: 0.8rem;
+}
+
+.context-fields dt {
+  color: var(--color-neutral-400);
+}
+
+.context-fields dd {
+  overflow-wrap: anywhere;
+}
+
+.context-error {
+  font-size: 0.78rem;
+  color: var(--color-error);
+}
+
+/* ---------- Calendar tab ---------- */
+
+.calendar-section {
+  margin-bottom: var(--space-6);
+}
+
+.calendar-section-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-neutral-400);
+  margin: 0 0 0.6rem;
+}
+
+.calendar-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.calendar-event-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.9rem;
+}
+
+.calendar-event-time {
+  font-size: 0.8rem;
+  color: var(--color-accent-300);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 3.4rem;
+}
+
+.calendar-event-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-event-title {
+  font-size: 0.88rem;
+}
+
+.calendar-event-meta {
+  font-size: 0.75rem;
+  color: var(--color-neutral-400);
+}
+
+.calendar-empty {
+  color: var(--color-neutral-500);
+  font-size: 0.82rem;
+}
