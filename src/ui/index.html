@@ -362,7 +362,9 @@
             <div class="panel-card">
               <div class="field-grid">
                 <div class="field">
-                  <label for="routineName">Name</label>
+                  <label for="routineName"
+                    >Name <span class="required-marker" aria-hidden="true">*</span></label
+                  >
                   <input class="input" type="text" id="routineName" placeholder="e.g. Study" />
                 </div>
                 <div class="field">
@@ -380,6 +382,7 @@
                 <div id="routineTriggerFields-applicationOpened" class="field">
                   <label for="routineAppName">
                     Application (.exe name) — comma-separated for more than one
+                    <span class="required-marker" aria-hidden="true">*</span>
                   </label>
                   <input
                     class="input"
@@ -391,6 +394,7 @@
                 <div id="routineTriggerFields-websiteOpened" class="field" hidden>
                   <label for="routineWebsitePattern">
                     Website contains — comma-separated for more than one
+                    <span class="required-marker" aria-hidden="true">*</span>
                   </label>
                   <input
                     class="input"
@@ -410,6 +414,7 @@
                 <div id="routineTriggerFields-folderOpened" class="field" hidden>
                   <label for="routineFolderPath">
                     Folder path contains — comma-separated for more than one
+                    <span class="required-marker" aria-hidden="true">*</span>
                   </label>
                   <input
                     class="input"
@@ -422,7 +427,9 @@
 
               <div class="field-grid">
                 <div class="field">
-                  <label for="routineSuggestionTitle">Suggestion title</label>
+                  <label for="routineSuggestionTitle"
+                    >Suggestion title <span class="required-marker" aria-hidden="true">*</span></label
+                  >
                   <input
                     class="input"
                     type="text"
@@ -431,7 +438,9 @@
                   />
                 </div>
                 <div class="field">
-                  <label for="routineSuggestionMessage">Suggestion message</label>
+                  <label for="routineSuggestionMessage"
+                    >Suggestion message <span class="required-marker" aria-hidden="true">*</span></label
+                  >
                   <input
                     class="input"
                     type="text"
@@ -568,7 +577,7 @@
               </div>
             </div>
 
-            <h6 class="section-kicker">Actions</h6>
+            <h6 class="section-kicker">Actions <span class="required-marker" aria-hidden="true">*</span></h6>
             <div id="routineActionList"></div>
             <div class="action-picker-row">
               <select id="routineActionServiceSelect" class="input"></select>
@@ -577,6 +586,11 @@
               <button class="btn btn-ghost" id="routineCancelActionEditBtn" hidden>Cancel</button>
             </div>
             <div id="routineActionParamFields"></div>
+
+            <p class="form-required-note">
+              <span class="required-marker" aria-hidden="true">*</span> Required
+            </p>
+            <p class="form-error" id="routineFormError" role="alert" hidden></p>
 
             <div class="form-footer">
               <button class="btn btn-primary" id="addRoutineBtn">Save routine</button>

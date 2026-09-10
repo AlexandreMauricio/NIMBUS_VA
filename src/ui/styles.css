@@ -1539,3 +1539,34 @@ button.btn {
 .activity-history-where {
   color: var(--color-neutral-500);
 }
+
+/* ---------- Form validation ---------- */
+
+/* Marks a mandatory field, so the requirement is visible before someone
+   presses Save rather than only afterwards. */
+.required-marker {
+  color: var(--color-error);
+  margin-left: 2px;
+}
+
+.form-required-note {
+  font-size: 11px;
+  color: var(--color-neutral-500);
+  margin: var(--space-2) 0 0;
+}
+
+/* Shown in place of a modal dialog. A native alert() in Electron blocks
+   the renderer and, on Windows, routinely leaves the window without
+   keyboard focus afterwards — which made the form impossible to fill in
+   after a failed save. Inline text can't do that, and it stays on screen
+   while the user fixes the problem. */
+.form-error {
+  font-size: 13px;
+  color: var(--color-error);
+  margin: var(--space-3) 0 0;
+}
+
+.field-invalid .input,
+.input.field-invalid {
+  border-color: var(--color-error);
+}

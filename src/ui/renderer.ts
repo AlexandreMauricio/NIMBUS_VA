@@ -1667,6 +1667,7 @@ async function initRoutinesSettings(): Promise<void> {
     stopEditingAction();
     editingRoutineId = null;
     editedRoutineTrigger = null;
+    clearFormError();
     formHeadingEl.textContent = "New routine";
     saveBtn.textContent = "Save routine";
     cancelEditBtn.hidden = true;
@@ -1708,6 +1709,7 @@ async function initRoutinesSettings(): Promise<void> {
   function populateFormForEdit(routine: Routine): void {
     showEditView();
     stopEditingAction();
+    clearFormError();
     editingRoutineId = routine.id;
     editedRoutineTrigger = routine.trigger;
     formHeadingEl.textContent = `Editing "${routine.name}"`;
@@ -1981,6 +1983,59 @@ async function initRoutinesSettings(): Promise<void> {
     return `${days} day${days === 1 ? "" : "s"} ago`;
   }
 
+  const formErrorEl = document.getElementById("routineFormError") as HTMLElement;
+
+  /**
+   * Reports what a save is missing, inline.
+   *
+   * Deliberately not `alert()`. A native dialog blocks the renderer, and
+   * in Electron on Windows it routinely leaves the window without
+   * keyboard focus once dismissed — which left the form impossible to
+   * type into after a failed save, exactly when the user needs to fix
+   * it. Inline text cannot steal focus, and it stays on screen while
+   * they do.
+   */
+  function showFormError(message: string, invalid: HTMLElement[] = []): void {
+    clearFormError();
+    formErrorEl.textContent = message;
+    formErrorEl.hidden = false;
+
+    for (const el of invalid) el.classList.add("field-invalid");
+    // Put the caret where the work is, rather than making them hunt for
+    // the field the message is about.
+    const first = invalid[0] as HTMLInputElement | undefined;
+    if (first) {
+      first.scrollIntoView({ behavior: "smooth", block: "center" });
+      first.focus();
+    } else {
+      formErrorEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  function clearFormError(): void {
+    formErrorEl.hidden = true;
+    formErrorEl.textContent = "";
+    for (const el of Array.from(document.querySelectorAll(".field-invalid"))) {
+      el.classList.remove("field-invalid");
+    }
+  }
+
+  /** The trigger's own value field, which differs per trigger type. */
+  function triggerValueInput(): HTMLInputElement | null {
+    switch (triggerTypeSelect.value) {
+      case "applicationOpened":
+        return document.getElementById("routineAppName") as HTMLInputElement;
+      case "websiteOpened":
+        return document.getElementById("routineWebsitePattern") as HTMLInputElement;
+      case "folderOpened":
+        return document.getElementById("routineFolderPath") as HTMLInputElement;
+      default:
+        // "Activity ended" needs no value: an empty name means any
+        // activity, which is a real choice rather than a missing one.
+        return null;
+    }
+  }
+
   function renderRoutineList(settings: RoutineSettings): void {
     // Refreshed in the background: a stale "last triggered" line is a
     // cosmetic lag, and awaiting it would make every list render async.
@@ -2195,9 +2250,13 @@ async function initRoutinesSettings(): Promise<void> {
     const params = collectActionParams(def);
     const missing = def.parameters.filter((p) => p.required && params[p.name] === undefined);
     if (missing.length > 0) {
-      alert(`Please fill in: ${missing.map((p) => p.name).join(", ")}`);
+      const fields = missing
+        .map((prm) => document.getElementById(paramFieldId(prm.name)))
+        .filter((el): el is HTMLElement => el !== null);
+      showFormError(`This action still needs: ${missing.map((prm) => prm.name).join(", ")}.`, fields);
       return;
     }
+    clearFormError();
     if (editingActionIndex !== null) {
       pendingActions[editingActionIndex] = { actionId: def.id, params };
       stopEditingAction();
@@ -2208,6 +2267,15 @@ async function initRoutinesSettings(): Promise<void> {
   });
 
   cancelActionEditBtn.addEventListener("click", () => stopEditingAction());
+
+  // Fixing a field should visibly un-break it, not leave a red border
+  // and a stale message sitting there until the next save attempt.
+  for (const field of [nameInput, suggestionTitleInput, suggestionMessageInput]) {
+    field.addEventListener("input", () => field.classList.remove("field-invalid"));
+  }
+  document.getElementById("routinesEditView")?.addEventListener("input", (event) => {
+    (event.target as HTMLElement)?.classList?.remove("field-invalid");
+  });
 
   saveBtn.addEventListener("click", async () => {
     const name = nameInput.value.trim();
@@ -2226,10 +2294,37 @@ async function initRoutinesSettings(): Promise<void> {
     const message = suggestionMessageInput.value.trim();
     const cooldownMinutes = Number(cooldownInput.value) || 0;
 
-    if (!name || !trigger || !title || !message || pendingActions.length === 0) {
-      alert("Please fill in a name, trigger, suggestion text, and at least one action.");
+    // Each missing thing is named, and its field highlighted, so fixing
+    // it doesn't mean re-reading the whole form to work out which one.
+    const missing: string[] = [];
+    const invalid: HTMLElement[] = [];
+    if (!name) {
+      missing.push("a name");
+      invalid.push(nameInput);
+    }
+    if (!trigger) {
+      missing.push("something for the trigger to match");
+      const field = triggerValueInput();
+      if (field) invalid.push(field);
+    }
+    if (!title) {
+      missing.push("a suggestion title");
+      invalid.push(suggestionTitleInput);
+    }
+    if (!message) {
+      missing.push("a suggestion message");
+      invalid.push(suggestionMessageInput);
+    }
+    if (pendingActions.length === 0) missing.push("at least one action");
+
+    if (missing.length > 0) {
+      showFormError(`This routine still needs ${missing.join(", ")}.`, invalid);
       return;
     }
+    // Already covered by the check above; restated so the compiler can
+    // see it too.
+    if (!trigger) return;
+    clearFormError();
 
     try {
       const current = await window.nimbus.getRoutineSettings();
@@ -2238,7 +2333,7 @@ async function initRoutinesSettings(): Promise<void> {
       if (editingRoutineId) {
         const existing = current.routines.find((r) => r.id === editingRoutineId);
         if (!existing) {
-          alert("This routine no longer exists — it may have been deleted.");
+          showFormError("This routine no longer exists — it may have been deleted.");
           resetForm();
           showListView();
           renderRoutineList(current);
@@ -2297,7 +2392,10 @@ async function initRoutinesSettings(): Promise<void> {
       resetForm();
       showListView();
     } catch (err) {
-      alert(`Couldn't save routine: ${String(err)}`);
+      // Validation from the main process (an unknown action id, a
+      // malformed condition) lands here — shown in the same place as the
+      // client-side checks rather than in a dialog.
+      showFormError(`Couldn't save this routine: ${String(err)}`);
     }
   });
 
