@@ -153,6 +153,13 @@ Architecture-level decisions — what counts as portable Core versus
 Windows-specific, and how to keep that boundary — live in
 **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
+## Versions
+
+`MAJOR.MINOR.PATCH` — major for a full release (still 0), minor for a big
+milestone, patch for everything else. See
+**[CHANGELOG.md](CHANGELOG.md)** for what each version contains, and the
+git tags (`git log v0.2.0..v0.3.0`) for exactly what changed between two.
+
 ## Setup
 
 ```bash

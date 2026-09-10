@@ -3254,10 +3254,17 @@ function initCurrentActivity(): void {
       contextEl.appendChild(line);
     }
 
-    if (timer && timer.status === "running") {
+    // Paused counts as current state: a paused Pomodoro is still the
+    // session you are in, and hiding it makes the card look like the
+    // timer vanished. Completed and cancelled ones are genuinely over.
+    if (timer && (timer.status === "running" || timer.status === "paused")) {
       const line = document.createElement("div");
       line.className = "current-activity-context-line";
-      line.textContent = `⏱ ${timer.title} · ${formatMinutes(timer.remainingMs)} remaining`;
+      const remaining = `${formatMinutes(timer.remainingMs)} remaining`;
+      line.textContent =
+        timer.status === "paused"
+          ? `⏱ ${timer.title} · ${remaining} · paused`
+          : `⏱ ${timer.title} · ${remaining}`;
       contextEl.appendChild(line);
     }
   }
@@ -3314,10 +3321,17 @@ function initCurrentActivity(): void {
   }
 
   void refresh();
-  // The duration ticks on its own, so a slow minute-by-minute refresh is
-  // enough; the push below covers actual changes immediately.
-  setInterval(() => void refresh(), 30_000);
+  // Ten seconds, not thirty. The activity's own duration changes slowly,
+  // but the Spotify and timer lines beside it do not: accepting a
+  // routine's suggestion starts a timer moments AFTER the activity
+  // began, and a card that only re-read every 30s showed no timer for
+  // half a minute afterwards — which reads as "it stopped showing the
+  // timer" rather than "not yet".
+  setInterval(() => void refresh(), 10_000);
   window.nimbus.onActivityChanged(() => void refresh());
+  // Spotify actions already push this; a routine that starts playback
+  // and a timer together then updates both lines at once.
+  window.nimbus.onNowPlayingChanged(() => void refresh());
 }
 
 initCurrentActivity();
