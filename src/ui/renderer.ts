@@ -1678,6 +1678,7 @@ async function initRoutinesSettings(): Promise<void> {
     if (trigger?.type === "websiteOpened") set("routineStopWebsitePattern", trigger.pattern);
     if (trigger?.type === "folderOpened") set("routineStopFolderPath", trigger.path);
     syncStopTriggerFields();
+    syncStopSectionAvailability();
   }
 
   function renderStopActions(): void {
@@ -1726,8 +1727,12 @@ async function initRoutinesSettings(): Promise<void> {
    */
   function syncStopSectionAvailability(): void {
     addStopActionBtn.disabled = false;
-    stopHintEl.textContent =
-      "Only runs if this routine actually started — winding down something that was never wound up would, at best, do nothing.";
+    // An end trigger with nothing to run is saved but inert. Saying so
+    // beats letting someone set one and wonder why nothing happens.
+    const triggerWithoutActions = stopTriggerToSave() !== undefined && pendingStopActions.length === 0;
+    stopHintEl.textContent = triggerWithoutActions
+      ? "This end trigger is saved, but nothing runs on it yet — add an action below."
+      : "Only runs if this routine actually started — winding down something that was never wound up would, at best, do nothing.";
     // A section with something in it stays open, so it isn't forgotten.
     if (pendingStopActions.length > 0) stopSectionEl.open = true;
   }
@@ -2276,12 +2281,33 @@ async function initRoutinesSettings(): Promise<void> {
     syncStopSectionAvailability();
   });
   stopActivitySelect.addEventListener("change", () => syncStopSectionAvailability());
+  // The hint above depends on the trigger, so every path that changes it
+  // has to refresh -- including loading a routine into the form.
 
   addStopConditionBtn.addEventListener("click", () => {
     const condition = newCondition(stopConditionTypeSelect.value);
     if (condition) pendingStopConditions.push(condition);
     renderStopConditions();
   });
+
+  /**
+   * The end trigger to persist, or undefined when there is nothing worth
+   * keeping.
+   *
+   * Not gated on there being end actions. A trigger without actions does
+   * nothing at runtime, but forgetting what the user picked because they
+   * hadn't finished the other half yet loses their work silently -- which
+   * is exactly how this was found. The default ("any activity ended",
+   * chosen by nobody) is still dropped, so an untouched form doesn't
+   * write a trigger onto every routine.
+   */
+  function stopTriggerToSave(): TriggerConfig | undefined {
+    const trigger = buildStopTriggerFromForm();
+    if (!trigger) return undefined;
+    if (pendingStopActions.length > 0) return trigger;
+    const untouched = trigger.type === "activityEnded" && trigger.activity.trim().length === 0;
+    return untouched ? undefined : trigger;
+  }
 
   /**
    * The conditions to save: the edited list, plus the "Skip if already
@@ -2779,7 +2805,7 @@ async function initRoutinesSettings(): Promise<void> {
           cooldownMinutes,
           conditions: buildConditionsFromForm(),
           stopActions: pendingStopActions.length > 0 ? pendingStopActions : undefined,
-          stopTrigger: pendingStopActions.length > 0 ? (buildStopTriggerFromForm() ?? undefined) : undefined,
+          stopTrigger: stopTriggerToSave(),
           stopConditions: pendingStopConditions.length > 0 ? pendingStopConditions : undefined,
           stopConditionLogic: stopConditionLogicSelect.value === "any" ? "any" : "all",
           stopAutoRun: stopAutoRunCheckbox.checked,
@@ -2797,7 +2823,7 @@ async function initRoutinesSettings(): Promise<void> {
           trigger,
           conditions: buildConditionsFromForm(),
           stopActions: pendingStopActions.length > 0 ? pendingStopActions : undefined,
-          stopTrigger: pendingStopActions.length > 0 ? (buildStopTriggerFromForm() ?? undefined) : undefined,
+          stopTrigger: stopTriggerToSave(),
           stopConditions: pendingStopConditions.length > 0 ? pendingStopConditions : undefined,
           stopConditionLogic: stopConditionLogicSelect.value === "any" ? "any" : "all",
           stopAutoRun: stopAutoRunCheckbox.checked,

@@ -20,6 +20,14 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- An end trigger is kept when you choose one. It was only saved if the
+  end half already had actions, so picking "when Study ends" and saving
+  before adding the action lost the choice with nothing said. The section
+  now also says when a trigger is saved but has nothing to run.
+- The sidebar shows the real version. `appInfo.ts` hard-coded 0.1.0
+  while package.json said 0.2.0; it now reads package.json, so there is
+  one place to change.
+
 - The routines list matches the Claude Design mockup: each card splits
   into what the routine is and what you can change on the left, with one
   48px control for "run it now" on the right — the only thing on the card
