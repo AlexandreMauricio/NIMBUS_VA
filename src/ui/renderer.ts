@@ -1809,12 +1809,45 @@ async function initRoutinesSettings(): Promise<void> {
    * already builds; only what happens on click (replace vs. append)
    * differs, mirroring how the routine-level form doubles as create/edit.
    */
+  const actionBuilderEl = document.getElementById("routineActionBuilder") as HTMLElement;
+  const confirmActionBtn = document.getElementById("routineConfirmActionBtn") as HTMLButtonElement;
+
+  /** Which list the builder is currently adding to, or null when it is closed. */
+  let builderTarget: "start" | "stop" | null = null;
+
+  /**
+   * Opens the action builder inside a section.
+   *
+   * The builder is one element that MOVES rather than two copies: it
+   * always reads as part of the section being edited, and there is only
+   * ever one set of parameter fields to keep straight.
+   */
+  function openActionBuilder(target: "start" | "stop"): void {
+    builderTarget = target;
+    const button = target === "start" ? addActionBtn : addStopActionBtn;
+    button.parentElement?.insertBefore(actionBuilderEl, button);
+    actionBuilderEl.hidden = false;
+
+    populateActionServiceSelect();
+    populateActionSelectForService(actionServiceSelect.value);
+    renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
+    confirmActionBtn.textContent = editingActionIndex !== null ? "Update" : "Add";
+    actionBuilderEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function closeActionBuilder(): void {
+    builderTarget = null;
+    editingActionIndex = null;
+    actionBuilderEl.hidden = true;
+  }
+
   function startEditingAction(index: number): void {
     const step = pendingActions[index];
     const def = availableActions.find((a) => a.id === step.actionId);
     if (!def) return;
 
     editingActionIndex = index;
+    builderTarget = "start";
     actionServiceSelect.value = def.affectsService;
     populateActionSelectForService(def.affectsService);
     actionSelect.value = def.id;
@@ -1827,15 +1860,12 @@ async function initRoutinesSettings(): Promise<void> {
       if (el) el.value = String(value);
     }
 
-    addActionBtn.textContent = "Update action";
-    cancelActionEditBtn.hidden = false;
-    actionServiceSelect.scrollIntoView({ behavior: "smooth", block: "center" });
+    openActionBuilder("start");
+    confirmActionBtn.textContent = "Update";
   }
 
   function stopEditingAction(): void {
-    editingActionIndex = null;
-    addActionBtn.textContent = "Add action";
-    cancelActionEditBtn.hidden = true;
+    closeActionBuilder();
   }
 
   function resetForm(): void {
@@ -2024,13 +2054,26 @@ async function initRoutinesSettings(): Promise<void> {
     }
 
     const names = [...knownActivities];
+
+    // The activity being typed into THIS form counts, even though it
+    // hasn't been saved yet. Otherwise naming a routine's activity and
+    // then trying to reference it in the same routine offers nothing —
+    // which is exactly what someone does when setting both halves up at
+    // once.
+    const draft = activityNameInput.value.trim();
+    if (draft && !names.some((n) => n.toLowerCase() === draft.toLowerCase())) {
+      names.push(draft);
+    }
+
     if (selected && !names.some((n) => n.toLowerCase() === selected.toLowerCase())) {
       names.push(selected);
     }
+    // With an "any" option there is already something selectable, so a
+    // second placeholder would just be a dead entry in the list.
     if (names.length === 0 && anyLabel === undefined) {
       const none = document.createElement("option");
       none.value = "";
-      none.textContent = "No activities defined yet";
+      none.textContent = "No activities yet — name one above";
       select.appendChild(none);
     }
 
@@ -2240,6 +2283,16 @@ async function initRoutinesSettings(): Promise<void> {
     syncStopSectionAvailability();
   });
   stopActivitySelect.addEventListener("change", () => syncStopSectionAvailability());
+
+  // The activity being typed becomes selectable immediately, and unlocks
+  // the end section — otherwise naming a routine's activity and then
+  // referencing it in the same routine offers nothing, which is exactly
+  // what you do when setting both halves up at once.
+  activityNameInput.addEventListener("input", () => {
+    fillActivityOptions(stopActivitySelect, stopActivitySelect.value, "Any activity");
+    renderStopConditions();
+    syncStopSectionAvailability();
+  });
 
   addStopConditionBtn.addEventListener("click", () => {
     const condition = newCondition(stopConditionTypeSelect.value);
@@ -2620,9 +2673,18 @@ async function initRoutinesSettings(): Promise<void> {
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
   });
 
-  addStopActionBtn.addEventListener("click", () => {
+  addStopActionBtn.addEventListener("click", () => openActionBuilder("stop"));
+
+  addActionBtn.addEventListener("click", () => openActionBuilder("start"));
+
+  /**
+   * Commits whatever the builder is showing into the list it was opened
+   * for. Required parameters are checked here, once, for both lists.
+   */
+  confirmActionBtn.addEventListener("click", () => {
     const def = availableActions.find((a) => a.id === actionSelect.value);
-    if (!def) return;
+    if (!def || !builderTarget) return;
+
     const params = collectActionParams(def);
     const missing = def.parameters.filter((prm) => prm.required && params[prm.name] === undefined);
     if (missing.length > 0) {
@@ -2633,35 +2695,18 @@ async function initRoutinesSettings(): Promise<void> {
       return;
     }
     clearFormError();
-    pendingStopActions.push({ actionId: def.id, params });
-    renderStopActions();
-  });
 
-  // Typing an activity name is what makes the end section usable, so the
-  // section unlocks as soon as there is one rather than on the next
-  // render.
-  activityNameInput.addEventListener("input", () => syncStopSectionAvailability());
-
-  addActionBtn.addEventListener("click", () => {
-    const def = availableActions.find((a) => a.id === actionSelect.value);
-    if (!def) return;
-    const params = collectActionParams(def);
-    const missing = def.parameters.filter((p) => p.required && params[p.name] === undefined);
-    if (missing.length > 0) {
-      const fields = missing
-        .map((prm) => document.getElementById(paramFieldId(prm.name)))
-        .filter((el): el is HTMLElement => el !== null);
-      showFormError(`This action still needs: ${missing.map((prm) => prm.name).join(", ")}.`, fields);
-      return;
-    }
-    clearFormError();
-    if (editingActionIndex !== null) {
+    if (builderTarget === "stop") {
+      pendingStopActions.push({ actionId: def.id, params });
+      renderStopActions();
+    } else if (editingActionIndex !== null) {
       pendingActions[editingActionIndex] = { actionId: def.id, params };
-      stopEditingAction();
+      renderPendingActions();
     } else {
       pendingActions.push({ actionId: def.id, params });
+      renderPendingActions();
     }
-    renderPendingActions();
+    closeActionBuilder();
   });
 
   cancelActionEditBtn.addEventListener("click", () => stopEditingAction());

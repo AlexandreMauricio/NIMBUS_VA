@@ -687,9 +687,7 @@
 
               <h6 class="section-kicker">Then</h6>
               <div id="routineActionList"></div>
-              <button class="btn btn-secondary btn-spaced" id="routineAddActionBtn">
-                Add the action below
-              </button>
+              <button class="btn btn-secondary btn-spaced" id="routineAddActionBtn">+ Add action</button>
             </details>
 
             <details class="action-section" id="routineStopSection">
@@ -781,17 +779,23 @@
                   <span class="track"></span>
                 </span>
               </label>
-              <button class="btn btn-secondary btn-spaced" id="routineAddStopActionBtn">
-                Add the action below
-              </button>
+              <button class="btn btn-secondary btn-spaced" id="routineAddStopActionBtn">+ Add action</button>
             </details>
 
-            <div class="action-picker-row">
-              <select id="routineActionServiceSelect" class="input"></select>
-              <select id="routineActionSelect" class="input"></select>
-              <button class="btn btn-ghost" id="routineCancelActionEditBtn" hidden>Cancel</button>
+            <!-- One action builder, moved into whichever section is being
+                 added to (see openActionBuilder) — so it always reads as
+                 part of that section rather than floating below both. -->
+            <div class="action-builder" id="routineActionBuilder" hidden>
+              <div class="action-picker-row">
+                <select id="routineActionServiceSelect" class="input input-compact"></select>
+                <select id="routineActionSelect" class="input input-compact"></select>
+              </div>
+              <div id="routineActionParamFields"></div>
+              <div class="action-builder-buttons">
+                <button class="btn btn-primary" id="routineConfirmActionBtn">Add</button>
+                <button class="btn btn-ghost" id="routineCancelActionEditBtn">Cancel</button>
+              </div>
             </div>
-            <div id="routineActionParamFields"></div>
 
             <p class="form-required-note">
               <span class="required-marker" aria-hidden="true">*</span> Required

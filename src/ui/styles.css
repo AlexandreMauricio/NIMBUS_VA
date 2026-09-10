@@ -1628,3 +1628,80 @@ button.btn {
   font-size: 12px;
   color: var(--color-neutral-500);
 }
+
+/* ---------- Routine editor: rhythm inside a section ---------- */
+
+/* A section is three stacked ideas — trigger, conditions, actions — and
+   without spacing between them they read as one undifferentiated block. */
+.action-section > *:not(summary) {
+  margin-top: var(--space-4);
+}
+
+.action-section > summary {
+  padding-bottom: var(--space-2);
+}
+
+/* The conditions group, set into the section so it reads as a unit
+   rather than as loose controls between the trigger and the actions. */
+.action-section .conditions-head {
+  align-items: center;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.action-section .conditions-head .opt-desc {
+  margin-top: 2px;
+}
+
+/* "No conditions yet" was floating in the middle of a tall empty box. */
+.action-section .feed-empty {
+  margin: var(--space-2) 0;
+  padding: 0;
+  text-align: left;
+  font-size: 12px;
+}
+
+/* THEN / Conditions headings inside a section: quieter than the section
+   title, but clearly separating what follows. */
+.action-section .section-kicker {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+  display: block;
+}
+
+.action-section > summary .section-kicker,
+.action-section .conditions-head .section-kicker {
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Action rows were as tall as form fields, which made three of them look
+   like a wall. */
+.action-section .action-row {
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--color-surface-alt);
+}
+
+.action-section .condition-row {
+  padding: var(--space-2) 0;
+}
+
+/* The builder, wherever it currently lives. */
+.action-builder {
+  border: 1px solid var(--color-accent-700);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-surface-alt);
+}
+
+.action-builder .action-picker-row {
+  margin-bottom: var(--space-2);
+}
+
+.action-builder-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
