@@ -68,11 +68,22 @@ function write(level: LogLevel, message: string, meta?: unknown): void {
 
   try {
     fs.appendFileSync(filePath, line + "\n");
-  } catch {
+    reportedFileFailure = false;
+  } catch (err) {
     // Logging must never crash the app. If the file write fails, the
-    // console line above is still the best-effort record.
+    // console line above is still the best-effort record — but say so,
+    // once per run of failures. Swallowing this silently hid a log file
+    // that stopped growing for most of a day, and with it the one place
+    // any other failure would have been reported.
+    if (!reportedFileFailure) {
+      reportedFileFailure = true;
+      console.error(`[logger] cannot write ${filePath}: ${String(err)}`);
+    }
   }
 }
+
+/** True while file writes are failing, so the console gets one line, not one per log call. */
+let reportedFileFailure = false;
 
 export const logger = {
   error: (message: string, meta?: unknown) => write("error", message, meta),
