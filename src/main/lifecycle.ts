@@ -23,7 +23,7 @@ import { RoutineService, validateRoutine, Routine } from "../routines";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
-import { ActivityService, ActivityMapping, validateActivityMapping } from "../activity";
+import { ActivityService, ActivityMapping, validateActivityMapping, mappingsFromRoutines } from "../activity";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
 import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
@@ -587,6 +587,9 @@ function syncActivityMonitor(): void {
   // Either feature needs the same underlying signal, so the monitor runs
   // if either is on — and stops when neither is, so nothing is observed
   // for a feature the user has switched off.
+  // A routine-declared activity needs no clause of its own: a routine can
+  // only declare one while Routines themselves are on, which is already
+  // the first condition here.
   const shouldRun = settings.userPreferences.routines.enabled || settings.userPreferences.activity.enabled;
   if (shouldRun && !activityMonitor) {
     activityMonitor = new DesktopActivityMonitor(contextEventBus);
@@ -689,7 +692,25 @@ export function startApp(): void {
   // Routine engine below reads it through a condition, which is the only
   // route from "what the user is doing" to anything happening.
   activityService = new ActivityService(
-    () => settings.userPreferences.activity,
+    // Two sources of mappings, composed here so ActivityService itself
+    // stays unaware that routines exist. The routine-derived ones come
+    // first only for readability; precedence is decided by the detector,
+    // not by order.
+    () => {
+      const configured = settings.userPreferences.activity;
+      const fromRoutines = mappingsFromRoutines(settings.userPreferences.routines.routines);
+      return {
+        ...configured,
+        // Declaring "this routine means Study" IS the opt-in. Requiring a
+        // separate master switch on top would leave a routine's activity
+        // silently doing nothing — the same trap the routines switch
+        // already had to close for itself (see the save handler in
+        // renderer.ts). No new data is observed either way: these are the
+        // very events the routine already reacts to.
+        enabled: configured.enabled || fromRoutines.length > 0,
+        mappings: [...fromRoutines, ...configured.mappings],
+      };
+    },
     contextEventBus,
     () => new Date(),
     new FileActivityStateStore()

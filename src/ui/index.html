@@ -439,6 +439,28 @@
                 </div>
               </div>
 
+              <div class="field-grid">
+                <div class="field">
+                  <label for="routineActivityName">This means I'm doing (optional)</label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineActivityName"
+                    placeholder="e.g. Study — leave empty for none"
+                  />
+                </div>
+                <div class="field field-narrow">
+                  <label for="routineActivityIcon">Icon</label>
+                  <input class="input" type="text" id="routineActivityIcon" placeholder="📚" maxlength="4" />
+                </div>
+              </div>
+              <p class="setting-note">
+                Reuses this routine's own trigger to tell NIMBUS what you're doing, so the app or site is
+                configured once. It doesn't change what the routine does — it still asks before acting. Home
+                then shows the activity and how long it's been going, and other routines can use it as a
+                condition.
+              </p>
+
               <div class="field">
                 <label for="routineDescription">Description (optional)</label>
                 <input
@@ -619,12 +641,13 @@
 
           <label class="setting-row">
             <span>
-              <span class="setting-title">Track what I'm doing</span>
+              <span class="setting-title">Track activities without a routine</span>
               <span class="setting-desc">
-                Lets NIMBUS work out what you're currently doing from the apps, sites and folders you map
-                below — "Study", "Gaming", whatever you choose to call it — and how long you've been at it. It
-                only ever observes: recognising an activity never starts or opens anything on its own.
-                Routines can then use it as a condition. Uses the same app/window-name check Routines use;
+                The usual way to tell NIMBUS what you're doing is on the routine itself — open a routine and
+                fill in "This means I'm doing", and its own trigger becomes the mapping, so an app or site is
+                configured once. The mappings here are for activities you want tracked but have no routine
+                for, like seeing time spent gaming. NIMBUS only ever observes: recognising an activity never
+                starts or opens anything on its own. Uses the same app/window-name check Routines already use;
                 nothing extra is collected, and nothing you type or read is recorded.
               </span>
             </span>
@@ -634,7 +657,7 @@
           <div class="manual-location-fields">
             <div id="activityMappingList" class="calendar-feed-list"></div>
             <p class="feed-empty" id="activityMappingEmpty">
-              No mappings yet — without one, NIMBUS has no idea what any app means.
+              No standalone mappings — routines that declare an activity work without one.
             </p>
 
             <div class="field-grid">

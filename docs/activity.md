@@ -22,6 +22,32 @@ condition, which produces a Suggestion the user accepts:
 Context → Event → Activity → Routine evaluation → Suggestion → Action
 ```
 
+## Two ways to say what something means
+
+**On the routine (the usual way).** A routine that fires when a study
+site opens has already named that site. Fill in its **"This means I'm
+doing"** field and its own trigger becomes the mapping — the app or
+website is configured once, and changing the trigger moves the mapping
+with it, because the mapping is derived rather than stored as a second
+copy. Setting it is itself the opt-in; there is no separate switch to
+remember. It does not change what the routine does: activity is context,
+and the routine still asks before acting.
+
+A routine with a `timerCompleted` trigger cannot declare an activity — a
+timer finishing is a moment, not something you spend time doing.
+Disabling a routine stops it declaring anything, since a disabled
+routine is off in every sense.
+
+**Standalone mappings (Settings → Activity).** For activities you want
+tracked but have no routine for — seeing time spent gaming, say. Same
+shape, just not attached to anything.
+
+Both feed the same detector, and precedence works across both: a routine
+trigger is usually the specific rule ("that one study site") while a
+standalone mapping is often the broad one ("any browser window"), and
+the specificity tie-break already prefers the longer pattern. An explicit
+priority still has the final say.
+
 ## Mappings
 
 NIMBUS has no built-in belief that any application means anything.
@@ -36,8 +62,10 @@ NIMBUS has no built-in belief that any application means anything.
 | `value` | What to match. Comma-separated for alternatives, exactly like a Routine trigger — they share the implementation (`common/patternMatch.ts`). |
 | `priority` | Higher wins when several mappings match at once. |
 
-Configured under **Settings → Activity**, and off by default: NIMBUS
-should not be interpreting what you are doing until you ask it to.
+Standalone mappings live under **Settings → Activity**, off by default:
+NIMBUS should not be interpreting what you are doing until you ask it to.
+A routine that declares an activity needs no such switch — declaring it
+is the request.
 
 ### Precedence
 
@@ -133,6 +161,7 @@ the other machine state (`routine-state.json`), not in `settings.json`.
 | `src/activity/activityDetector.ts` | Pure event → activity, including precedence |
 | `src/activity/activityService.ts` | Session lifecycle; subscribes to the shared event bus |
 | `src/main/activityStateStore.ts` | Persistence (Windows-specific path, so under `main/`) |
+| `src/activity/routineMappings.ts` | Derives mappings from routines that declare an activity |
 | `src/common/patternMatch.ts` | Matching shared with Routine triggers |
 
 ---

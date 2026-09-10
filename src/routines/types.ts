@@ -211,6 +211,27 @@ export interface Routine {
   conditionLogic?: ConditionLogic;
   /** Defaults to "none" when absent — again, the pre-existing behaviour. */
   sessionRestriction?: SessionRestriction;
+  /**
+   * What this routine's trigger MEANS the user is doing, if anything.
+   *
+   * Setting it makes the routine's own trigger double as an activity
+   * mapping, so an app or website is configured once rather than twice
+   * (see src/activity/routineMappings.ts). Absent means the routine says
+   * nothing about activity — the pre-existing behaviour, and still the
+   * case for every routine saved before this field existed.
+   *
+   * It does not change what the routine DOES. Activity is context;
+   * whether this routine suggests anything is still decided by its
+   * trigger, conditions and cooldown exactly as before.
+   */
+  activity?: RoutineActivityConfig;
+}
+
+export interface RoutineActivityConfig {
+  /** The activity name, e.g. "Study". Free text, matched case-insensitively by activity conditions. */
+  name: string;
+  /** Optional emoji for the UI. */
+  icon?: string;
 }
 
 export const DEFAULT_ROUTINE_COOLDOWN_MINUTES = 30;
@@ -281,6 +302,27 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
 
   if (routine.autoRun !== undefined && typeof routine.autoRun !== "boolean") {
     return { valid: false, error: "autoRun must be a boolean." };
+  }
+
+  if (routine.activity !== undefined) {
+    if (
+      typeof routine.activity !== "object" ||
+      routine.activity === null ||
+      typeof routine.activity.name !== "string" ||
+      routine.activity.name.trim().length === 0
+    ) {
+      return { valid: false, error: "A routine's activity needs a name." };
+    }
+    if (routine.activity.icon !== undefined && typeof routine.activity.icon !== "string") {
+      return { valid: false, error: "A routine's activity icon must be a string." };
+    }
+    if (routine.trigger?.type === "timerCompleted") {
+      return {
+        valid: false,
+        error:
+          "A timer-completed trigger is a moment, not something you spend time doing — it can't define an activity.",
+      };
+    }
   }
 
   if (routine.description !== undefined && typeof routine.description !== "string") {
