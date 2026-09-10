@@ -20,6 +20,11 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- Grid view is laid out for a grid. The run control becomes a full-width
+  bar along the bottom of each card instead of a circle adrift in the
+  corner, cards in a row share a height, and the bars line up across the
+  row whatever length each summary ran to. List view is unchanged.
+
 - An end trigger is kept when you choose one. It was only saved if the
   end half already had actions, so picking "when Study ends" and saving
   before adding the action lost the choice with nothing said. The section

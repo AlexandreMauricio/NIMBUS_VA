@@ -758,8 +758,11 @@ button.btn {
 
 .routine-cards.grid-view {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+  /* Every card in a row the same height; the run bar then lines up
+     across the row instead of stepping with each summary's length. */
+  align-items: stretch;
 }
 
 .routine-card {
@@ -797,10 +800,35 @@ button.btn {
   flex: 1;
 }
 
-/* A grid cell is too narrow to put anything beside anything else. */
+/*
+ * A grid cell is too narrow to put anything beside anything else, so the
+ * card stacks and the run control becomes a full-width bar along the
+ * bottom. As a circle it was a 48px blob adrift in the corner; as a bar
+ * it reads as the card's one action and gives every card the same
+ * footing, whatever length its summary ran to.
+ */
 .grid-view .routine-card-main {
   flex-direction: column;
   align-items: stretch;
+  /* Fills the cell so the bar below can be pushed to the bottom. */
+  height: 100%;
+}
+
+.grid-view .routine-card-left {
+  /* Takes the slack, which is what lands the bar at the bottom of every
+     card in a row rather than immediately under its own text. */
+  flex: 1;
+}
+
+.grid-view .routine-run-btn {
+  width: 100%;
+  height: 34px;
+  border-radius: var(--radius-md);
+}
+
+/* The controls sit directly above the bar, so they need a little air. */
+.grid-view .routine-card-actions {
+  margin-top: var(--space-2);
 }
 
 .grid-view .routine-card {
