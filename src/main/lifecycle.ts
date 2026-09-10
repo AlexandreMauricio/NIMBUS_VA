@@ -829,7 +829,14 @@ export function startApp(): void {
   });
 
   app.on("ready", () => {
-    logger.info(`${APP_NAME} starting`, { version: APP_VERSION, env: config.appEnv });
+    // userData is named explicitly because everything NIMBUS persists
+    // hangs off it, and a running app writing to a different one than you
+    // are reading is not something you can see from the outside.
+    logger.info(`${APP_NAME} starting`, {
+      version: APP_VERSION,
+      env: config.appEnv,
+      userData: app.getPath("userData"),
+    });
 
     // Credentials are read here, not in loadSettings() above, because
     // Electron's safeStorage reports itself unavailable until the app is

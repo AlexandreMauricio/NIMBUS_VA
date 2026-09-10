@@ -155,6 +155,11 @@ export function saveSettings(settings: NimbusSettings): void {
       fs.closeSync(fd);
     }
     fs.renameSync(tempPath, filePath);
+    // Logged at debug so a normal session isn't noisy, but it names the
+    // resolved path: "settings.json is stale" was impossible to diagnose
+    // without knowing which settings.json the running app meant, and
+    // silence here was indistinguishable from a save that never ran.
+    logger.debug("settings.json written", { path: filePath, bytes: serialized.length });
   } catch (err) {
     logger.error("Failed to write settings.json", { error: String(err) });
     // Never leave a stray temp file behind to be mistaken for real state.
