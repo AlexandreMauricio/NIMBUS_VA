@@ -20,6 +20,14 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- The routines list matches the Claude Design mockup: each card splits
+  into what the routine is and what you can change on the left, with one
+  48px control for "run it now" on the right — the only thing on the card
+  that acts on the world. Delete reads as accent rather than danger,
+  since removing a rule you wrote is ordinary editing.
+- Every on/off control is the same pill switch. Eleven were still bare
+  browser checkboxes while the forms beside them used the switch.
+
 - Activities have one home. They live under **Routines → Activities**,
   where they can now be edited rather than only added and removed, and
   the routine form's "This means I'm doing" field is gone — an activity

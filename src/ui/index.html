@@ -327,7 +327,10 @@
                     what is (and isn't) observed.
                   </span>
                 </span>
-                <input type="checkbox" id="routinesEnabled" />
+                <span class="toggle">
+                  <input type="checkbox" id="routinesEnabled" />
+                  <span class="track"></span>
+                </span>
               </label>
 
               <p class="settings-warning" id="routinesDisabledWarning" hidden>
@@ -369,7 +372,10 @@
                     nothing is detected or timed.
                   </span>
                 </span>
-                <input type="checkbox" id="activityEnabled" />
+                <span class="toggle">
+                  <input type="checkbox" id="activityEnabled" />
+                  <span class="track"></span>
+                </span>
               </label>
 
               <div class="manual-location-fields">
@@ -517,7 +523,10 @@
                   </p>
                 </div>
                 <label class="toggle">
-                  <input type="checkbox" id="routineSkipIfActive" />
+                  <span class="toggle">
+                    <input type="checkbox" id="routineSkipIfActive" />
+                    <span class="track"></span>
+                  </span>
                   <span class="track"></span>
                 </label>
               </div>
@@ -531,7 +540,10 @@
                   </p>
                 </div>
                 <label class="toggle">
-                  <input type="checkbox" id="routineOncePerSession" />
+                  <span class="toggle">
+                    <input type="checkbox" id="routineOncePerSession" />
+                    <span class="track"></span>
+                  </span>
                   <span class="track"></span>
                 </label>
               </div>
@@ -558,7 +570,10 @@
                   </p>
                 </div>
                 <label class="toggle">
-                  <input type="checkbox" id="routineAutoRun" />
+                  <span class="toggle">
+                    <input type="checkbox" id="routineAutoRun" />
+                    <span class="track"></span>
+                  </span>
                   <span class="track"></span>
                 </label>
               </div>
@@ -800,7 +815,10 @@
               <span class="setting-title">Start with Windows</span>
               <span class="setting-desc">Launch NIMBUS automatically when you sign in.</span>
             </span>
-            <input type="checkbox" id="launchWithWindows" />
+            <span class="toggle">
+              <input type="checkbox" id="launchWithWindows" />
+              <span class="track"></span>
+            </span>
           </label>
 
           <label class="setting-row">
@@ -808,7 +826,10 @@
               <span class="setting-title">Start minimized</span>
               <span class="setting-desc">Start in the tray only — don't open the window on launch.</span>
             </span>
-            <input type="checkbox" id="startMinimized" />
+            <span class="toggle">
+              <input type="checkbox" id="startMinimized" />
+              <span class="track"></span>
+            </span>
           </label>
 
           <p class="setting-note">
@@ -857,7 +878,10 @@
                 address below.
               </span>
             </span>
-            <input type="checkbox" id="calendarEnabled" />
+            <span class="toggle">
+              <input type="checkbox" id="calendarEnabled" />
+              <span class="track"></span>
+            </span>
           </label>
 
           <div id="calendarFeedList" class="calendar-feed-list"></div>
@@ -894,7 +918,10 @@
                 providers (Gmail, Outlook, iCloud) require an app-specific password, not your regular one.
               </span>
             </span>
-            <input type="checkbox" id="emailEnabled" />
+            <span class="toggle">
+              <input type="checkbox" id="emailEnabled" />
+              <span class="track"></span>
+            </span>
           </label>
 
           <div id="emailAccountList" class="calendar-feed-list"></div>
@@ -948,7 +975,10 @@
                 a personal API token below (Todoist Settings &rarr; Integrations &rarr; Developer).
               </span>
             </span>
-            <input type="checkbox" id="tasksEnabled" />
+            <span class="toggle">
+              <input type="checkbox" id="tasksEnabled" />
+              <span class="track"></span>
+            </span>
           </label>
 
           <div id="taskAccountList" class="calendar-feed-list"></div>
@@ -987,7 +1017,10 @@
                 Spotify Developer app — see docs/spotify.md for setup steps.
               </span>
             </span>
-            <input type="checkbox" id="spotifyEnabled" />
+            <span class="toggle">
+              <input type="checkbox" id="spotifyEnabled" />
+              <span class="track"></span>
+            </span>
           </label>
 
           <div class="calendar-feed-row">

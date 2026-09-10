@@ -1322,10 +1322,25 @@ function buildTriggerFromForm(existing?: TriggerConfig): TriggerConfig | null {
   return path ? { type: "folderOpened", path, matchMode } : null;
 }
 
-const ROUTINE_RUN_ICON_SVG = `<svg width="11" height="12" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 3,15 15,8"/></svg>`;
-const ROUTINE_RUNNING_ICON_SVG = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6" stroke-dasharray="28" stroke-dashoffset="10"/></svg>`;
-const ROUTINE_RUN_SUCCESS_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,9 6,13 14,3"/></svg>`;
-const ROUTINE_RUN_FAILURE_ICON_SVG = `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
+/**
+ * Wraps a checkbox in the pill switch markup the rest of the UI uses
+ * (`.toggle` + `.track`). Built rather than written out at each call
+ * site so a row's switch cannot drift from the ones in the forms.
+ */
+function buildSwitch(input: HTMLInputElement): HTMLElement {
+  const wrapper = document.createElement("span");
+  wrapper.className = "toggle";
+  wrapper.appendChild(input);
+  const track = document.createElement("span");
+  track.className = "track";
+  wrapper.appendChild(track);
+  return wrapper;
+}
+
+const ROUTINE_RUN_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 3,15 15,8"/></svg>`;
+const ROUTINE_RUNNING_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6" stroke-dasharray="28" stroke-dashoffset="10"/></svg>`;
+const ROUTINE_RUN_SUCCESS_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,9 6,13 14,3"/></svg>`;
+const ROUTINE_RUN_FAILURE_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>`;
 
 /**
  * Wires the whole Routines configuration flow: create/enable-disable/
@@ -2492,7 +2507,16 @@ async function initRoutinesSettings(): Promise<void> {
         body.appendChild(descEl);
       }
 
-      card.appendChild(body);
+      // The design splits the card: everything you read and every control
+      // that changes the routine on the left, and one big affordance for
+      // "run it now" on the right. The run button is the only thing that
+      // acts on the world, so it is the only thing set apart.
+      const main = document.createElement("div");
+      main.className = "routine-card-main";
+      const left = document.createElement("div");
+      left.className = "routine-card-left";
+      left.appendChild(body);
+      main.appendChild(left);
 
       const actions = document.createElement("div");
       actions.className = "routine-card-actions";
@@ -2510,7 +2534,7 @@ async function initRoutinesSettings(): Promise<void> {
         const saved = await window.nimbus.updateRoutineSettings({ routines: updated });
         renderRoutineList(saved);
       });
-      toggleLabel.appendChild(toggle);
+      toggleLabel.appendChild(buildSwitch(toggle));
       const toggleText = document.createElement("span");
       toggleText.textContent = "Active";
       toggleLabel.appendChild(toggleText);
@@ -2521,7 +2545,7 @@ async function initRoutinesSettings(): Promise<void> {
       // beside it, which only evaluates and explains: asking whether a
       // routine matches must never start playing music or open anything.
       const runBtn = document.createElement("button");
-      runBtn.className = "now-playing-btn routine-run-btn";
+      runBtn.className = "routine-run-btn";
       runBtn.title = "Run now";
       runBtn.innerHTML = ROUTINE_RUN_ICON_SVG;
       runBtn.addEventListener("click", async () => {
@@ -2548,8 +2572,6 @@ async function initRoutinesSettings(): Promise<void> {
           }, 2000);
         }
       });
-      actions.appendChild(runBtn);
-
       // Evaluates the routine against the current state and shows every
       // check behind the verdict. Runs nothing — see the run button
       // above for the deliberate counterpart.
@@ -2580,7 +2602,7 @@ async function initRoutinesSettings(): Promise<void> {
       actions.appendChild(testBtn);
 
       const removeBtn = document.createElement("button");
-      removeBtn.className = "calendar-feed-remove";
+      removeBtn.className = "btn btn-ghost routine-delete-btn";
       removeBtn.textContent = "Delete";
       removeBtn.addEventListener("click", async () => {
         const updated = settings.routines.filter((r) => r.id !== routine.id);
@@ -2590,7 +2612,11 @@ async function initRoutinesSettings(): Promise<void> {
       });
       actions.appendChild(removeBtn);
 
-      card.appendChild(actions);
+      left.appendChild(actions);
+      main.appendChild(runBtn);
+      card.appendChild(main);
+      // Full width under the split, since an explanation is a paragraph
+      // rather than something that belongs in either column.
       card.appendChild(explainEl);
       routineListEl.appendChild(card);
     }
@@ -3860,7 +3886,7 @@ async function initActivitySettings(): Promise<void> {
         );
         render(await window.nimbus.updateActivitySettings({ mappings: updated }));
       });
-      toggle.appendChild(toggleInput);
+      toggle.appendChild(buildSwitch(toggleInput));
       const toggleText = document.createElement("span");
       toggleText.textContent = "On";
       toggle.appendChild(toggleText);
