@@ -1705,24 +1705,15 @@ async function initRoutinesSettings(): Promise<void> {
   }
 
   /**
-   * End actions need an activity to hang off — without one there is
-   * nothing whose ending could run them. Rather than let someone
-   * configure steps that can never fire and only find out on save, the
-   * section says so and refuses to add.
+   * The end half always has a trigger of its own — every type in the list
+   * is complete without help, and "activity ended" with nothing chosen
+   * means any activity ending, not this routine's. So there is nothing
+   * left to gate on: the section is always available.
    */
   function syncStopSectionAvailability(): void {
-    // The end half needs something able to fire it: an end trigger of its
-    // own, or — for the default "activity ended" — an activity for this
-    // routine to name.
-    const usesOwnActivity =
-      stopTriggerTypeSelect.value === "activityEnded" && stopActivitySelect.value.trim().length === 0;
-    const hasActivity = activityNameInput.value.trim().length > 0;
-    const usable = !usesOwnActivity || hasActivity;
-
-    addStopActionBtn.disabled = !usable;
-    stopHintEl.textContent = usable
-      ? "Only runs if this routine actually started — winding down something that was never wound up would, at best, do nothing."
-      : 'This ends when an activity does, so either pick one above, or fill in "This means I\'m doing" for this routine to name its own.';
+    addStopActionBtn.disabled = false;
+    stopHintEl.textContent =
+      "Only runs if this routine actually started — winding down something that was never wound up would, at best, do nothing.";
     // A section with something in it stays open, so it isn't forgotten.
     if (pendingStopActions.length > 0) stopSectionEl.open = true;
   }
