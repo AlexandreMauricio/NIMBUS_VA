@@ -1,3 +1,4 @@
+import { CurrentActivity } from "../activity/types";
 import { ConditionLogic, RoutineActionStep, RoutineCondition } from "./types";
 
 /** External signals a condition might need — kept as a small, optional bag of injected functions so evaluation stays pure/testable and Core never reaches into Electron or a specific provider directly. */
@@ -24,6 +25,15 @@ export interface ConditionContext {
    * "spotifyNotAlreadyPlaying" below.
    */
   areActionsAlreadyActive?: (steps: RoutineActionStep[]) => boolean | Promise<boolean>;
+  /**
+   * What the user appears to be doing, for the activity conditions.
+   * Injected like the others so Core never reaches into the Activity
+   * service directly. Omitted means "no signal": those conditions then
+   * fail CLOSED (they block), unlike the Spotify checks which fail open.
+   * The difference is deliberate — "only while studying" must not fire
+   * when NIMBUS has no idea whether the user is studying.
+   */
+  getCurrentActivity?: () => CurrentActivity | null;
 }
 
 /** One condition's outcome, with a description fit to show the user verbatim. */
@@ -98,6 +108,14 @@ function describeCondition(condition: RoutineCondition, passed: boolean): string
     }
     case "spotifyNotAlreadyPlaying":
       return passed ? "Spotify is not already playing" : "Spotify is already playing";
+    case "activityIs":
+      return passed
+        ? `Current activity is ${condition.activity}`
+        : `Current activity is not ${condition.activity}`;
+    case "activityDuration":
+      return passed
+        ? `Current activity has lasted at least ${condition.minMinutes} min`
+        : `Current activity has not lasted ${condition.minMinutes} min yet`;
     case "actionsNotAlreadyActive":
       return passed
         ? "This routine's actions are not already active"
@@ -137,6 +155,18 @@ async function evaluateCondition(condition: RoutineCondition, ctx: ConditionCont
       } catch {
         return true; // fail open — a broken playback check shouldn't silently suppress every suggestion
       }
+    }
+
+    case "activityIs": {
+      const current = ctx.getCurrentActivity?.() ?? null;
+      if (!current) return false; // fail closed — see getCurrentActivity's doc
+      return current.activity.trim().toLowerCase() === condition.activity.trim().toLowerCase();
+    }
+
+    case "activityDuration": {
+      const current = ctx.getCurrentActivity?.() ?? null;
+      if (!current) return false;
+      return current.durationMs >= condition.minMinutes * 60_000;
     }
 
     case "actionsNotAlreadyActive": {

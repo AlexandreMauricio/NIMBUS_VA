@@ -1,4 +1,5 @@
 import { Routine } from "../routines/types";
+import { ActivityMapping, DEFAULT_ACTIVITY_GRACE_MINUTES } from "../activity/types";
 
 /**
  * Persisted NIMBUS state, split by who owns the data — not just grouped
@@ -139,6 +140,18 @@ export interface RoutineSettings {
 }
 
 /**
+ * Activity detection: what counts as which activity, and how forgiving
+ * NIMBUS is about an application closing. Off by default — like
+ * Routines, NIMBUS should not be interpreting what the user is doing
+ * until they ask it to.
+ */
+export interface ActivityPreferences {
+  enabled: boolean;
+  mappings: ActivityMapping[];
+  graceMinutes: number;
+}
+
+/**
  * User-owned preferences — conceptually part of NIMBUS Core's user data,
  * not tied to any one device. Not yet synced anywhere; see module doc.
  */
@@ -149,6 +162,7 @@ export interface UserPreferences {
   tasks: TaskSettings;
   spotify: SpotifySettings;
   routines: RoutineSettings;
+  activity: ActivityPreferences;
 }
 
 export interface NimbusSettings {
@@ -192,6 +206,11 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
     routines: {
       enabled: false,
       routines: [],
+    },
+    activity: {
+      enabled: false,
+      mappings: [],
+      graceMinutes: DEFAULT_ACTIVITY_GRACE_MINUTES,
     },
   },
 };
@@ -283,6 +302,10 @@ export function applyDefaults(parsed: any): NimbusSettings {
       routines: {
         ...defaults.userPreferences.routines,
         ...parsed.userPreferences?.routines,
+      },
+      activity: {
+        ...defaults.userPreferences.activity,
+        ...parsed.userPreferences?.activity,
       },
     },
   };

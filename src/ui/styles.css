@@ -1473,3 +1473,69 @@ button.btn {
   color: var(--color-neutral-500);
   margin-top: var(--space-2);
 }
+
+/* ---------- Current activity & history (Home) ---------- */
+
+.current-activity-card {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.current-activity-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.current-activity-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.current-activity-name {
+  font-size: 16px;
+}
+
+.current-activity-source {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
+/* Spotify and timer lines. Read from their own state — this card shows
+   them, it does not own them. */
+.current-activity-context {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.current-activity-context-line {
+  font-size: 12px;
+  color: var(--color-neutral-400);
+}
+
+.activity-history-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) 0;
+  font-size: 12px;
+}
+
+.activity-history-row + .activity-history-row {
+  border-top: 1px solid var(--color-divider);
+}
+
+.activity-history-when {
+  color: var(--color-neutral-500);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-history-what {
+  color: var(--color-text);
+}
+
+.activity-history-where {
+  color: var(--color-neutral-500);
+}

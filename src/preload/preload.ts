@@ -104,6 +104,8 @@ export interface PublicActionResult<T = unknown> {
 }
 import { ContextSnapshot } from "../context/types";
 import { Briefing } from "../briefing/types";
+import { ActivityMapping, ActivitySession, CurrentActivity } from "../activity/types";
+import { ActivityPreferences } from "../settings/settingsSchema";
 
 /**
  * Exposes a small, explicit API surface to the renderer. The renderer
@@ -197,6 +199,34 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:run-routine-now", routineId),
   /** NIMBUS's own routine decisions, most recent first — never anything the user typed, read or browsed. */
   getRoutineHistory: (): Promise<RoutineHistoryEntry[]> => ipcRenderer.invoke("nimbus:get-routine-history"),
+  /**
+   * Activity & Sessions — what NIMBUS thinks the user is doing. Read-only
+   * apart from the mappings: the renderer can see and configure, but
+   * cannot assert an activity or end a session by hand.
+   */
+  /** The one current timer, read-only — Home shows it beside the current activity. Control stays in the timer popup. */
+  getTimerState: (): Promise<{
+    id: string;
+    title: string;
+    status: string;
+    remainingMs: number;
+  } | null> => ipcRenderer.invoke("nimbus:get-timer-state"),
+  getCurrentActivity: (): Promise<CurrentActivity | null> =>
+    ipcRenderer.invoke("nimbus:get-current-activity"),
+  getActivitySessions: (): Promise<ActivitySession[]> => ipcRenderer.invoke("nimbus:get-activity-sessions"),
+  getActivitySettings: (): Promise<ActivityPreferences> => ipcRenderer.invoke("nimbus:get-activity-settings"),
+  updateActivitySettings: (partial: {
+    enabled?: boolean;
+    mappings?: ActivityMapping[];
+    graceMinutes?: number;
+  }): Promise<ActivityPreferences> => ipcRenderer.invoke("nimbus:update-activity-settings", partial),
+  /** Fires when the current activity changes, so Home can refresh without polling hard. */
+  onActivityChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:activity-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:activity-changed", listener);
+  },
+
   /** Epoch ms per routine id, for the routine list's "last triggered" line. */
   getRoutineLastTriggered: (): Promise<Record<string, number>> =>
     ipcRenderer.invoke("nimbus:get-routine-last-triggered"),

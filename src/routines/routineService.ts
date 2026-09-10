@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { logger } from "../logging/logger";
 import { ActionService } from "../actions/actionService";
 import { ActionResult } from "../actions/types";
+import { CurrentActivity } from "../activity/types";
 import { AssistantSuggestion } from "../common/assistantEvents";
 import { ContextEventBus } from "../events/eventBus";
 import { ContextEvent } from "../events/types";
@@ -82,7 +83,9 @@ export class RoutineService {
      * tests can run without any storage; when absent, cooldowns behave
      * exactly as they did before — in memory, reset on restart.
      */
-    private readonly stateStore?: RoutineStateStore
+    private readonly stateStore?: RoutineStateStore,
+    /** Injected like isSpotifyPlaying — the engine never reaches into the Activity service itself. Used only by the activity conditions. */
+    private readonly getCurrentActivity?: () => CurrentActivity | null
   ) {
     if (stateStore) {
       try {
@@ -314,6 +317,7 @@ export class RoutineService {
         isSpotifyPlaying: this.isSpotifyPlaying,
         routineActions: routine.actions,
         areActionsAlreadyActive: this.areActionsAlreadyActive,
+        getCurrentActivity: this.getCurrentActivity,
       },
       routine.conditionLogic ?? "all"
     );

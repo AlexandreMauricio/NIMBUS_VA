@@ -146,6 +146,26 @@
             <div class="now-playing-playlist-dropdown" id="nowPlayingPlaylistDropdown" hidden></div>
           </div>
 
+          <!-- What NIMBUS believes is happening now. Hidden entirely
+               until there is an activity, so a user who hasn't set up
+               mappings sees no empty scaffolding. -->
+          <div class="activity-card current-activity-card" id="currentActivityCard" hidden>
+            <div class="activity-header">
+              <h6 class="kicker">Current activity</h6>
+              <span class="tag tag-accent" id="currentActivityDuration"></span>
+            </div>
+            <div class="current-activity-main">
+              <span class="current-activity-icon" id="currentActivityIcon"></span>
+              <div>
+                <div class="current-activity-name" id="currentActivityName"></div>
+                <div class="current-activity-source" id="currentActivitySource"></div>
+              </div>
+            </div>
+            <!-- Spotify and the timer are shown from their own existing
+                 state; this card references them, it does not own them. -->
+            <div class="current-activity-context" id="currentActivityContext"></div>
+          </div>
+
           <div class="activity-card">
             <div class="activity-header">
               <h6 class="kicker">Activity</h6>
@@ -157,6 +177,13 @@
                 systems are connected.
               </p>
             </div>
+          </div>
+
+          <div class="activity-card" id="activityHistoryCard" hidden>
+            <div class="activity-header">
+              <h6 class="kicker">Recent activity</h6>
+            </div>
+            <div id="activityHistoryList"></div>
           </div>
 
           <button class="btn btn-ghost btn-spaced" id="minimizeBtn">Minimize to tray</button>
@@ -586,6 +613,75 @@
               <input type="number" id="manualLocationLon" step="any" placeholder="-9.1393" />
             </label>
             <button class="btn btn-secondary" id="saveManualLocationBtn">Save location</button>
+          </div>
+
+          <h6 class="kicker settings-section-spaced">Activity</h6>
+
+          <label class="setting-row">
+            <span>
+              <span class="setting-title">Track what I'm doing</span>
+              <span class="setting-desc">
+                Lets NIMBUS work out what you're currently doing from the apps, sites and folders you map
+                below — "Study", "Gaming", whatever you choose to call it — and how long you've been at it. It
+                only ever observes: recognising an activity never starts or opens anything on its own.
+                Routines can then use it as a condition. Uses the same app/window-name check Routines use;
+                nothing extra is collected, and nothing you type or read is recorded.
+              </span>
+            </span>
+            <input type="checkbox" id="activityEnabled" />
+          </label>
+
+          <div class="manual-location-fields">
+            <div id="activityMappingList" class="calendar-feed-list"></div>
+            <p class="feed-empty" id="activityMappingEmpty">
+              No mappings yet — without one, NIMBUS has no idea what any app means.
+            </p>
+
+            <div class="field-grid">
+              <div class="field">
+                <label for="activityMappingName">Activity</label>
+                <input class="input" type="text" id="activityMappingName" placeholder="e.g. Study" />
+              </div>
+              <div class="field field-narrow">
+                <label for="activityMappingIcon">Icon (optional)</label>
+                <input class="input" type="text" id="activityMappingIcon" placeholder="📚" maxlength="4" />
+              </div>
+            </div>
+            <div class="field-grid">
+              <div class="field">
+                <label for="activityMappingSource">When this is open</label>
+                <select id="activityMappingSource" class="input">
+                  <option value="application">Application</option>
+                  <option value="website">Website (window title)</option>
+                  <option value="folder">Folder</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="activityMappingValue">Matching — comma-separated for more than one</label>
+                <input
+                  class="input"
+                  type="text"
+                  id="activityMappingValue"
+                  placeholder="e.g. study.exe, notes.exe"
+                />
+              </div>
+            </div>
+            <div class="field-grid">
+              <div class="field field-narrow">
+                <label for="activityMappingPriority">Priority</label>
+                <input class="input" type="number" id="activityMappingPriority" value="0" />
+              </div>
+              <div class="field field-narrow">
+                <label for="activityGraceMinutes">Grace period (minutes)</label>
+                <input class="input" type="number" id="activityGraceMinutes" min="0" value="5" />
+              </div>
+            </div>
+            <button class="btn btn-secondary" id="addActivityMappingBtn">Add mapping</button>
+            <p class="setting-note">
+              When two mappings both match, the higher priority wins — that's how "Chrome is Browsing, but
+              Chrome on my course site is Study" works. The grace period is how long an activity survives its
+              app closing, so reopening it continues the same session instead of starting a new one.
+            </p>
           </div>
 
           <h6 class="kicker settings-section-spaced">Calendar</h6>

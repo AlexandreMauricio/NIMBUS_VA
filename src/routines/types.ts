@@ -110,12 +110,36 @@ export interface ActionsNotAlreadyActiveCondition {
  * above are implemented; adding another means one more variant here plus
  * one more case in conditionEvaluator.ts — nothing else changes.
  */
+/**
+ * Only while the user appears to be doing a particular thing — the
+ * activity name as configured in an Activity mapping (see
+ * src/activity/). Matched case-insensitively so "Study" and "study" are
+ * the same activity rather than two.
+ */
+export interface ActivityIsCondition {
+  type: "activityIs";
+  activity: string;
+}
+
+/**
+ * Only once the current activity has been going for at least
+ * `minMinutes` — the "you have been at this for 90 minutes, take a
+ * break?" shape. Fails when there is no activity at all: a routine that
+ * asks about duration has nothing to say when nothing is happening.
+ */
+export interface ActivityDurationCondition {
+  type: "activityDuration";
+  minMinutes: number;
+}
+
 export type RoutineCondition =
   | TimeOfDayCondition
   | WeekdaysOnlyCondition
   | DaysOfWeekCondition
   | SpotifyNotAlreadyPlayingCondition
-  | ActionsNotAlreadyActiveCondition;
+  | ActionsNotAlreadyActiveCondition
+  | ActivityIsCondition
+  | ActivityDurationCondition;
 
 /**
  * How a routine's conditions combine. "all" (the default, and what every
@@ -358,6 +382,20 @@ function validateCondition(condition: RoutineCondition): string | null {
         if (!Number.isInteger(day) || day < 0 || day > 6) {
           return "daysOfWeek condition days must be integers from 0 (Sunday) to 6 (Saturday).";
         }
+      }
+      return null;
+    case "activityIs":
+      if (typeof condition.activity !== "string" || condition.activity.trim().length === 0) {
+        return "activityIs condition needs an activity name.";
+      }
+      return null;
+    case "activityDuration":
+      if (
+        typeof condition.minMinutes !== "number" ||
+        !Number.isFinite(condition.minMinutes) ||
+        condition.minMinutes < 0
+      ) {
+        return "activityDuration condition needs a non-negative minMinutes.";
       }
       return null;
     case "weekdaysOnly":

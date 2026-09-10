@@ -41,6 +41,7 @@ src/
   logging/         File + console logger
   services/        Placeholder for future integrations (empty for now)
   context/         The Context system — providers + aggregator
+  activity/        Activity & Sessions — what the user is doing now
   actions/         The Action system — providers + executor
   routines/        Trigger to Suggestion to Action rules
   timers/          Generic timer engine (no UI or Spotify knowledge)
@@ -140,6 +141,7 @@ subsystem, not to get started.
 | [The Context system](docs/context-system.md) | How ContextProviders are registered, aggregated and isolated from each other's failures |
 | [The Action system](docs/action-system.md) | ActionProviders, the execute/validate contract, and the Context-vs-Action split |
 | [The Briefing system](docs/briefing.md) | How a context snapshot becomes the briefing the Home tab shows |
+| [Activity & Sessions](docs/activity.md) | What the user is doing now and for how long — mappings, session lifecycle, and how routines read it |
 | [Context-aware routines](docs/routines.md) | Trigger to Suggestion to Action, desktop activity monitoring, and its privacy boundary |
 | [Weather](docs/weather.md) | Location resolution and the Open-Meteo integration |
 | [Calendar](docs/calendar.md) | ICS feeds, how to obtain one, and the parser's limits |

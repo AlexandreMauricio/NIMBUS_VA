@@ -14,6 +14,43 @@ import {
  * only through the `window.nimbus` API exposed by the preload script —
  * it has no Node/Electron access of its own.
  */
+interface ActivityMapping {
+  id: string;
+  enabled: boolean;
+  activity: string;
+  icon?: string;
+  source: "application" | "website" | "folder";
+  value: string;
+  matchMode: StringMatchMode;
+  priority: number;
+}
+
+interface ActivityPreferences {
+  enabled: boolean;
+  mappings: ActivityMapping[];
+  graceMinutes: number;
+}
+
+interface CurrentActivity {
+  activity: string;
+  icon?: string;
+  source: string;
+  sourceValue: string;
+  startedAt: string;
+  durationMs: number;
+}
+
+interface ActivitySession {
+  id: string;
+  activity: string;
+  icon?: string;
+  source: string;
+  sourceValue: string;
+  startedAt: string;
+  endedAt: string | null;
+  state: "active" | "ended";
+}
+
 interface RoutineCheck {
   label: string;
   passed: boolean;
@@ -409,6 +446,16 @@ interface NimbusApi {
   runRoutineNow: (routineId: string) => Promise<ActionResult[]>;
   getRoutineHistory: () => Promise<RoutineHistoryEntry[]>;
   getRoutineLastTriggered: () => Promise<Record<string, number>>;
+  getTimerState: () => Promise<{ id: string; title: string; status: string; remainingMs: number } | null>;
+  getCurrentActivity: () => Promise<CurrentActivity | null>;
+  getActivitySessions: () => Promise<ActivitySession[]>;
+  getActivitySettings: () => Promise<ActivityPreferences>;
+  updateActivitySettings: (partial: {
+    enabled?: boolean;
+    mappings?: ActivityMapping[];
+    graceMinutes?: number;
+  }) => Promise<ActivityPreferences>;
+  onActivityChanged: (callback: () => void) => () => void;
   getActivitySnapshot: () => Promise<RawActivitySnapshot | null>;
   getActiveSuggestions: () => Promise<AssistantEvent[]>;
   acceptSuggestion: (suggestionId: string) => Promise<ActionResult[]>;
@@ -2998,3 +3045,263 @@ initNowPlayingCard();
 initCalendarTab();
 initContext();
 initAssistantFeed();
+
+/**
+ * The Home page's "what am I doing right now" card.
+ *
+ * Reads the Activity service's conclusion and, when relevant, shows the
+ * Spotify and Timer state alongside it — by reading their existing
+ * surfaces, not by owning any of it. Hidden entirely when there is no
+ * recognized activity, so a user who hasn't configured mappings isn't
+ * shown an empty frame.
+ */
+function initCurrentActivity(): void {
+  const card = document.getElementById("currentActivityCard") as HTMLElement;
+  const iconEl = document.getElementById("currentActivityIcon") as HTMLElement;
+  const nameEl = document.getElementById("currentActivityName") as HTMLElement;
+  const sourceEl = document.getElementById("currentActivitySource") as HTMLElement;
+  const durationEl = document.getElementById("currentActivityDuration") as HTMLElement;
+  const contextEl = document.getElementById("currentActivityContext") as HTMLElement;
+  const historyCard = document.getElementById("activityHistoryCard") as HTMLElement;
+  const historyList = document.getElementById("activityHistoryList") as HTMLElement;
+
+  function formatMinutes(ms: number): string {
+    const minutes = Math.floor(ms / 60_000);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+  }
+
+  function formatClock(iso: string): string {
+    return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  async function renderContext(): Promise<void> {
+    contextEl.innerHTML = "";
+
+    // Spotify and the timer are read from their existing state. If
+    // either isn't running or configured, its line simply isn't there.
+    const [snapshot, timer] = await Promise.all([
+      window.nimbus.getContext().catch(() => null),
+      window.nimbus.getTimerState().catch(() => null),
+    ]);
+
+    const spotify = snapshot?.providers?.spotify?.data as
+      { playbackState?: string; track?: { name?: string; artists?: string[] } } | undefined;
+    if (spotify?.playbackState === "playing" && spotify.track?.name) {
+      const line = document.createElement("div");
+      line.className = "current-activity-context-line";
+      const artists = spotify.track.artists?.join(", ");
+      line.textContent = `🎵 ${spotify.track.name}${artists ? ` · ${artists}` : ""}`;
+      contextEl.appendChild(line);
+    }
+
+    if (timer && timer.status === "running") {
+      const line = document.createElement("div");
+      line.className = "current-activity-context-line";
+      line.textContent = `⏱ ${timer.title} · ${formatMinutes(timer.remainingMs)} remaining`;
+      contextEl.appendChild(line);
+    }
+  }
+
+  function renderHistory(sessions: ActivitySession[]): void {
+    const ended = sessions.filter((s) => s.state === "ended" && s.endedAt);
+    historyCard.hidden = ended.length === 0;
+    historyList.innerHTML = "";
+
+    for (const session of ended.slice(0, 8)) {
+      const row = document.createElement("div");
+      row.className = "activity-history-row";
+
+      const when = document.createElement("span");
+      when.className = "activity-history-when";
+      when.textContent = `${formatClock(session.startedAt)}–${formatClock(session.endedAt!)}`;
+      row.appendChild(when);
+
+      const what = document.createElement("span");
+      what.className = "activity-history-what";
+      what.textContent = `${session.icon ? session.icon + " " : ""}${session.activity}`;
+      row.appendChild(what);
+
+      const where = document.createElement("span");
+      where.className = "activity-history-where";
+      where.textContent = session.sourceValue;
+      row.appendChild(where);
+
+      historyList.appendChild(row);
+    }
+  }
+
+  async function refresh(): Promise<void> {
+    try {
+      const [current, sessions] = await Promise.all([
+        window.nimbus.getCurrentActivity(),
+        window.nimbus.getActivitySessions(),
+      ]);
+
+      card.hidden = current === null;
+      if (current) {
+        iconEl.textContent = current.icon ?? "";
+        iconEl.hidden = !current.icon;
+        nameEl.textContent = current.activity;
+        sourceEl.textContent = current.sourceValue;
+        durationEl.textContent = formatMinutes(current.durationMs);
+        await renderContext();
+      }
+
+      renderHistory(sessions);
+    } catch (err) {
+      console.error("Failed to refresh current activity", err);
+    }
+  }
+
+  void refresh();
+  // The duration ticks on its own, so a slow minute-by-minute refresh is
+  // enough; the push below covers actual changes immediately.
+  setInterval(() => void refresh(), 30_000);
+  window.nimbus.onActivityChanged(() => void refresh());
+}
+
+initCurrentActivity();
+
+/**
+ * The Activity mappings editor in Settings — "this app means that
+ * activity". Follows the same list-plus-add-row shape the calendar feed
+ * and email account editors already use, rather than inventing a
+ * different pattern for the same job.
+ */
+async function initActivitySettings(): Promise<void> {
+  const enabled = document.getElementById("activityEnabled") as HTMLInputElement;
+  const list = document.getElementById("activityMappingList") as HTMLElement;
+  const empty = document.getElementById("activityMappingEmpty") as HTMLElement;
+  const nameInput = document.getElementById("activityMappingName") as HTMLInputElement;
+  const iconInput = document.getElementById("activityMappingIcon") as HTMLInputElement;
+  const sourceSelect = document.getElementById("activityMappingSource") as HTMLSelectElement;
+  const valueInput = document.getElementById("activityMappingValue") as HTMLInputElement;
+  const priorityInput = document.getElementById("activityMappingPriority") as HTMLInputElement;
+  const graceInput = document.getElementById("activityGraceMinutes") as HTMLInputElement;
+  const addBtn = document.getElementById("addActivityMappingBtn") as HTMLButtonElement;
+
+  const SOURCE_LABELS: Record<string, string> = {
+    application: "App",
+    website: "Site",
+    folder: "Folder",
+  };
+
+  function render(settings: ActivityPreferences): void {
+    enabled.checked = settings.enabled;
+    graceInput.value = String(settings.graceMinutes);
+    empty.hidden = settings.mappings.length > 0;
+    list.innerHTML = "";
+
+    // Shown in the order they are applied, so the precedence rules are
+    // visible rather than something to infer.
+    const ordered = [...settings.mappings].sort((a, b) => b.priority - a.priority);
+    for (const m of ordered) {
+      const row = document.createElement("div");
+      row.className = "calendar-feed-row";
+
+      const label = document.createElement("span");
+      label.className = "calendar-feed-row-label";
+      label.textContent = `${m.icon ? m.icon + " " : ""}${m.activity}`;
+      row.appendChild(label);
+
+      const detail = document.createElement("span");
+      detail.className = "calendar-feed-row-address";
+      detail.textContent = `${SOURCE_LABELS[m.source] ?? m.source}: ${m.value}${m.priority !== 0 ? ` · priority ${m.priority}` : ""}`;
+      row.appendChild(detail);
+
+      const actions = document.createElement("div");
+      actions.className = "calendar-feed-row-actions";
+
+      const toggle = document.createElement("label");
+      toggle.className = "routine-active-toggle";
+      toggle.title = "Disable to keep the mapping without using it";
+      const toggleInput = document.createElement("input");
+      toggleInput.type = "checkbox";
+      toggleInput.checked = m.enabled;
+      toggleInput.addEventListener("change", async () => {
+        const updated = settings.mappings.map((x) =>
+          x.id === m.id ? { ...x, enabled: toggleInput.checked } : x
+        );
+        render(await window.nimbus.updateActivitySettings({ mappings: updated }));
+      });
+      toggle.appendChild(toggleInput);
+      const toggleText = document.createElement("span");
+      toggleText.textContent = "On";
+      toggle.appendChild(toggleText);
+      actions.appendChild(toggle);
+
+      const remove = document.createElement("button");
+      remove.className = "calendar-feed-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", async () => {
+        const updated = settings.mappings.filter((x) => x.id !== m.id);
+        render(await window.nimbus.updateActivitySettings({ mappings: updated }));
+      });
+      actions.appendChild(remove);
+
+      row.appendChild(actions);
+      list.appendChild(row);
+    }
+  }
+
+  try {
+    const settings = await window.nimbus.getActivitySettings();
+    render(settings);
+
+    enabled.addEventListener("change", async () => {
+      render(await window.nimbus.updateActivitySettings({ enabled: enabled.checked }));
+    });
+
+    graceInput.addEventListener("change", async () => {
+      const minutes = Number(graceInput.value);
+      if (!Number.isFinite(minutes) || minutes < 0) return;
+      render(await window.nimbus.updateActivitySettings({ graceMinutes: minutes }));
+    });
+
+    addBtn.addEventListener("click", async () => {
+      const activity = nameInput.value.trim();
+      const value = valueInput.value.trim();
+      if (!activity || !value) {
+        alert("Give the activity a name and something to match against.");
+        return;
+      }
+
+      const current = await window.nimbus.getActivitySettings();
+      const mapping: ActivityMapping = {
+        id: `activity-${Date.now()}`,
+        enabled: true,
+        activity,
+        icon: iconInput.value.trim() || undefined,
+        source: sourceSelect.value as ActivityMapping["source"],
+        value,
+        // "contains" for everything but an exact executable name, which
+        // is what the Routine trigger form does for the same reason: a
+        // window title is never going to match exactly.
+        matchMode: sourceSelect.value === "application" ? "exact" : "contains",
+        priority: Number(priorityInput.value) || 0,
+      };
+
+      try {
+        const saved = await window.nimbus.updateActivitySettings({
+          mappings: [...current.mappings, mapping],
+        });
+        render(saved);
+        nameInput.value = "";
+        iconInput.value = "";
+        valueInput.value = "";
+        priorityInput.value = "0";
+      } catch (err) {
+        // The main process validates before saving; show why rather than
+        // failing silently.
+        alert(`Couldn't save that mapping: ${String(err)}`);
+      }
+    });
+  } catch (err) {
+    console.error("Failed to load activity settings", err);
+  }
+}
+
+void initActivitySettings();

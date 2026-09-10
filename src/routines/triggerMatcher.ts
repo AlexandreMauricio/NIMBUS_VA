@@ -1,5 +1,6 @@
 import { ContextEvent } from "../events/types";
-import { StringMatchMode, TriggerConfig } from "./types";
+import { matchAnyPattern } from "../common/patternMatch";
+import { TriggerConfig } from "./types";
 
 /**
  * Pure matching logic between one Context Event and one Trigger config —
@@ -38,28 +39,4 @@ export function matchesTrigger(event: ContextEvent, trigger: TriggerConfig): boo
     default:
       return false;
   }
-}
-
-function matchString(value: string, pattern: string, mode: StringMatchMode): boolean {
-  const a = value.toLowerCase();
-  const b = pattern.toLowerCase();
-  return mode === "exact" ? a === b : a.includes(b);
-}
-
-/**
- * A trigger's pattern field can hold multiple comma-separated
- * alternatives (e.g. "skillcert,nowuniversity") so one Routine can fire
- * from any of several apps/sites/folders instead of needing a duplicate
- * Routine per one — matches if `value` matches *any* alternative. A
- * plain single pattern (the overwhelmingly common case) behaves exactly
- * as before: splitting "skillcert" on "," just yields `["skillcert"]`.
- * Empty alternatives from stray commas/whitespace are dropped rather
- * than matching everything.
- */
-function matchAnyPattern(value: string, patternField: string, mode: StringMatchMode): boolean {
-  const alternatives = patternField
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  return alternatives.some((pattern) => matchString(value, pattern, mode));
 }

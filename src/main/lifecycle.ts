@@ -22,6 +22,8 @@ import { ContextEventBus } from "../events";
 import { RoutineService, validateRoutine, Routine } from "../routines";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
+import { FileActivityStateStore } from "./activityStateStore";
+import { ActivityService, ActivityMapping, validateActivityMapping } from "../activity";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
 import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
@@ -45,6 +47,7 @@ let routineService: RoutineService;
 let taskProvider: TaskProvider;
 let activityMonitor: DesktopActivityMonitor | null = null;
 const timerService = new TimerService(contextEventBus);
+let activityService: ActivityService;
 
 function createMainWindow(show: boolean): void {
   mainWindow = new BrowserWindow({
@@ -429,6 +432,41 @@ function registerIpcHandlers(): void {
     routineService.runRoutineNow(routineId)
   );
   ipcMain.handle("nimbus:get-routine-history", () => routineService.getHistory());
+
+  // Activity is read-only over IPC apart from its configuration: the
+  // renderer can see what NIMBUS concluded and edit the rules, but
+  // cannot assert an activity or end a session by hand.
+  ipcMain.handle("nimbus:get-current-activity", () => activityService.getCurrentActivity());
+  ipcMain.handle("nimbus:get-activity-sessions", () => activityService.getRecentSessions(50));
+  ipcMain.handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
+  ipcMain.handle(
+    "nimbus:update-activity-settings",
+    (_event, partial: { enabled?: boolean; mappings?: ActivityMapping[]; graceMinutes?: number }) => {
+      // Same discipline as routines: reject before saving, never trust
+      // renderer-supplied configuration blindly.
+      if (partial.mappings) {
+        for (const mapping of partial.mappings) {
+          const result = validateActivityMapping(mapping);
+          if (!result.valid) {
+            throw new Error(`Invalid activity mapping "${mapping?.activity ?? "?"}": ${result.error}`);
+          }
+        }
+      }
+      const current = settings.userPreferences.activity;
+      settings.userPreferences.activity = {
+        enabled: partial.enabled ?? current.enabled,
+        mappings: partial.mappings ?? current.mappings,
+        graceMinutes: partial.graceMinutes ?? current.graceMinutes,
+      };
+      saveSettings(settings);
+      syncActivityMonitor();
+      logger.info("Activity settings updated", {
+        enabled: settings.userPreferences.activity.enabled,
+        mappingCount: settings.userPreferences.activity.mappings.length,
+      });
+      return settings.userPreferences.activity;
+    }
+  );
   ipcMain.handle("nimbus:get-routine-last-triggered", () => routineService.getLastTriggeredAt());
 
   // A debugging aid for "why didn't my trigger fire" — the exact raw
@@ -546,7 +584,10 @@ function onActionExecuted(actionId: string, result: ActionResult): void {
  * doc comment).
  */
 function syncActivityMonitor(): void {
-  const shouldRun = settings.userPreferences.routines.enabled;
+  // Either feature needs the same underlying signal, so the monitor runs
+  // if either is on — and stops when neither is, so nothing is observed
+  // for a feature the user has switched off.
+  const shouldRun = settings.userPreferences.routines.enabled || settings.userPreferences.activity.enabled;
   if (shouldRun && !activityMonitor) {
     activityMonitor = new DesktopActivityMonitor(contextEventBus);
     activityMonitor.start();
@@ -643,6 +684,23 @@ export function startApp(): void {
   // SpotifyContextProvider here is exactly the "reuse the existing
   // Context system" the task asked for, rather than a second Spotify
   // poll.
+  // Activity watches the same event bus everything else does — no second
+  // monitor, no new signal collected. It only observes and records; the
+  // Routine engine below reads it through a condition, which is the only
+  // route from "what the user is doing" to anything happening.
+  activityService = new ActivityService(
+    () => settings.userPreferences.activity,
+    contextEventBus,
+    () => new Date(),
+    new FileActivityStateStore()
+  );
+  activityService.start();
+  activityService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send("nimbus:activity-changed");
+    }
+  });
+
   routineService = new RoutineService(
     () => settings.userPreferences.routines.routines,
     actionService,
@@ -699,7 +757,10 @@ export function startApp(): void {
     // Cooldowns outlive the process — without this, quitting and
     // relaunching NIMBUS would clear every cooldown and let routines
     // re-suggest immediately.
-    new FileRoutineStateStore()
+    new FileRoutineStateStore(),
+    // Injected rather than imported, same as isSpotifyPlaying: the
+    // engine reads the current activity without knowing what produces it.
+    () => activityService.getCurrentActivity()
   );
   routineService.start();
   routineService.onSuggestion((suggestion) => {
@@ -806,6 +867,9 @@ export function startApp(): void {
 
   app.on("before-quit", () => {
     isQuitting = true;
+    // Ends the session in progress at shutdown rather than leaving it
+    // open to be resumed with invented time on the next launch.
+    activityService?.stop();
     if (resizeSaveTimer) {
       clearTimeout(resizeSaveTimer);
       resizeSaveTimer = null;
