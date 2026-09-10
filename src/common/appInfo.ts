@@ -1,3 +1,6 @@
+import * as fs from "fs";
+import * as path from "path";
+
 /**
  * Central branding/identity constants for NIMBUS.
  * Other modules should import from here rather than hard-coding the name/version.
@@ -13,7 +16,13 @@ export const APP_FULL_NAME = "Navigation & Intelligent Monitoring Base for User 
  *
  * Safe to read at module load: this file is imported only by the main
  * process (and the context provider it runs), never bundled into the
- * renderer, so `require` is available and package.json sits beside the
- * compiled output's root in both a dev run and a packaged app.
+ * renderer, so Node's `fs` is available and package.json sits beside the
+ * compiled output's root in both a dev run and a packaged app. Read with fs
+ * rather than require(): ESLint forbids require-style imports, and an ES
+ * import of a file outside src/ would break tsc's rootDir.
  */
-export const APP_VERSION: string = (require("../../package.json") as { version: string }).version;
+export const APP_VERSION: string = (
+  JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf-8")) as {
+    version: string;
+  }
+).version;
