@@ -119,6 +119,32 @@ function quitApp(): void {
   app.quit();
 }
 
+/**
+ * Applies a renderer-supplied partial update to a settings group, keeping
+ * only fields the group already has and only values of the same kind.
+ *
+ * The routine and activity handlers validate everything they save; the
+ * simpler groups used to spread whatever arrived straight into
+ * settings.json. The renderer is NIMBUS's own code, but a bug there (or a
+ * stray field) shouldn't be able to write an unknown key or a string
+ * where a boolean belongs. null is accepted, since several fields are
+ * nullable by design (a manual location, a preferred device).
+ */
+function mergeKnown<T extends object>(current: T, partial: unknown): T {
+  if (!partial || typeof partial !== "object" || Array.isArray(partial)) return current;
+  const out: Record<string, unknown> = { ...(current as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(partial)) {
+    if (!(key in current)) continue;
+    const existing = (current as Record<string, unknown>)[key];
+    const sameKind =
+      value === null ||
+      existing === null ||
+      (typeof value === typeof existing && Array.isArray(value) === Array.isArray(existing));
+    if (sameKind) out[key] = value;
+  }
+  return out as T;
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:get-app-info", () => ({
     name: APP_NAME,
@@ -132,7 +158,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     "nimbus:update-settings",
     (_event, partial: Partial<typeof settings.windowsClient.startup>) => {
-      settings.windowsClient.startup = { ...settings.windowsClient.startup, ...partial };
+      settings.windowsClient.startup = mergeKnown(settings.windowsClient.startup, partial);
       saveSettings(settings);
       if (partial.launchWithWindows !== undefined) {
         applyAutostart(settings.windowsClient.startup.launchWithWindows);
@@ -153,7 +179,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     "nimbus:update-weather-settings",
     (_event, partial: Partial<typeof settings.userPreferences.weather>) => {
-      settings.userPreferences.weather = { ...settings.userPreferences.weather, ...partial };
+      const next = mergeKnown(settings.userPreferences.weather, partial);
+      if (next.locationMode !== "auto" && next.locationMode !== "manual") {
+        throw new Error('Weather locationMode must be "auto" or "manual".');
+      }
+      settings.userPreferences.weather = next;
       saveSettings(settings);
       logger.info("Weather settings updated", settings.userPreferences.weather);
       return settings.userPreferences.weather;
@@ -165,7 +195,19 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     "nimbus:update-calendar-settings",
     (_event, partial: Partial<typeof settings.userPreferences.calendar>) => {
-      settings.userPreferences.calendar = { ...settings.userPreferences.calendar, ...partial };
+      const next = mergeKnown(settings.userPreferences.calendar, partial);
+      for (const feed of next.feeds) {
+        if (
+          !feed ||
+          typeof feed.id !== "string" ||
+          typeof feed.label !== "string" ||
+          typeof feed.address !== "string" ||
+          typeof feed.enabled !== "boolean"
+        ) {
+          throw new Error("Each calendar feed needs an id, label, address and enabled flag.");
+        }
+      }
+      settings.userPreferences.calendar = next;
       saveSettings(settings);
       // Feed addresses are credentials (private ICS URLs) — log only
       // shape/counts, never the addresses themselves.
@@ -336,7 +378,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     "nimbus:update-spotify-settings",
     (_event, partial: Partial<typeof settings.userPreferences.spotify>) => {
-      settings.userPreferences.spotify = { ...settings.userPreferences.spotify, ...partial };
+      settings.userPreferences.spotify = mergeKnown(settings.userPreferences.spotify, partial);
       saveSettings(settings);
       logger.info("Spotify settings updated", settings.userPreferences.spotify);
       return {
@@ -592,9 +634,6 @@ function syncActivityMonitor(): void {
   // Either feature needs the same underlying signal, so the monitor runs
   // if either is on — and stops when neither is, so nothing is observed
   // for a feature the user has switched off.
-  // A routine-declared activity needs no clause of its own: a routine can
-  // only declare one while Routines themselves are on, which is already
-  // the first condition here.
   const shouldRun = settings.userPreferences.routines.enabled || settings.userPreferences.activity.enabled;
   if (shouldRun && !activityMonitor) {
     activityMonitor = new DesktopActivityMonitor(contextEventBus);

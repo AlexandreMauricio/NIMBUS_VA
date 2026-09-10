@@ -347,13 +347,17 @@ export function extractSecrets(settings: NimbusSettings): {
 } {
   const secrets: Record<string, string> = {};
 
+  // Every account gets a key, even one with no value. An empty value
+  // says "this account still exists, it just has no readable credential"
+  // — which is how the store tells a value it failed to decrypt (keep it)
+  // from an account that was removed (delete it). See SecretStore.writeAll.
   const emailAccounts = settings.userPreferences.email.accounts.map((account) => {
-    if (account.password) secrets[emailPasswordKey(account.id)] = account.password;
+    secrets[emailPasswordKey(account.id)] = account.password ?? "";
     return { ...account, password: "" };
   });
 
   const taskAccounts = settings.userPreferences.tasks.accounts.map((account) => {
-    if (account.apiToken) secrets[taskApiTokenKey(account.id)] = account.apiToken;
+    secrets[taskApiTokenKey(account.id)] = account.apiToken ?? "";
     return { ...account, apiToken: "" };
   });
 

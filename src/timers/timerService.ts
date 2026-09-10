@@ -50,6 +50,15 @@ export class TimerService {
    */
   private planPhases: TimerPlanPhase[] = [];
   private planIndex = -1;
+  /**
+   * When the running phase ends by the wall clock, or null while paused.
+   *
+   * Ticks alone undercount: an interval doesn't fire while the machine
+   * sleeps, and fires late under load, so a 45-minute study interrupted
+   * by 20 minutes of sleep would finish 20 minutes late. Each tick takes
+   * whichever of "one tick less" and "time actually left" is smaller.
+   */
+  private endsAtMs: number | null = null;
 
   constructor(
     private readonly eventBus: ContextEventBus,
@@ -132,6 +141,7 @@ export class TimerService {
       completedAt: null,
     };
     this.current = state;
+    this.endsAtMs = this.now().getTime() + phase.durationMs;
     this.startInterval();
     logger.info(`Timer "${phase.title}" started`, {
       timerId: state.id,
@@ -145,12 +155,22 @@ export class TimerService {
     if (!this.current || this.current.id !== id || this.current.status !== "running") return this.getState();
     this.current.status = "paused";
     this.stopInterval();
+    // Settle the remaining time by the clock before the countdown stops
+    // tracking it, so a pause right after a sleep doesn't bank the lost time.
+    if (this.endsAtMs !== null) {
+      this.current.remainingMs = Math.max(
+        0,
+        Math.min(this.current.remainingMs, this.endsAtMs - this.now().getTime())
+      );
+    }
+    this.endsAtMs = null;
     return { ...this.current };
   }
 
   resume(id: string): TimerState | null {
     if (!this.current || this.current.id !== id || this.current.status !== "paused") return this.getState();
     this.current.status = "running";
+    this.endsAtMs = this.now().getTime() + this.current.remainingMs;
     this.startInterval();
     return { ...this.current };
   }
@@ -158,6 +178,7 @@ export class TimerService {
   cancel(id: string): TimerState | null {
     if (!this.current || this.current.id !== id) return null;
     this.stopInterval();
+    this.endsAtMs = null;
     this.current.status = "cancelled";
     const result = { ...this.current };
     this.current = null;
@@ -191,11 +212,13 @@ export class TimerService {
   private tick(): void {
     if (!this.current || this.current.status !== "running") return;
 
-    this.current.remainingMs = Math.max(0, this.current.remainingMs - this.tickMs);
+    const byClock = this.endsAtMs === null ? Infinity : this.endsAtMs - this.now().getTime();
+    this.current.remainingMs = Math.max(0, Math.min(this.current.remainingMs - this.tickMs, byClock));
     if (this.current.remainingMs > 0) return;
 
     this.current.status = "completed";
     this.current.completedAt = this.now().toISOString();
+    this.endsAtMs = null;
     this.stopInterval();
 
     logger.info(`Timer "${this.current.title}" completed`, { timerId: this.current.id });

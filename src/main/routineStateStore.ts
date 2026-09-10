@@ -37,13 +37,19 @@ export class FileRoutineStateStore implements RoutineStateStore {
     try {
       if (!fs.existsSync(filePath)) return { lastTriggeredAt: {} };
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Partial<RoutineRuntimeState>;
-      const lastTriggeredAt: Record<string, number> = {};
-      for (const [routineId, at] of Object.entries(parsed.lastTriggeredAt ?? {})) {
-        // A timestamp from a tampered or truncated file must not poison
-        // cooldown maths — anything that isn't a real number is dropped.
-        if (typeof at === "number" && Number.isFinite(at)) lastTriggeredAt[routineId] = at;
-      }
-      return { lastTriggeredAt };
+      // A timestamp from a tampered or truncated file must not poison
+      // cooldown maths — anything that isn't a real number is dropped.
+      const numbersOnly = (record: Record<string, unknown> | undefined): Record<string, number> => {
+        const out: Record<string, number> = {};
+        for (const [routineId, at] of Object.entries(record ?? {})) {
+          if (typeof at === "number" && Number.isFinite(at)) out[routineId] = at;
+        }
+        return out;
+      };
+      return {
+        lastTriggeredAt: numbersOnly(parsed.lastTriggeredAt),
+        awaitingStop: numbersOnly(parsed.awaitingStop),
+      };
     } catch (err) {
       logger.warn("Could not read routine-state.json — cooldowns start fresh", {
         error: String(err),

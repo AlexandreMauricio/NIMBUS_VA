@@ -806,3 +806,155 @@ test("a disabled routine never winds down", async () => {
 
   assert.equal(provider.calls.includes("demo.timer"), false);
 });
+
+// ------------------------------------ wind-down prompts, sessions, restarts
+
+type RuntimeState = { lastTriggeredAt: Record<string, number>; awaitingStop?: Record<string, number> };
+
+const studyEnded = () => ({
+  id: "x" + Math.random(),
+  type: "activityEnded" as const,
+  occurredAt: new Date().toISOString(),
+  source: "test",
+  activity: "Study",
+  durationMs: 30 * 60_000,
+});
+
+test("an ask-first wind-down gets its own prompt, and leaves the start cooldown alone", async () => {
+  // It used to reuse the start prompt ("Study Mode — Start?") while its
+  // Yes ran the stop actions, and restarted the start cooldown, so
+  // resuming within it was blocked.
+  const r = studyWithWindDown({ cooldownMinutes: 30, stopAutoRun: false });
+  const { routineService, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  const startedAt = routineService.getLastTriggeredAt()[r.id];
+  advance(20);
+  bus.publish(appEvent("game.exe")); // a different activity: Study has ended
+  await settle();
+  await settle();
+
+  const [windDown] = routineService.getActiveSuggestions();
+  assert.equal(windDown.title, `Wrap up ${r.name}?`);
+  assert.notEqual(windDown.message, r.suggestion.message);
+  assert.equal(routineService.getLastTriggeredAt()[r.id], startedAt, "start cooldown untouched");
+});
+
+test("a once-per-session website routine doesn't re-fire as the page title changes", async () => {
+  const r = studyRoutine({
+    id: "site",
+    trigger: {
+      type: "websiteOpened",
+      matchField: "windowTitle",
+      pattern: "Halo University",
+      matchMode: "contains",
+    },
+    sessionRestriction: "oncePerSession",
+    cooldownMinutes: 0,
+  });
+  const { routineService, bus } = setup([r], activitySettings([]));
+  const site = (windowTitle: string) => ({
+    id: "s" + Math.random(),
+    type: "websiteOpened" as const,
+    occurredAt: new Date().toISOString(),
+    source: "test",
+    browserExecutable: "chrome.exe",
+    windowTitle,
+    url: null,
+    domain: null,
+  });
+
+  bus.publish(site("Halo University — Lesson 1"));
+  await settle();
+  bus.publish(site("Halo University — Lesson 2"));
+  await settle();
+
+  const kinds = routineService.getHistory().map((h) => h.kind);
+  assert.equal(kinds.filter((k) => k === "suggested").length, 1);
+  assert.ok(kinds.includes("blockedBySession"));
+});
+
+test("a wind-down still owed survives a restart", async () => {
+  let saved: RuntimeState = { lastTriggeredAt: {} };
+  const store = {
+    load: () => saved,
+    save: (s: RuntimeState) => {
+      saved = s;
+    },
+  };
+  const r = studyWithWindDown({ cooldownMinutes: 0 });
+  const t0 = new Date("2026-03-16T09:00:00").getTime();
+
+  const firstActions = new ActionService();
+  firstActions.register(new RecordingProvider());
+  const before = new RoutineService(
+    () => [r],
+    firstActions,
+    new ContextEventBus(),
+    () => new Date(t0),
+    undefined,
+    60_000,
+    undefined,
+    undefined,
+    store
+  );
+  await before.runRoutineNow(r.id);
+  assert.ok(saved.awaitingStop?.[r.id], "the owed wind-down was persisted");
+
+  const provider = new RecordingProvider();
+  const secondActions = new ActionService();
+  secondActions.register(provider);
+  const bus = new ContextEventBus();
+  const after = new RoutineService(
+    () => [r],
+    secondActions,
+    bus,
+    () => new Date(t0 + 60 * 60_000),
+    undefined,
+    60_000,
+    undefined,
+    undefined,
+    store
+  );
+  after.start();
+  bus.publish(studyEnded());
+  await settle();
+  await settle();
+
+  assert.ok(provider.calls.includes("demo.timer"), "wound down after the restart");
+});
+
+test("a wind-down owed for more than 12 hours is dropped, not run", async () => {
+  const r = studyWithWindDown({ cooldownMinutes: 0 });
+  const t0 = new Date("2026-03-16T09:00:00").getTime();
+  const store = {
+    load: (): RuntimeState => ({ lastTriggeredAt: {}, awaitingStop: { [r.id]: t0 - 13 * 60 * 60_000 } }),
+    save: () => {},
+  };
+  const provider = new RecordingProvider();
+  const actions = new ActionService();
+  actions.register(provider);
+  const bus = new ContextEventBus();
+  const service = new RoutineService(
+    () => [r],
+    actions,
+    bus,
+    () => new Date(t0),
+    undefined,
+    60_000,
+    undefined,
+    undefined,
+    store
+  );
+  service.start();
+  bus.publish(studyEnded());
+  await settle();
+  await settle();
+
+  assert.deepEqual(provider.calls, []);
+});

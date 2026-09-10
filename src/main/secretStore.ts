@@ -45,19 +45,26 @@ function secretFilePath(): string {
 
 export class SecretStore {
   /**
+   * Entries the last `readAll` found on disk but could not decrypt, in
+   * their stored (still encrypted) form.
+   *
+   * Kept so `writeAll` can put them back. Without this, one failed
+   * decrypt was permanent: the account read as "no credential", the next
+   * save wrote the store without that key, and the credential was gone —
+   * even if the failure was transient and the value itself was fine.
+   */
+  private unreadable: Record<SecretKey, string> = {};
+
+  /**
    * Reads every stored secret. Returns an empty map — never throws — when
    * the file is missing, unreadable, or encryption isn't available, so a
    * caller can always treat "no secret for this key" as the normal
    * not-configured case.
    */
   readAll(): Record<SecretKey, string> {
+    this.unreadable = {};
     const filePath = secretFilePath();
     if (!fs.existsSync(filePath)) return {};
-
-    if (!safeStorage.isEncryptionAvailable()) {
-      logger.warn("OS secure storage unavailable — cannot read stored credentials");
-      return {};
-    }
 
     let parsed: EncryptedSecretFile;
     try {
@@ -69,6 +76,13 @@ export class SecretStore {
       return {};
     }
 
+    if (!safeStorage.isEncryptionAvailable()) {
+      logger.warn("OS secure storage unavailable — cannot read stored credentials");
+      // None of them can be read, and none of them may be lost for it.
+      this.unreadable = { ...(parsed.secrets ?? {}) };
+      return {};
+    }
+
     const out: Record<SecretKey, string> = {};
     for (const [key, encrypted] of Object.entries(parsed.secrets ?? {})) {
       try {
@@ -76,45 +90,56 @@ export class SecretStore {
       } catch (err) {
         // One undecryptable entry (e.g. copied from another machine, where
         // DPAPI can't unwrap it) must not take the rest down with it —
-        // that account simply reads as "no credential saved".
+        // that account simply reads as "no credential saved" for now.
         logger.warn("Failed to decrypt a stored credential — treating it as unset", {
           key,
           error: String(err),
         });
+        this.unreadable[key] = encrypted;
       }
     }
     return out;
   }
 
   /**
-   * Replaces the stored set with exactly `secrets` — keys absent here are
-   * deleted. Callers always hold the full picture (settings own the list
-   * of accounts), so a whole-file write keeps the store from accumulating
-   * orphans when an account is removed.
+   * Replaces the stored set with `secrets`. A key absent from `secrets`
+   * is deleted — callers list every account they still have (see
+   * settingsSchema's extractSecrets), so absence means the account was
+   * removed, and a whole-file write keeps the store free of orphans.
+   *
+   * A key that is present but EMPTY is different: the account still
+   * exists and simply has no readable value. If that is because
+   * `readAll` couldn't decrypt what was stored, the stored form is kept
+   * as-is rather than erased.
    *
    * Fails safe rather than falling back to plaintext, matching
    * SpotifyTokenStore: without OS secure storage, credentials just don't
-   * persist across restarts.
+   * persist across restarts — and nothing already stored is touched.
    */
   writeAll(secrets: Record<SecretKey, string>): void {
     const filePath = secretFilePath();
     const entries = Object.entries(secrets).filter(([, value]) => value.length > 0);
+    const carried = Object.entries(this.unreadable).filter(([key]) => key in secrets && !secrets[key]);
 
-    if (entries.length === 0) {
+    if (entries.length > 0 && !safeStorage.isEncryptionAvailable()) {
+      logger.warn("OS secure storage unavailable — credentials will not persist across restarts");
+      return;
+    }
+
+    if (entries.length === 0 && carried.length === 0) {
       try {
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       } catch (err) {
         logger.warn("Failed to remove empty secrets file", { error: String(err) });
       }
-      return;
-    }
-
-    if (!safeStorage.isEncryptionAvailable()) {
-      logger.warn("OS secure storage unavailable — credentials will not persist across restarts");
+      this.unreadable = {};
       return;
     }
 
     const encrypted: EncryptedSecretFile = { secrets: {} };
+    for (const [key, value] of carried) {
+      encrypted.secrets[key] = value;
+    }
     for (const [key, value] of entries) {
       encrypted.secrets[key] = safeStorage.encryptString(value).toString("base64");
     }
@@ -131,6 +156,9 @@ export class SecretStore {
         fs.closeSync(fd);
       }
       fs.renameSync(tempPath, filePath);
+      // A value the user has since replaced, or an account since removed,
+      // is no longer owed a carry-over.
+      this.unreadable = Object.fromEntries(carried);
     } catch (err) {
       logger.error("Failed to persist credentials", { error: String(err) });
       try {

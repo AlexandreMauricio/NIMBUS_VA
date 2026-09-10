@@ -252,3 +252,76 @@ test("a plain start() clears any pending plan phases from an earlier startPlan",
   assert.equal(service.getState()?.title, "Something else");
   assert.equal(service.getState()?.status, "completed");
 });
+
+// ------------------------------------------------- wall clock, not ticks
+
+test("time the machine spent asleep still counts down", () => {
+  // An interval doesn't fire during sleep. Counting ticks alone meant a
+  // 45-minute study with 20 minutes of sleep in it finished 20 minutes late.
+  const bus = new ContextEventBus();
+  const timers = fakeTimers(1000);
+  let nowMs = new Date("2026-09-10T09:00:00Z").getTime();
+  const service = new TimerService(
+    bus,
+    () => new Date(nowMs),
+    timers.setIntervalFn,
+    timers.clearIntervalFn,
+    1000
+  );
+
+  const state = service.start("Study", 45 * 60_000, "focus");
+  nowMs += 20 * 60_000; // asleep: no ticks happen
+  timers.advance(1000); // the first tick after waking
+
+  assert.equal(service.getState(state.id)?.remainingMs, 25 * 60_000);
+});
+
+test("a timer whose end passed during sleep completes on the first tick after", () => {
+  const bus = new ContextEventBus();
+  const completed: string[] = [];
+  bus.subscribe((e) => {
+    if (e.type === "timerCompleted") completed.push(e.title);
+  });
+  const timers = fakeTimers(1000);
+  let nowMs = new Date("2026-09-10T09:00:00Z").getTime();
+  const service = new TimerService(
+    bus,
+    () => new Date(nowMs),
+    timers.setIntervalFn,
+    timers.clearIntervalFn,
+    1000
+  );
+
+  service.start("Study", 10 * 60_000, "focus");
+  nowMs += 30 * 60_000;
+  timers.advance(1000);
+
+  assert.deepEqual(completed, ["Study"]);
+});
+
+test("time spent paused is not counted, even by the clock", () => {
+  const bus = new ContextEventBus();
+  const timers = fakeTimers(1000);
+  let nowMs = new Date("2026-09-10T09:00:00Z").getTime();
+  const service = new TimerService(
+    bus,
+    () => new Date(nowMs),
+    timers.setIntervalFn,
+    timers.clearIntervalFn,
+    1000
+  );
+
+  const state = service.start("Study", 10 * 60_000, "focus");
+  // A minute of real running: each tick arrives as a second passes.
+  for (let i = 0; i < 60; i++) {
+    nowMs += 1000;
+    timers.advance(1000);
+  }
+  service.pause(state.id);
+  nowMs += 60 * 60_000; // an hour away, paused
+  service.resume(state.id);
+  nowMs += 1000;
+  timers.advance(1000);
+
+  assert.equal(service.getState(state.id)?.remainingMs, 9 * 60_000 - 1000);
+});

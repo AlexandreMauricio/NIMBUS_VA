@@ -45,6 +45,8 @@ export class ActivityService {
   private readonly history: ActivitySession[] = [];
   private unsubscribe: (() => void) | null = null;
   private readonly listeners = new Set<() => void>();
+  /** Fires when the grace period runs out, so the session ends on time even if nothing asks. */
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly getSettings: () => ActivitySettings,
@@ -81,7 +83,11 @@ export class ActivityService {
     // Ending the session on shutdown is the honest counterpart of not
     // resuming one on startup — and if the anchor had already closed,
     // that earlier moment is when the activity really stopped.
-    this.endCurrent(this.anchorClosedAt ?? this.now());
+    //
+    // Recorded, but NOT announced. NIMBUS quitting is not the user
+    // finishing what they were doing, and announcing it ran every
+    // "when this activity ends" routine on the way out.
+    this.endCurrent(this.anchorClosedAt ?? this.now(), false);
   }
 
   /** Notified whenever the current activity changes — for the Home page to refresh. */
@@ -168,6 +174,7 @@ export class ActivityService {
       const anchor = anchorProcessFor(event);
       if (anchor) this.current.anchorProcess = anchor;
       this.anchorClosedAt = null;
+      this.clearGraceTimer();
       return;
     }
 
@@ -223,6 +230,42 @@ export class ActivityService {
     if (!this.current || this.anchorClosedAt) return;
     this.anchorClosedAt = this.now();
     this.resolveGrace();
+    if (this.current) this.scheduleGraceCheck();
+  }
+
+  /**
+   * Arms a timer for the moment the grace period runs out.
+   *
+   * resolveGrace is still what decides, and still runs whenever anyone
+   * asks — this only guarantees someone asks. Without it the session,
+   * and the "activity ended" routines hanging off it (stopping the
+   * Pomodoro), waited on the next thing that happened to check: usually
+   * the Home page's refresh, which Chromium slows right down while the
+   * window sits hidden in the tray.
+   */
+  private scheduleGraceCheck(): void {
+    this.clearGraceTimer();
+    if (!this.current || !this.anchorClosedAt) return;
+    const graceMs = (this.getSettings().graceMinutes ?? DEFAULT_ACTIVITY_GRACE_MINUTES) * 60_000;
+    const remainingMs = graceMs - (this.now().getTime() - this.anchorClosedAt.getTime());
+    // A floor, so a clock that disagrees with the timer can't spin this.
+    const delayMs = Math.max(remainingMs, 0) + 1000;
+    this.graceTimer = setTimeout(() => {
+      this.graceTimer = null;
+      this.resolveGrace();
+      // Still counting down (the grace setting grew, or clocks disagree):
+      // look again when it is really due.
+      if (this.current && this.anchorClosedAt) this.scheduleGraceCheck();
+    }, delayMs);
+    // Never the reason the process stays alive.
+    (this.graceTimer as { unref?: () => void }).unref?.();
+  }
+
+  private clearGraceTimer(): void {
+    if (this.graceTimer) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
   }
 
   /**
@@ -242,7 +285,8 @@ export class ActivityService {
     this.endCurrent(this.anchorClosedAt);
   }
 
-  private endCurrent(endedAt: Date): void {
+  private endCurrent(endedAt: Date, announce = true): void {
+    this.clearGraceTimer();
     if (!this.current) return;
     const ended: ActivitySession = {
       ...this.current,
@@ -263,14 +307,16 @@ export class ActivityService {
     // thing no other event can express. Still only a *statement* that it
     // happened: what to do about it stays a Routine's decision, and the
     // user's to approve.
-    this.eventBus.publish({
-      id: randomUUID(),
-      type: "activityEnded",
-      occurredAt: ended.endedAt!,
-      source: "activityService",
-      activity: ended.activity,
-      durationMs,
-    });
+    if (announce) {
+      this.eventBus.publish({
+        id: randomUUID(),
+        type: "activityEnded",
+        occurredAt: ended.endedAt!,
+        source: "activityService",
+        activity: ended.activity,
+        durationMs,
+      });
+    }
     this.current = null;
     this.anchorClosedAt = null;
     this.persist();

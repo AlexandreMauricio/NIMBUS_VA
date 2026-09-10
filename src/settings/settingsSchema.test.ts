@@ -154,12 +154,15 @@ test("extractSecrets does not mutate the live in-memory settings", () => {
   assert.equal(settings.userPreferences.tasks.accounts[0].apiToken, "tok_secret");
 });
 
-test("an account with no credential contributes no secret entry", () => {
+test("an account with no credential still gets a key, with an empty value", () => {
+  // Present-but-empty is how the store tells "this account's value
+  // couldn't be read, keep what's stored" from "this account was removed,
+  // delete it" — see SecretStore.writeAll.
   const settings = settingsWith([emailAccount({ password: "" })], []);
 
   const { secrets } = extractSecrets(settings);
 
-  assert.deepEqual(Object.keys(secrets), []);
+  assert.deepEqual(Object.values(secrets), [""]);
 });
 
 test("extract then restore round-trips to the original settings", () => {

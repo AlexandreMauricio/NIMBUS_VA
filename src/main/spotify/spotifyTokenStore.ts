@@ -76,10 +76,27 @@ export class SpotifyTokenStore {
       expiresAt: tokens.expiresAt,
     };
 
+    // Temp file, fsync, rename — the same atomic write every other store
+    // uses. A torn write here reads back as "disconnected", which means
+    // going through the Spotify login again.
+    const filePath = tokenFilePath();
+    const tempPath = `${filePath}.tmp`;
     try {
-      fs.writeFileSync(tokenFilePath(), JSON.stringify(encrypted), "utf-8");
+      const fd = fs.openSync(tempPath, "w");
+      try {
+        fs.writeFileSync(fd, JSON.stringify(encrypted), "utf-8");
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      fs.renameSync(tempPath, filePath);
     } catch (err) {
       logger.error("Failed to persist Spotify tokens", { error: String(err) });
+      try {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      } catch {
+        // Best effort — the write already failed and was logged above.
+      }
     }
   }
 

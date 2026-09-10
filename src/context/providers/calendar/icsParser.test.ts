@@ -212,3 +212,52 @@ test("an empty feed with no VEVENTs parses cleanly to zero events", () => {
   assert.equal(result.skippedCount, 0);
   assert.equal(result.calendarName, null);
 });
+
+// --------------------------------------------- TZIDs Intl doesn't accept
+
+test("a Windows timezone name (as Outlook and Exchange write) is understood", () => {
+  // Intl rejects "Eastern Standard Time", which used to drop every timed
+  // event from such a feed without a word.
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:win-1",
+    "SUMMARY:Standup",
+    "DTSTART;TZID=Eastern Standard Time:20260715T103000",
+    "END:VEVENT"
+  );
+
+  const result = parseIcs(raw, "Europe/Lisbon");
+
+  assert.equal(result.skippedCount, 0);
+  assert.equal(result.events[0].startsAt, "2026-07-15T14:30:00.000Z");
+});
+
+test("a quoted TZID is understood", () => {
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:quoted-1",
+    "SUMMARY:Standup",
+    'DTSTART;TZID="America/New_York":20260715T103000',
+    "END:VEVENT"
+  );
+
+  const result = parseIcs(raw, "Europe/Lisbon");
+
+  assert.equal(result.skippedCount, 0);
+  assert.equal(result.events[0].startsAt, "2026-07-15T14:30:00.000Z");
+});
+
+test("an unrecognised TZID falls back to the local zone rather than dropping the event", () => {
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:unknown-1",
+    "SUMMARY:Standup",
+    "DTSTART;TZID=Somewhere Made Up:20260715T103000",
+    "END:VEVENT"
+  );
+
+  const result = parseIcs(raw, TZ);
+
+  assert.equal(result.skippedCount, 0);
+  assert.equal(result.events[0].startsAt, "2026-07-15T14:30:00.000Z");
+});

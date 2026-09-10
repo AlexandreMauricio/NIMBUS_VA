@@ -480,3 +480,52 @@ test("an unmapped application still does not end a website session", () => {
 
   assert.equal(service.getCurrentActivity()?.activity, "Study");
 });
+
+// ------------------------------------------------------ shutdown and grace
+
+test("stopping (NIMBUS quitting) records the session but does not announce it ended", () => {
+  // Announcing it ran every "when this activity ends" routine on the way
+  // out — quitting NIMBUS is not the user finishing what they were doing.
+  const { service, bus, advance } = setup();
+  const announced: string[] = [];
+  bus.subscribe((e) => {
+    if (e.type === "activityEnded") announced.push(e.activity);
+  });
+
+  bus.publish(appEvent("study.exe"));
+  advance(30);
+  service.stop();
+
+  assert.deepEqual(announced, []);
+  const [last] = service.getRecentSessions(1);
+  assert.equal(last.state, "ended");
+  assert.equal(last.activity, "Study");
+});
+
+test("a session whose grace runs out ends on its own, without anyone asking", async () => {
+  // Grace used to resolve only when something asked what was happening —
+  // mostly the Home page, which is throttled while hidden in the tray — so
+  // "activity ended" routines (stopping the Pomodoro) fired late.
+  const bus = new ContextEventBus();
+  const service = new ActivityService(
+    () => settings({ graceMinutes: 0.005 }), // 300ms
+    bus,
+    () => new Date()
+  );
+  service.start();
+  const ended = new Promise<string>((resolve) => {
+    bus.subscribe((e) => {
+      if (e.type === "activityEnded") resolve(e.activity);
+    });
+  });
+
+  bus.publish(appEvent("study.exe"));
+  bus.publish(closedEvent("study.exe"));
+
+  const activity = await Promise.race([
+    ended,
+    new Promise<string>((_, reject) => setTimeout(() => reject(new Error("never ended")), 5000)),
+  ]);
+  assert.equal(activity, "Study");
+  service.stop();
+});

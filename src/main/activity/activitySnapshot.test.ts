@@ -202,3 +202,18 @@ test("closing one application and opening another reports both", () => {
   const kinds = events.map((e) => e.type).sort();
   assert.deepEqual(kinds, ["applicationClosed", "applicationOpened"]);
 });
+
+test("two windows of the same browser, both unchanged, do not re-fire every poll", () => {
+  // A per-browser map kept one title per executable, so the other window
+  // looked newly opened on every single poll.
+  const windows = [
+    { executable: "chrome.exe", title: "Halo University — Lesson 3" },
+    { executable: "chrome.exe", title: "Inbox" },
+  ];
+  const events = diffActivitySnapshot(
+    snapshot({ browserWindows: windows }),
+    snapshot({ browserWindows: windows }),
+    NOW
+  );
+  assert.equal(events.length, 0);
+});

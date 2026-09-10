@@ -20,6 +20,34 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- A credential that fails to decrypt is no longer deleted. The store
+  used to drop any entry it couldn't read, and the next save wrote the
+  file without it — so a single failed decrypt permanently erased a
+  Todoist token or IMAP password. Unreadable entries are now carried
+  over untouched, and a missing OS encryption service no longer deletes
+  the file. Removing an account still clears its credential.
+- Quitting NIMBUS no longer counts as your activity ending. The session
+  is still recorded as ended, but routines that run "when this activity
+  ends" (Study Ended, a routine's wind-down) no longer fire on the way out.
+- An ask-first wind-down has its own prompt ("Wrap up Study?") instead
+  of reusing the start one, and no longer restarts the start cooldown.
+- Calendar feeds using Windows timezone names (Outlook, Exchange) or
+  quoted timezones keep their events. They used to be dropped silently;
+  unrecognised zones now fall back to local time.
+- An activity ends when its grace period runs out, even with the window
+  hidden in the tray. It used to wait for something to ask, so the
+  wind-down that stops the Pomodoro could run late.
+- The timer counts time the computer spent asleep. A study interrupted
+  by 20 minutes of sleep used to finish 20 minutes late.
+- The Tasks tab reports errors inline and deletes with a second click,
+  instead of the alert()/confirm() dialogs that could freeze the form.
+- Smaller: Spotify tokens are written atomically; a restarted PowerShell
+  poller can no longer be orphaned; a wind-down still owed survives a
+  restart (for up to 12 hours); "once per session" for websites follows
+  the browser rather than resetting on every page title; two windows of
+  one browser no longer re-trigger each poll; the simpler settings
+  handlers ignore unknown fields and wrongly-typed values.
+
 - Grid view is laid out for a grid. The run control becomes a full-width
   bar along the bottom of each card instead of a circle adrift in the
   corner, cards in a row share a height, and the bars line up across the

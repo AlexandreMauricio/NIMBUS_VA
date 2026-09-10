@@ -1,4 +1,4 @@
-import { zonedTimeToUtcMs } from "./icsTimeUtils";
+import { resolveTimeZone, zonedTimeToUtcMs } from "./icsTimeUtils";
 
 export interface ParsedIcsEvent {
   uid: string;
@@ -204,7 +204,7 @@ function parseDateTimeValue(
   // No "Z": either TZID-qualified or a "floating" local time — both are
   // resolved as wall-clock time in an IANA zone (TZID if given, else the
   // zone NIMBUS treats as the user's local zone).
-  const tzid = params.TZID || defaultTimeZone;
+  const tzid = resolveTimeZone(params.TZID, defaultTimeZone);
   const ms = zonedTimeToUtcMs(parts, tzid);
   return { iso: new Date(ms).toISOString(), isAllDay: false };
 }

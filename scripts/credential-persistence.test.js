@@ -135,7 +135,24 @@ try {
     after.tokenAfterHydrate
   );
 
-  // 4. Genuinely removing the account does clear its secret.
+  // 4. An entry that can't be decrypted must survive a save. Before the
+  //    fix, the account read as "no token", the launch's own save wrote
+  //    the store without it, and a single failed decrypt was permanent.
+  const secretsPath = path.join(TMP, "secrets.json");
+  const stored = JSON.parse(fs.readFileSync(secretsPath, "utf-8"));
+  const key = "tasks.task-1.apiToken";
+  stored.secrets[key] = Buffer.from("not a real ciphertext").toString("base64");
+  fs.writeFileSync(secretsPath, JSON.stringify(stored));
+  const garbled = launch("coldstart");
+  check(
+    "an undecryptable credential reads as unset",
+    garbled.tokenAfterHydrate === "",
+    garbled.tokenAfterHydrate
+  );
+  const kept = JSON.parse(fs.readFileSync(secretsPath, "utf-8")).secrets[key];
+  check("THE REGRESSION: a save keeps a credential it couldn't decrypt", kept === stored.secrets[key], kept);
+
+  // 5. Genuinely removing the account does clear its secret.
   launch("remove-account");
   check("removing the account clears the store", !secretsExist());
 } catch (err) {

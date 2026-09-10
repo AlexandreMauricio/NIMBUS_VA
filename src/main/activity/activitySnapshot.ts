@@ -118,10 +118,14 @@ export function diffActivitySnapshot(
   }
 
   // Intentionally NOT gated on `previous !== null` — see doc comment above.
-  const previousBrowserTitles = new Map((previous?.browserWindows ?? []).map((w) => [w.executable, w.title]));
+  // Keyed by window (browser + title), not by browser. Two windows of the
+  // same browser each have a title, and a per-browser map keeps only one
+  // of them — re-announcing the other as newly opened on every poll.
+  const windowKey = (w: { executable: string; title: string }) => `${w.executable}|${w.title}`;
+  const previousWindows = new Set((previous?.browserWindows ?? []).map(windowKey));
   for (const window of current.browserWindows) {
     if (!window.title) continue;
-    if (previousBrowserTitles.get(window.executable) === window.title) continue;
+    if (previousWindows.has(windowKey(window))) continue;
     events.push({
       id: randomUUID(),
       type: "websiteOpened",

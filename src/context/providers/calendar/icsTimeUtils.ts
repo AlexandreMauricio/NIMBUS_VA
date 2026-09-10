@@ -67,6 +67,84 @@ function tzOffsetMsAt(utcMs: number, timeZone: string): number {
   return asUtc - utcMs;
 }
 
+/**
+ * Windows timezone names that calendar feeds use in place of IANA ones.
+ * Outlook and Exchange write `TZID=GMT Standard Time` rather than
+ * `Europe/London`, and Intl rejects those outright. Not exhaustive: the
+ * common zones, with anything else falling back (see resolveTimeZone).
+ */
+const WINDOWS_TO_IANA: Record<string, string> = {
+  "GMT Standard Time": "Europe/London",
+  "Greenwich Standard Time": "Atlantic/Reykjavik",
+  "W. Europe Standard Time": "Europe/Berlin",
+  "Romance Standard Time": "Europe/Paris",
+  "Central Europe Standard Time": "Europe/Budapest",
+  "Central European Standard Time": "Europe/Warsaw",
+  "E. Europe Standard Time": "Europe/Chisinau",
+  "FLE Standard Time": "Europe/Kiev",
+  "GTB Standard Time": "Europe/Bucharest",
+  "Russian Standard Time": "Europe/Moscow",
+  "Turkey Standard Time": "Europe/Istanbul",
+  "Azores Standard Time": "Atlantic/Azores",
+  "Cape Verde Standard Time": "Atlantic/Cape_Verde",
+  "Morocco Standard Time": "Africa/Casablanca",
+  "South Africa Standard Time": "Africa/Johannesburg",
+  "Egypt Standard Time": "Africa/Cairo",
+  "Israel Standard Time": "Asia/Jerusalem",
+  "Arab Standard Time": "Asia/Riyadh",
+  "Arabian Standard Time": "Asia/Dubai",
+  "India Standard Time": "Asia/Kolkata",
+  "China Standard Time": "Asia/Shanghai",
+  "Singapore Standard Time": "Asia/Singapore",
+  "Tokyo Standard Time": "Asia/Tokyo",
+  "Korea Standard Time": "Asia/Seoul",
+  "AUS Eastern Standard Time": "Australia/Sydney",
+  "E. Australia Standard Time": "Australia/Brisbane",
+  "Cen. Australia Standard Time": "Australia/Adelaide",
+  "W. Australia Standard Time": "Australia/Perth",
+  "New Zealand Standard Time": "Pacific/Auckland",
+  "Eastern Standard Time": "America/New_York",
+  "Central Standard Time": "America/Chicago",
+  "Mountain Standard Time": "America/Denver",
+  "US Mountain Standard Time": "America/Phoenix",
+  "Pacific Standard Time": "America/Los_Angeles",
+  "Alaskan Standard Time": "America/Anchorage",
+  "Hawaiian Standard Time": "Pacific/Honolulu",
+  "Atlantic Standard Time": "America/Halifax",
+  "Central Standard Time (Mexico)": "America/Mexico_City",
+  "SA Pacific Standard Time": "America/Bogota",
+  "E. South America Standard Time": "America/Sao_Paulo",
+  "Argentina Standard Time": "America/Buenos_Aires",
+  UTC: "Etc/UTC",
+  "Coordinated Universal Time": "Etc/UTC",
+};
+
+function isValidTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The IANA zone a feed's TZID refers to, or `fallback` when it names
+ * nothing Intl understands.
+ *
+ * Handles the two shapes real feeds send that Intl rejects: a quoted
+ * value (`TZID="Europe/Lisbon"`) and a Windows zone name. Anything still
+ * unrecognised is read in the fallback zone rather than dropped — an
+ * event that may be an hour out is far more useful than one that
+ * silently vanishes, which is what a thrown RangeError used to cause.
+ */
+export function resolveTimeZone(tzid: string | undefined, fallback: string): string {
+  if (!tzid) return fallback;
+  const cleaned = tzid.trim().replace(/^"(.*)"$/, "$1");
+  const candidate = WINDOWS_TO_IANA[cleaned] ?? cleaned;
+  return isValidTimeZone(candidate) ? candidate : fallback;
+}
+
 /** The local calendar date (YYYY-MM-DD, in `timeZone`) an ISO instant falls on. */
 export function localCalendarDate(isoInstant: string, timeZone: string): string {
   const formatter = new Intl.DateTimeFormat("en-CA", {

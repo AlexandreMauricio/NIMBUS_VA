@@ -123,12 +123,18 @@ export class PowerShellSession implements PowerShellRunner {
       logger.debug("PowerShell session stderr", { output: chunk.trim().slice(0, 500) });
     });
 
+    // Both handlers first check they still belong to the current child.
+    // A killed process's exit can arrive after its replacement started;
+    // acting on it then would fail the new child's script and drop the
+    // only reference to it, orphaning a live PowerShell process.
     child.on("error", (err) => {
+      if (this.child !== child) return;
       this.settle(null, err);
       this.child = null;
     });
 
     child.on("exit", (code) => {
+      if (this.child !== child) return;
       // An in-flight script can never complete now; fail it explicitly
       // rather than leaving the caller waiting on its own timeout.
       this.settle(null, new Error(`PowerShell session exited with code ${code}`));

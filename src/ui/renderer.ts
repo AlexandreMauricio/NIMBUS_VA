@@ -3061,6 +3061,19 @@ function initTaskManagement(): void {
     }
   }
 
+  const taskListErrorEl = document.getElementById("taskListError") as HTMLElement;
+  const taskFormErrorEl = document.getElementById("taskFormError") as HTMLElement;
+
+  /**
+   * Shows a problem inline. Not alert()/confirm(): a native dialog in
+   * Electron takes keyboard focus away from the page, and more than once
+   * left a form that could no longer be typed into.
+   */
+  function showTaskError(target: HTMLElement, message: string): void {
+    target.textContent = message;
+    target.hidden = false;
+  }
+
   function renderTaskCard(task: TaskItem): HTMLElement {
     const card = document.createElement("div");
     card.className = task.category === "overdue" ? "task-card task-card-overdue" : "task-card";
@@ -3075,7 +3088,7 @@ function initTaskManagement(): void {
         await window.nimbus.completeTask(task.id);
         await loadAndRenderTasks();
       } catch (err) {
-        alert(`Couldn't complete task: ${String(err)}`);
+        showTaskError(taskListErrorEl, `Couldn't complete "${task.title}": ${String(err)}`);
         checkbox.checked = false;
         checkbox.disabled = false;
       }
@@ -3132,8 +3145,20 @@ function initTaskManagement(): void {
     const removeBtn = document.createElement("button");
     removeBtn.className = "calendar-feed-remove";
     removeBtn.textContent = "Delete";
+    // Two clicks instead of a confirm() dialog: the first arms it, the
+    // second deletes, and it disarms itself if the second never comes.
+    let armTimer: ReturnType<typeof setTimeout> | null = null;
     removeBtn.addEventListener("click", async () => {
-      if (!confirm(`Delete "${task.title}"? This can't be undone.`)) return;
+      if (!armTimer) {
+        removeBtn.textContent = "Click again to delete";
+        armTimer = setTimeout(() => {
+          armTimer = null;
+          removeBtn.textContent = "Delete";
+        }, 4000);
+        return;
+      }
+      clearTimeout(armTimer);
+      armTimer = null;
       removeBtn.disabled = true;
       try {
         await window.nimbus.deleteTask(task.id);
@@ -3143,7 +3168,8 @@ function initTaskManagement(): void {
         }
         await loadAndRenderTasks();
       } catch (err) {
-        alert(`Couldn't delete task: ${String(err)}`);
+        showTaskError(taskListErrorEl, `Couldn't delete "${task.title}": ${String(err)}`);
+        removeBtn.textContent = "Delete";
         removeBtn.disabled = false;
       }
     });
@@ -3166,6 +3192,7 @@ function initTaskManagement(): void {
     try {
       const { tasks } = await window.nimbus.listTasks();
       currentTasks = tasks;
+      taskListErrorEl.hidden = true;
       taskListEmptyEl.textContent =
         'No active tasks. Click "+ New task" to add one — or enjoy being caught up.';
       renderList();
@@ -3189,6 +3216,7 @@ function initTaskManagement(): void {
 
   function resetForm(): void {
     editingTaskId = null;
+    taskFormErrorEl.hidden = true;
     formHeadingEl.textContent = "New task";
     saveBtn.textContent = "Save task";
     cancelEditBtn.hidden = true;
@@ -3252,9 +3280,11 @@ function initTaskManagement(): void {
   saveBtn.addEventListener("click", async () => {
     const title = titleInput.value.trim();
     if (!title) {
+      showTaskError(taskFormErrorEl, "A task needs a title.");
       titleInput.focus();
       return;
     }
+    taskFormErrorEl.hidden = true;
 
     const request: TaskWriteRequest = {
       title,
@@ -3275,7 +3305,7 @@ function initTaskManagement(): void {
       showListView();
       await loadAndRenderTasks();
     } catch (err) {
-      alert(`Couldn't save task: ${String(err)}`);
+      showTaskError(taskFormErrorEl, `Couldn't save the task: ${String(err)}`);
     } finally {
       saveBtn.disabled = false;
     }

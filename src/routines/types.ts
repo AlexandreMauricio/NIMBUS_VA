@@ -615,6 +615,12 @@ export interface RoutineHistoryEntry {
 export interface RoutineRuntimeState {
   /** routine id -> epoch ms when it last fired. */
   lastTriggeredAt: Record<string, number>;
+  /**
+   * routine id -> epoch ms when its start actions ran, for routines whose
+   * wind-down is still owed. Optional: files written before it existed
+   * simply owe nothing.
+   */
+  awaitingStop?: Record<string, number>;
 }
 
 /** Injected into RoutineService so Core never touches the filesystem or Electron directly. */

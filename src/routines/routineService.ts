@@ -36,6 +36,13 @@ import {
  * failing, never stops other routines from being evaluated or other
  * action steps from running.
  */
+/**
+ * How long a wind-down stays owed. Persisted so a restart mid-session
+ * still winds down, but bounded: a routine started yesterday must not
+ * wind down on some unrelated activity ending today.
+ */
+const MAX_WIND_DOWN_AGE_MS = 12 * 60 * 60 * 1000;
+
 /** Which history entry each block reason produces. */
 const BLOCK_HISTORY_KIND: Record<string, RoutineHistoryKind> = {
   disabled: "blockedByConditions",
@@ -58,7 +65,7 @@ export class RoutineService {
    * the user dismissed the suggestion and studied with their own music,
    * running the end actions would stop music this routine never started.
    */
-  private readonly awaitingStop = new Set<string>();
+  private readonly awaitingStop = new Map<string, number>();
   /** Steps a suggestion should run, when they are not the routine's start actions. */
   private readonly pendingSuggestionSteps = new Map<string, RoutineActionStep[]>();
   private readonly activeSuggestions = new Map<string, AssistantSuggestion>();
@@ -104,6 +111,12 @@ export class RoutineService {
         const state = stateStore.load();
         for (const [routineId, at] of Object.entries(state.lastTriggeredAt ?? {})) {
           if (typeof at === "number" && Number.isFinite(at)) this.lastTriggeredAt.set(routineId, at);
+        }
+        const nowMs = this.now().getTime();
+        for (const [routineId, at] of Object.entries(state.awaitingStop ?? {})) {
+          if (typeof at === "number" && Number.isFinite(at) && nowMs - at < MAX_WIND_DOWN_AGE_MS) {
+            this.awaitingStop.set(routineId, at);
+          }
         }
       } catch (err) {
         // A missing or corrupt state file must never stop NIMBUS
@@ -248,7 +261,10 @@ export class RoutineService {
     // genuinely new one for any "once per session" routine. Nothing
     // triggers on this event; it is bookkeeping only.
     if (event.type === "applicationClosed") {
-      this.endSession(`app:${event.executableName.toLowerCase()}`);
+      const exe = event.executableName.toLowerCase();
+      this.endSession(`app:${exe}`);
+      // A closed browser also ends the website session it was carrying.
+      this.endSession(`site:${exe}`);
       return;
     }
 
@@ -376,7 +392,9 @@ export class RoutineService {
       case "applicationOpened":
         return `app:${event.executableName.toLowerCase()}`;
       case "websiteOpened":
-        return `site:${event.windowTitle.toLowerCase()}`;
+        // The browser, not the page: a title changes with every page and
+        // tab, which made "once per session" reset on each navigation.
+        return `site:${event.browserExecutable.toLowerCase()}`;
       case "folderOpened":
         return `folder:${event.path.toLowerCase()}`;
       case "timerCompleted":
@@ -411,7 +429,10 @@ export class RoutineService {
   private persistState(): void {
     if (!this.stateStore) return;
     try {
-      this.stateStore.save({ lastTriggeredAt: Object.fromEntries(this.lastTriggeredAt) });
+      this.stateStore.save({
+        lastTriggeredAt: Object.fromEntries(this.lastTriggeredAt),
+        awaitingStop: Object.fromEntries(this.awaitingStop),
+      });
     } catch (err) {
       // Losing a cooldown timestamp is a small annoyance; failing a
       // suggestion because of it would not be.
@@ -479,12 +500,16 @@ export class RoutineService {
       }
       if (!conditionsOk) continue;
 
-      if (!this.awaitingStop.delete(routine.id)) continue; // never started; nothing to wind down
+      const owedSince = this.awaitingStop.get(routine.id);
+      if (owedSince === undefined) continue; // never started; nothing to wind down
+      this.awaitingStop.delete(routine.id);
+      this.persistState();
+      if (this.now().getTime() - owedSince >= MAX_WIND_DOWN_AGE_MS) continue; // too old to still be this session's
 
       const steps = routine.stopActions;
       if (routine.stopAutoRun === false) {
         // The user asked to be consulted rather than have it just happen.
-        this.createSuggestion(routine, null, steps);
+        this.createSuggestion(routine, null, steps, "windDown");
         continue;
       }
 
@@ -538,14 +563,18 @@ export class RoutineService {
   private createSuggestion(
     routine: Routine,
     sessionKey: string | null = null,
-    steps?: RoutineActionStep[]
+    steps?: RoutineActionStep[],
+    kind: "start" | "windDown" = "start"
   ): AssistantSuggestion {
     const now = this.now();
+    const windDown = kind === "windDown";
     // Cooldown starts the moment a suggestion is made — not when/if the
     // user acts on it — so a dismissed-then-re-triggered routine still
     // can't spam (see the task's own "user dismisses, switches tabs,
-    // comes back" example).
-    this.markFired(routine, sessionKey);
+    // comes back" example). The cooldown governs STARTING, so a
+    // wind-down leaves it alone: ending a session must not block
+    // resuming it ten minutes later.
+    if (!windDown) this.markFired(routine, sessionKey);
 
     const suggestion: AssistantSuggestion = {
       id: randomUUID(),
@@ -553,8 +582,12 @@ export class RoutineService {
       source: "routines",
       createdAt: now.toISOString(),
       routineId: routine.id,
-      title: routine.suggestion.title,
-      message: routine.suggestion.message,
+      // The configured title and message are the start prompt ("Study
+      // mode? Play your study playlist?"); asking that while offering to
+      // run the stop actions would mean "Yes" does the opposite of what
+      // it says.
+      title: windDown ? `Wrap up ${routine.name}?` : routine.suggestion.title,
+      message: windDown ? "Run what you set up for when it ends?" : routine.suggestion.message,
       primaryLabel: routine.suggestion.primaryLabel,
       secondaryLabel: routine.suggestion.secondaryLabel,
       expiresAt: new Date(now.getTime() + this.suggestionTtlMs).toISOString(),
@@ -611,7 +644,8 @@ export class RoutineService {
   ): Promise<ActionResult[]> {
     // Only the start half owes a wind-down.
     if (steps === routine.actions && routine.stopActions?.length) {
-      this.awaitingStop.add(routine.id);
+      this.awaitingStop.set(routine.id, this.now().getTime());
+      this.persistState();
     }
 
     const results: ActionResult[] = [];
