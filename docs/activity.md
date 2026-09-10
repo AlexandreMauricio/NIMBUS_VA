@@ -106,7 +106,10 @@ several sessions. It is resolved lazily when the session is next read,
 so it needs no timer and gives the same answer whenever it is asked.
 
 **Duration** is always computed from `startedAt`, never accumulated, so
-it cannot drift.
+it cannot drift. A session that ends after its anchor closed is dated
+from the *close*, not from when NIMBUS noticed — so closing a study app
+and starting a game two minutes later records 30 minutes of study, not
+32.
 
 ## Restarts
 

@@ -337,3 +337,59 @@ test("a session records only what a mapping matched — no full window titles", 
   const serialized = JSON.stringify(service.getRecentSessions());
   assert.equal(serialized.includes("Bank statement"), false);
 });
+
+// ------------------------------------------- ending at the true moment
+
+test("switching activity during the grace period ends the first one when its app closed", () => {
+  // Closing a study app and opening a game two minutes later means
+  // studying stopped when the app closed — those two minutes are not
+  // study time just because that is when NIMBUS found out.
+  const { service, bus, advance } = setup(
+    settings({
+      mappings: [mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })],
+    })
+  );
+
+  bus.publish(appEvent("study.exe"));
+  advance(30);
+  bus.publish(closedEvent("study.exe"));
+  advance(2); // still inside the 5-minute grace
+  bus.publish(appEvent("game.exe"));
+
+  const study = service.getRecentSessions().find((s) => s.activity === "Study")!;
+  const durationMs = new Date(study.endedAt!).getTime() - new Date(study.startedAt).getTime();
+  assert.equal(durationMs, 30 * 60_000, "30 minutes, not 32");
+});
+
+test("a session whose app is still open ends at the moment the activity changed", () => {
+  // The counterpart: no anchor close, so 'now' really is when it ended.
+  const { service, bus, advance } = setup(
+    settings({
+      mappings: [mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })],
+    })
+  );
+
+  bus.publish(appEvent("study.exe"));
+  advance(30);
+  bus.publish(appEvent("game.exe"));
+
+  const study = service.getRecentSessions().find((s) => s.activity === "Study")!;
+  assert.equal(new Date(study.endedAt!).getTime() - new Date(study.startedAt).getTime(), 30 * 60_000);
+});
+
+test("shutting down after the app closed ends the session at the close, not at shutdown", () => {
+  const { service, bus, advance } = setup();
+
+  bus.publish(appEvent("study.exe"));
+  advance(30);
+  bus.publish(closedEvent("study.exe"));
+  advance(3); // inside grace, so still active
+  service.stop();
+
+  const [session] = service.getRecentSessions();
+  assert.equal(
+    new Date(session.endedAt!).getTime() - new Date(session.startedAt).getTime(),
+    30 * 60_000,
+    "not 33"
+  );
+});

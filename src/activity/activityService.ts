@@ -79,8 +79,9 @@ export class ActivityService {
     this.unsubscribe?.();
     this.unsubscribe = null;
     // Ending the session on shutdown is the honest counterpart of not
-    // resuming one on startup.
-    this.endCurrent(this.now());
+    // resuming one on startup — and if the anchor had already closed,
+    // that earlier moment is when the activity really stopped.
+    this.endCurrent(this.anchorClosedAt ?? this.now());
   }
 
   /** Notified whenever the current activity changes — for the Home page to refresh. */
@@ -151,7 +152,13 @@ export class ActivityService {
     }
 
     // Rule 3: a different activity genuinely began.
-    this.endCurrent(at);
+    //
+    // Ended when its anchor closed, if it already had — not now. Closing
+    // a study app and opening a game two minutes later means studying
+    // stopped when the app closed; crediting those two minutes to Study
+    // because that is when NIMBUS found out would overstate the session
+    // by up to a whole grace period.
+    this.endCurrent(this.anchorClosedAt ?? at);
     this.current = {
       id: randomUUID(),
       activity: match.activity,
