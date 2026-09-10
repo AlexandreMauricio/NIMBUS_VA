@@ -7,8 +7,9 @@ const WINDOW_WIDTH = 220;
 // line ("Paused"/"Complete"). At 190 the content was 217px tall and
 // `overflow: hidden` simply clipped it: the progress bar got flex-shrunk
 // to nothing and the buttons ended up jammed against the bottom edge.
-// Measured: the tallest state renders 216px, so this leaves a little slack.
-const WINDOW_HEIGHT = 220;
+// Measured: the tallest state renders 255px (including the "+ Study"
+// row), so this leaves a little slack.
+const WINDOW_HEIGHT = 258;
 const MARGIN = 16;
 
 let timerWindow: BrowserWindow | null = null;

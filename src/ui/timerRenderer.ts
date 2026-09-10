@@ -27,6 +27,7 @@ interface NimbusTimerApi {
   pause: (timerId: string) => Promise<PublicTimerState | null>;
   resume: (timerId: string) => Promise<PublicTimerState | null>;
   cancel: (timerId: string) => Promise<PublicTimerState | null>;
+  addStudy: () => Promise<{ status: string; message?: string }>;
   close: () => Promise<void>;
 }
 
@@ -45,6 +46,7 @@ function formatRemaining(ms: number): string {
 
 const pauseResumeBtn = document.getElementById("pauseResumeBtn") as HTMLButtonElement;
 const stopBtn = document.getElementById("stopBtn") as HTMLButtonElement;
+const addStudyBtn = document.getElementById("addStudyBtn") as HTMLButtonElement;
 const titleEl = document.getElementById("timerTitle")!;
 const remainingEl = document.getElementById("remaining")!;
 const progressFillEl = document.getElementById("progressFill") as HTMLElement;
@@ -84,6 +86,28 @@ pauseResumeBtn.addEventListener("click", async () => {
     renderTimer(await window.nimbusTimer.resume(currentId));
   } else {
     renderTimer(await window.nimbusTimer.pause(currentId));
+  }
+});
+
+/**
+ * Lengthens today's plan by one study without touching the routine that
+ * started it — the "actually, three today" case. The button reports the
+ * new total briefly, because the title only shows the phase in progress.
+ */
+addStudyBtn.addEventListener("click", async () => {
+  addStudyBtn.disabled = true;
+  const original = addStudyBtn.textContent;
+  try {
+    const result = await window.nimbusTimer.addStudy();
+    addStudyBtn.textContent = result.status === "success" ? "Added" : "Couldn't add";
+    await poll();
+  } catch {
+    addStudyBtn.textContent = "Couldn't add";
+  } finally {
+    setTimeout(() => {
+      addStudyBtn.textContent = original;
+      addStudyBtn.disabled = false;
+    }, 1500);
   }
 });
 

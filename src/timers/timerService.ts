@@ -41,7 +41,15 @@ export interface TimerPlanPhase {
 export class TimerService {
   private current: TimerState | null = null;
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
-  private queuedPhases: TimerPlanPhase[] = [];
+  /**
+   * The whole plan and where in it the running phase sits — rather than
+   * only the phases still to come. Keeping the full list is what lets a
+   * plan be revised while it runs (see `updatePlan`): "add another study"
+   * needs to know how many there already are, which a queue of leftovers
+   * cannot answer once phases start completing.
+   */
+  private planPhases: TimerPlanPhase[] = [];
+  private planIndex = -1;
 
   constructor(
     private readonly eventBus: ContextEventBus,
@@ -52,8 +60,12 @@ export class TimerService {
   ) {}
 
   start(title: string, durationMs: number, type: TimerType = "focus"): TimerState {
-    this.queuedPhases = []; // a plain start() always replaces any pending plan phases, not just the current one
-    return this.beginPhase({ title, durationMs, type });
+    // A plain start() always replaces any pending plan, not just the
+    // phase in progress.
+    const phase: TimerPlanPhase = { title, durationMs, type };
+    this.planPhases = [phase];
+    this.planIndex = 0;
+    return this.beginPhase(phase);
   }
 
   /**
@@ -69,8 +81,41 @@ export class TimerService {
     if (phases.length === 0) {
       throw new Error("startPlan needs at least one phase");
     }
-    this.queuedPhases = phases.slice(1);
+    this.planPhases = [...phases];
+    this.planIndex = 0;
     return this.beginPhase(phases[0]);
+  }
+
+  /**
+   * The plan being run and the index of the phase in progress, or null
+   * when nothing is running.
+   *
+   * Exposed so a caller that understands what the phases *mean* can
+   * revise them — TimerService deliberately does not know the word
+   * "Pomodoro" (see the class doc), so "add another study" is composed
+   * out here and applied through `updatePlan`.
+   */
+  getPlan(): { phases: TimerPlanPhase[]; index: number } | null {
+    if (!this.current || this.planIndex < 0) return null;
+    return { phases: this.planPhases.map((p) => ({ ...p })), index: this.planIndex };
+  }
+
+  /**
+   * Replaces the plan while it runs, keeping the phase in progress
+   * running — only its title is updated, since a revised plan may
+   * renumber it ("Study 1 of 2" becoming "Study 1 of 3").
+   *
+   * Durations of the phase in progress are deliberately NOT changed:
+   * altering the length of a countdown someone is already watching would
+   * be surprising, and every use so far only appends or relabels.
+   */
+  updatePlan(phases: TimerPlanPhase[]): TimerState | null {
+    if (!this.current || this.planIndex < 0) return null;
+    if (phases.length <= this.planIndex) return this.getState();
+
+    this.planPhases = [...phases];
+    this.current.title = phases[this.planIndex].title;
+    return { ...this.current };
   }
 
   private beginPhase(phase: TimerPlanPhase): TimerState {
@@ -116,7 +161,9 @@ export class TimerService {
     this.current.status = "cancelled";
     const result = { ...this.current };
     this.current = null;
-    this.queuedPhases = []; // cancelling stops the whole plan, not just the phase in progress
+    // Cancelling stops the whole plan, not just the phase in progress.
+    this.planPhases = [];
+    this.planIndex = -1;
     return result;
   }
 
@@ -165,9 +212,14 @@ export class TimerService {
     // Auto-advance to the next queued plan phase, if any — this is what
     // turns a Pomodoro's Study/Break/Study sequence into something that
     // runs without the user re-starting each phase by hand.
-    if (this.queuedPhases.length > 0) {
-      const nextPhase = this.queuedPhases.shift()!;
-      this.beginPhase(nextPhase);
+    // Read from the plan rather than shifting a queue, so a plan revised
+    // mid-run (updatePlan) advances into the revised phases.
+    const nextIndex = this.planIndex + 1;
+    if (nextIndex < this.planPhases.length) {
+      this.planIndex = nextIndex;
+      this.beginPhase(this.planPhases[nextIndex]);
+    } else {
+      this.planIndex = -1;
     }
   }
 }

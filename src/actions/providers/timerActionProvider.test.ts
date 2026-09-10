@@ -102,11 +102,18 @@ test("the success message reflects the configured duration", async () => {
 
 test("listActions declares timer.start with no confirmation required", () => {
   const p = provider();
-  const actions = p.listActions();
-  assert.equal(actions.length, 1);
-  assert.equal(actions[0].id, TIMER_ACTIONS.START);
-  assert.equal(actions[0].requiresConfirmation, false);
-  assert.equal(actions[0].affectsService, "timer");
+  const start = p.listActions().find((a) => a.id === TIMER_ACTIONS.START);
+  assert.notEqual(start, undefined);
+  assert.equal(start!.requiresConfirmation, false);
+  assert.equal(start!.affectsService, "timer");
+});
+
+test("listActions also declares timer.addStudy, and nothing else", () => {
+  const ids = provider()
+    .listActions()
+    .map((a) => a.id)
+    .sort();
+  assert.deepEqual(ids, [TIMER_ACTIONS.ADD_STUDY, TIMER_ACTIONS.START].sort());
 });
 
 test("validate accepts mode: pomodoro with no other params (all default)", () => {
@@ -190,4 +197,138 @@ test("pomodoro mode's baseTitle (from the title param) is used for study phase n
     breakMinutes: 1,
   });
   assert.equal(timerService.getState()?.title, "Deep Work 1 of 2");
+});
+
+/* ------------------- Extending a running Pomodoro plan ------------------- */
+
+/** A provider plus the TimerService behind it, with a controllable clock. */
+function pomodoroSetup(tickMs = 1000) {
+  const clock = fakeTimers(tickMs);
+  const bus = new ContextEventBus();
+  const timerService = new TimerService(
+    bus,
+    () => new Date(),
+    clock.setIntervalFn,
+    clock.clearIntervalFn,
+    tickMs
+  );
+  return { provider: new TimerActionProvider(timerService), timerService, clock, bus };
+}
+
+test("adding a study renumbers the plan instead of leaving a stale total", async () => {
+  const { provider, timerService } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, {
+    mode: "pomodoro",
+    studyMinutes: 45,
+    breakMinutes: 15,
+    cycles: 2,
+    title: "Study Time",
+  });
+  assert.equal(timerService.getState()!.title, "Study Time 1 of 2");
+
+  const result = await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  assert.equal(result.status, "success");
+  assert.equal(timerService.getState()!.title, "Study Time 1 of 3", "the running phase is relabelled");
+  const plan = timerService.getPlan()!;
+  assert.deepEqual(
+    plan.phases.map((p) => p.title),
+    ["Study Time 1 of 3", "Break", "Study Time 2 of 3", "Break", "Study Time 3 of 3"]
+  );
+});
+
+test("the extra study keeps the durations the plan is already using", async () => {
+  const { provider, timerService } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, {
+    mode: "pomodoro",
+    studyMinutes: 45,
+    breakMinutes: 15,
+    cycles: 2,
+  });
+
+  await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  const plan = timerService.getPlan()!;
+  assert.equal(plan.phases[4].durationMs, 45 * 60_000, "new study matches the existing study length");
+  assert.equal(plan.phases[3].durationMs, 15 * 60_000, "new break matches the existing break length");
+});
+
+test("the phase in progress keeps its remaining time when a study is added", async () => {
+  const { provider, timerService, clock } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, {
+    mode: "pomodoro",
+    studyMinutes: 45,
+    breakMinutes: 15,
+    cycles: 2,
+  });
+  clock.advance(10 * 60_000);
+  const before = timerService.getState()!.remainingMs;
+
+  await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  assert.equal(timerService.getState()!.remainingMs, before, "the countdown must not restart or jump");
+});
+
+test("adding several studies at once is supported", async () => {
+  const { provider, timerService } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, { mode: "pomodoro", cycles: 2 });
+
+  await provider.execute(TIMER_ACTIONS.ADD_STUDY, { count: 2 });
+
+  const studies = timerService.getPlan()!.phases.filter((p) => p.type === "focus");
+  assert.equal(studies.length, 4);
+});
+
+test("adding a study twice does not accumulate numbering suffixes", async () => {
+  const { provider, timerService } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, { mode: "pomodoro", cycles: 2, title: "Study" });
+
+  await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+  await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  assert.equal(timerService.getState()!.title, "Study 1 of 4");
+});
+
+test("the extended plan actually runs into the added study", async () => {
+  const { provider, timerService, clock } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, {
+    mode: "pomodoro",
+    studyMinutes: 1,
+    breakMinutes: 1,
+    cycles: 1,
+  });
+  // A single-cycle plan has no break to copy; extending gives it one.
+  await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  clock.advance(60_000); // finish study 1 -> break
+  assert.equal(timerService.getState()!.type, "break");
+  clock.advance(15 * 60_000); // finish the (default-length) break -> study 2
+  assert.equal(timerService.getState()!.title, "Study 2 of 2");
+});
+
+test("adding a study with no timer running fails cleanly", async () => {
+  const { provider } = pomodoroSetup();
+
+  const result = await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  assert.equal(result.status, "failure");
+  assert.match(result.error!.message, /No timer is running/);
+});
+
+test("a non-positive count is rejected before anything runs", () => {
+  const { provider } = pomodoroSetup();
+
+  assert.equal(provider.validate(TIMER_ACTIONS.ADD_STUDY, { count: 0 }).valid, false);
+  assert.equal(provider.validate(TIMER_ACTIONS.ADD_STUDY, { count: 1.5 }).valid, false);
+  assert.equal(provider.validate(TIMER_ACTIONS.ADD_STUDY, {}).valid, true);
+});
+
+test("a plain single timer can be extended into a two-study plan", async () => {
+  const { provider, timerService } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, { mode: "single", duration: 30, title: "Focus" });
+
+  const result = await provider.execute(TIMER_ACTIONS.ADD_STUDY, {});
+
+  assert.equal(result.status, "success");
+  assert.equal(timerService.getState()!.title, "Focus 1 of 2");
 });

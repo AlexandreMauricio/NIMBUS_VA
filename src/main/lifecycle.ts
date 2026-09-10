@@ -459,6 +459,13 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:pause-timer", (_event, timerId: string) => timerService.pause(timerId));
   ipcMain.handle("nimbus:resume-timer", (_event, timerId: string) => timerService.resume(timerId));
   ipcMain.handle("nimbus:cancel-timer", (_event, timerId: string) => timerService.cancel(timerId));
+  // Extends the running Pomodoro through the normal Action path, so it
+  // gets the same validation and result handling as any other action.
+  ipcMain.handle("nimbus:timer-add-study", async () => {
+    const result = await actionService.executeAction("timer.addStudy", {});
+    onActionExecuted("timer.addStudy", result);
+    return { status: result.status, message: result.message ?? result.error?.message };
+  });
   ipcMain.handle("nimbus:close-timer-window", () => closeTimerWindow());
 
   // Pull-only: returns whatever briefing was last generated (or null before

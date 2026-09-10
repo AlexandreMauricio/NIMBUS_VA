@@ -117,6 +117,14 @@
       .buttons .btn {
         flex: 1;
       }
+      /* A quieter second row: adding a study is a deliberate choice, not
+         something to weigh equally with Pause/Stop. */
+      .buttons-secondary-row {
+        margin-top: 6px;
+      }
+      .buttons-secondary-row .btn {
+        font-size: 12px;
+      }
       .status {
         font-size: 11px;
         color: var(--color-neutral-400);
@@ -137,6 +145,11 @@
       <div class="buttons">
         <button class="btn btn-primary" id="pauseResumeBtn">Pause</button>
         <button class="btn btn-secondary" id="stopBtn">Stop</button>
+      </div>
+      <div class="buttons buttons-secondary-row">
+        <button class="btn btn-ghost" id="addStudyBtn" title="Add one more study to today's plan">
+          + Study
+        </button>
       </div>
       <div class="status" id="statusText"></div>
     </div>

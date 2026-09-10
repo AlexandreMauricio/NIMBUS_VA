@@ -2,7 +2,7 @@ import { ActionDefinition, ActionProvider, ActionResult, ActionValidationResult 
 import { TimerService, TimerPlanPhase } from "../../timers/timerService";
 import { TimerType } from "../../timers/types";
 
-export const TIMER_ACTIONS = { START: "timer.start" } as const;
+export const TIMER_ACTIONS = { START: "timer.start", ADD_STUDY: "timer.addStudy" } as const;
 
 const VALID_TIMER_TYPES: TimerType[] = ["focus", "pomodoro", "break", "custom"];
 const VALID_MODES = ["single", "pomodoro"] as const;
@@ -86,6 +86,24 @@ export class TimerActionProvider implements ActionProvider {
         requiresConfirmation: false,
         affectsService: "timer",
       },
+      {
+        id: TIMER_ACTIONS.ADD_STUDY,
+        name: "Add another study",
+        description:
+          "Adds one more study period (and the break before it) to the Pomodoro plan already running.",
+        parameters: [
+          {
+            name: "count",
+            type: "number",
+            required: false,
+            description: "How many extra studies to add — defaults to 1",
+          },
+        ],
+        readOnly: false,
+        changesExternalState: true,
+        requiresConfirmation: false,
+        affectsService: "timer",
+      },
     ];
   }
 
@@ -94,6 +112,14 @@ export class TimerActionProvider implements ActionProvider {
   }
 
   validate(actionId: string, params: Record<string, unknown>): ActionValidationResult {
+    if (actionId === TIMER_ACTIONS.ADD_STUDY) {
+      const count = params.count;
+      if (count !== undefined && (typeof count !== "number" || !Number.isInteger(count) || count < 1)) {
+        return { valid: false, error: "count must be a whole number of at least 1." };
+      }
+      return { valid: true };
+    }
+
     if (actionId !== TIMER_ACTIONS.START) {
       return { valid: false, error: `Unknown timer action "${actionId}".` };
     }
@@ -128,8 +154,12 @@ export class TimerActionProvider implements ActionProvider {
 
   async execute(actionId: string, params: Record<string, unknown>): Promise<ActionResult> {
     const startedAt = this.now();
-    if (actionId !== TIMER_ACTIONS.START) {
+    if (actionId !== TIMER_ACTIONS.START && actionId !== TIMER_ACTIONS.ADD_STUDY) {
       return this.failure(actionId, startedAt, "That action isn't available.");
+    }
+
+    if (actionId === TIMER_ACTIONS.ADD_STUDY) {
+      return this.addStudy(actionId, startedAt, (params.count as number) ?? 1);
     }
 
     const mode = ((params.mode as TimerActionMode | undefined) ?? "single") as TimerActionMode;
@@ -179,6 +209,58 @@ export class TimerActionProvider implements ActionProvider {
     };
   }
 
+  /**
+   * Lengthens the Pomodoro already running by `count` more studies —
+   * "I'll do three today" after a routine started a two-study plan,
+   * without editing the routine that starts it.
+   *
+   * The whole plan is rebuilt rather than appended to, because the study
+   * titles carry the total ("Study 1 of 2"): adding a third study has to
+   * renumber the ones already queued, or the countdown would keep
+   * claiming there are two. Durations are taken from the plan in
+   * progress, so an extension matches what the user is already doing
+   * rather than reverting to defaults. The phase running right now keeps
+   * its remaining time — only its label changes.
+   *
+   * Extending a plain single timer works too: it becomes a two-study
+   * plan, taking the break length from the default since a single timer
+   * has none to copy.
+   */
+  private addStudy(actionId: string, startedAt: Date, count: number): ActionResult {
+    const plan = this.timerService.getPlan();
+    if (!plan) {
+      return this.failure(actionId, startedAt, "No timer is running.");
+    }
+
+    const studies = plan.phases.filter((p) => p.type === "focus");
+    if (studies.length === 0) {
+      return this.failure(actionId, startedAt, "The running timer isn't a study plan.");
+    }
+
+    const breaks = plan.phases.filter((p) => p.type === "break");
+    const studyDurationMs = studies[studies.length - 1].durationMs;
+    const breakDurationMs = breaks.length > 0 ? breaks[0].durationMs : DEFAULT_BREAK_MINUTES * 60_000;
+    const baseTitle = stripPhaseNumbering(studies[0].title);
+    const newTotal = studies.length + count;
+
+    const rebuilt = buildPomodoroPhasesMs(baseTitle, studyDurationMs, breakDurationMs, newTotal);
+    const state = this.timerService.updatePlan(rebuilt);
+    if (!state) {
+      return this.failure(actionId, startedAt, "No timer is running.");
+    }
+
+    const finishedAt = this.now();
+    return {
+      actionId,
+      status: "success",
+      message: `Added ${count} more stud${count === 1 ? "y" : "ies"} — ${newTotal} in total.`,
+      data: { timerId: state.id, title: state.title, studies: newTotal },
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+    };
+  }
+
   private failure(actionId: string, startedAt: Date, message: string): ActionResult {
     const finishedAt = this.now();
     return {
@@ -219,6 +301,32 @@ function buildPomodoroPhases(
     }
   }
   return phases;
+}
+
+/** The same shape as buildPomodoroPhases, in milliseconds — used when extending a plan whose durations are already known exactly. */
+function buildPomodoroPhasesMs(
+  baseTitle: string,
+  studyDurationMs: number,
+  breakDurationMs: number,
+  cycles: number
+): TimerPlanPhase[] {
+  const phases: TimerPlanPhase[] = [];
+  for (let i = 1; i <= cycles; i++) {
+    phases.push({
+      title: cycles > 1 ? `${baseTitle} ${i} of ${cycles}` : baseTitle,
+      durationMs: studyDurationMs,
+      type: "focus",
+    });
+    if (i < cycles) {
+      phases.push({ title: "Break", durationMs: breakDurationMs, type: "break" });
+    }
+  }
+  return phases;
+}
+
+/** "Study Time 2 of 3" -> "Study Time", so a renumbered plan doesn't accumulate suffixes. */
+function stripPhaseNumbering(title: string): string {
+  return title.replace(/\s+\d+\s+of\s+\d+\s*$/i, "").trim() || title;
 }
 
 function defaultTitle(type: TimerType): string {
