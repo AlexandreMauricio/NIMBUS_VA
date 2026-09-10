@@ -69,3 +69,34 @@ function mappingFromTrigger(routine: Routine): ActivityMapping | null {
       return null;
   }
 }
+
+/**
+ * Every activity name NIMBUS currently knows about, from both places one
+ * can be defined: a routine that declares one, and a standalone mapping.
+ *
+ * This is what lets the rest of the UI offer activities as a choice
+ * rather than a free-text box. Typing a name a second time to refer to
+ * it means a typo silently produces a routine that can never match, and
+ * nothing tells you — the string just never equals anything.
+ *
+ * De-duplicated case-insensitively, since that is how activities are
+ * matched, but the first spelling seen is the one kept: if a routine
+ * declares "Study", the list should offer "Study" rather than "study".
+ * Disabled routines and mappings still contribute, so turning one off
+ * temporarily doesn't make other routines' references look unknown.
+ */
+export function knownActivityNames(routines: Routine[], mappings: { activity: string }[] = []): string[] {
+  const seen = new Map<string, string>();
+
+  const add = (name: string | undefined) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) seen.set(key, trimmed);
+  };
+
+  for (const routine of routines) add(routine.activity?.name);
+  for (const mapping of mappings) add(mapping.activity);
+
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}

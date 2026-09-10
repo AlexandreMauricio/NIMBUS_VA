@@ -97,3 +97,34 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
+
+/**
+ * How to refer to the day an event falls on, relative to today: "today",
+ * "tomorrow", "on Saturday" within the coming week, or "on 20 Sep"
+ * beyond it.
+ *
+ * A weekday name is only unambiguous for about a week — "on Saturday"
+ * eight days out would mean the wrong Saturday — so anything further
+ * away gets a date instead.
+ */
+export function relativeDayLabel(isoInstant: string, todayDate: string, timeZone: string): string {
+  const eventDate = localCalendarDate(isoInstant, timeZone);
+  if (eventDate === todayDate) return "today";
+  if (eventDate === addDaysToDateString(todayDate, 1)) return "tomorrow";
+
+  for (let days = 2; days <= 6; days++) {
+    if (eventDate === addDaysToDateString(todayDate, days)) {
+      const weekday = new Intl.DateTimeFormat(undefined, { timeZone, weekday: "long" }).format(
+        new Date(isoInstant)
+      );
+      return `on ${weekday}`;
+    }
+  }
+
+  const date = new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    day: "numeric",
+    month: "short",
+  }).format(new Date(isoInstant));
+  return `on ${date}`;
+}

@@ -344,12 +344,21 @@ type TriggerConfig =
  * even though new ones are offered `daysOfWeek` instead.
  */
 interface RoutineCondition {
-  type: "timeOfDay" | "weekdaysOnly" | "daysOfWeek" | "spotifyNotAlreadyPlaying" | "actionsNotAlreadyActive";
+  type:
+    | "timeOfDay"
+    | "weekdaysOnly"
+    | "daysOfWeek"
+    | "activityIs"
+    | "activityDuration"
+    | "spotifyNotAlreadyPlaying"
+    | "actionsNotAlreadyActive";
   startHour?: number;
   endHour?: number;
   startMinute?: number;
   endMinute?: number;
   days?: number[];
+  activity?: string;
+  minMinutes?: number;
 }
 
 interface RoutineActionStep {
@@ -456,6 +465,7 @@ interface NimbusApi {
   getTimerState: () => Promise<{ id: string; title: string; status: string; remainingMs: number } | null>;
   getCurrentActivity: () => Promise<CurrentActivity | null>;
   getActivitySessions: () => Promise<ActivitySession[]>;
+  getKnownActivities: () => Promise<string[]>;
   getActivitySettings: () => Promise<ActivityPreferences>;
   updateActivitySettings: (partial: {
     enabled?: boolean;
@@ -1280,7 +1290,7 @@ function buildTriggerFromForm(existing?: TriggerConfig): TriggerConfig | null {
     // An empty activity name is meaningful here — it means "any activity
     // ending" — so unlike the other triggers this one is never null for
     // want of a value.
-    const activity = (document.getElementById("routineActivityEndedName") as HTMLInputElement).value.trim();
+    const activity = (document.getElementById("routineActivityEndedName") as HTMLSelectElement).value.trim();
     const minutes = Number(
       (document.getElementById("routineActivityEndedMinutes") as HTMLInputElement).value
     );
@@ -1677,7 +1687,7 @@ async function initRoutinesSettings(): Promise<void> {
     (document.getElementById("routineAppName") as HTMLInputElement).value = "";
     (document.getElementById("routineWebsitePattern") as HTMLInputElement).value = "";
     (document.getElementById("routineFolderPath") as HTMLInputElement).value = "";
-    (document.getElementById("routineActivityEndedName") as HTMLInputElement).value = "";
+    fillActivityOptions(activityEndedSelect, "", "Any activity");
     (document.getElementById("routineActivityEndedMinutes") as HTMLInputElement).value = "0";
     syncTriggerFieldsVisibility();
     suggestionTitleInput.value = "";
@@ -1707,6 +1717,17 @@ async function initRoutinesSettings(): Promise<void> {
    * for editing, just with the trigger section left on its default.
    */
   function populateFormForEdit(routine: Routine): void {
+    // Awaited nowhere: the pickers below are filled from whatever is
+    // known now, and refilled when the fetch lands.
+    void refreshKnownActivities().then(() => {
+      if (editingRoutineId !== routine.id) return; // the user moved on
+      fillActivityOptions(
+        activityEndedSelect,
+        routine.trigger.type === "activityEnded" ? routine.trigger.activity : "",
+        "Any activity"
+      );
+      renderPendingConditions();
+    });
     showEditView();
     stopEditingAction();
     clearFormError();
@@ -1750,8 +1771,7 @@ async function initRoutinesSettings(): Promise<void> {
       (document.getElementById("routineFolderPath") as HTMLInputElement).value = routine.trigger.path;
     } else if (routine.trigger.type === "activityEnded") {
       triggerTypeSelect.value = "activityEnded";
-      (document.getElementById("routineActivityEndedName") as HTMLInputElement).value =
-        routine.trigger.activity;
+      fillActivityOptions(activityEndedSelect, routine.trigger.activity, "Any activity");
       (document.getElementById("routineActivityEndedMinutes") as HTMLInputElement).value = String(
         routine.trigger.minMinutes ?? 0
       );
@@ -1778,6 +1798,61 @@ async function initRoutinesSettings(): Promise<void> {
    */
   let pendingConditions: RoutineCondition[] = [];
 
+  /**
+   * Activity names already defined anywhere — refreshed whenever the
+   * editor opens, so a picker never offers a stale list.
+   *
+   * Referencing an activity by choice rather than by retyping it is the
+   * point: a typo in a free-text box produces a routine that silently
+   * can never match, and nothing tells you why.
+   */
+  let knownActivities: string[] = [];
+
+  const activityEndedSelect = document.getElementById("routineActivityEndedName") as HTMLSelectElement;
+
+  async function refreshKnownActivities(): Promise<void> {
+    try {
+      knownActivities = await window.nimbus.getKnownActivities();
+    } catch {
+      knownActivities = [];
+    }
+  }
+
+  /**
+   * Fills a picker with the known activities, keeping `selected` even if
+   * it is no longer one of them — a routine that references an activity
+   * whose definition was removed must not silently lose the reference
+   * just by being opened.
+   */
+  function fillActivityOptions(select: HTMLSelectElement, selected: string, anyLabel?: string): void {
+    select.innerHTML = "";
+    if (anyLabel !== undefined) {
+      const any = document.createElement("option");
+      any.value = "";
+      any.textContent = anyLabel;
+      select.appendChild(any);
+    }
+
+    const names = [...knownActivities];
+    if (selected && !names.some((n) => n.toLowerCase() === selected.toLowerCase())) {
+      names.push(selected);
+    }
+    if (names.length === 0 && anyLabel === undefined) {
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = "No activities defined yet";
+      select.appendChild(none);
+    }
+
+    for (const name of names) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    }
+    select.value = selected;
+  }
+
   const conditionListEl = document.getElementById("routineConditionList") as HTMLElement;
   const conditionEmptyEl = document.getElementById("routineConditionEmpty") as HTMLElement;
   const conditionLogicSelect = document.getElementById("routineConditionLogic") as HTMLSelectElement;
@@ -1801,6 +1876,10 @@ async function initRoutinesSettings(): Promise<void> {
       pendingConditions.push({ type: "timeOfDay", startHour: 18, endHour: 23 });
     } else if (type === "daysOfWeek") {
       pendingConditions.push({ type: "daysOfWeek", days: [1, 2, 3, 4, 5] });
+    } else if (type === "activityIs") {
+      pendingConditions.push({ type: "activityIs", activity: knownActivities[0] ?? "" });
+    } else if (type === "activityDuration") {
+      pendingConditions.push({ type: "activityDuration", minMinutes: 90 });
     } else if (type === "spotifyNotAlreadyPlaying") {
       pendingConditions.push({ type: "spotifyNotAlreadyPlaying" });
     }
@@ -1879,6 +1958,30 @@ async function initRoutinesSettings(): Promise<void> {
         // still rendered so an older routine that uses it stays editable
         // and is not silently dropped on save.
         label.textContent = "Weekdays only (Mon-Fri)";
+      } else if (condition.type === "activityIs") {
+        label.textContent = "Current activity is";
+        const picker = document.createElement("select");
+        picker.className = "input input-compact";
+        fillActivityOptions(picker, condition.activity ?? "");
+        picker.addEventListener("change", () => {
+          condition.activity = picker.value;
+        });
+        controls.appendChild(picker);
+      } else if (condition.type === "activityDuration") {
+        label.textContent = "Current activity has lasted at least";
+        const minutes = document.createElement("input");
+        minutes.type = "number";
+        minutes.min = "0";
+        minutes.className = "input";
+        minutes.value = String(condition.minMinutes ?? 0);
+        minutes.addEventListener("change", () => {
+          const value = Number(minutes.value);
+          if (Number.isFinite(value) && value >= 0) condition.minMinutes = value;
+        });
+        const unit = document.createElement("span");
+        unit.className = "condition-row-sep";
+        unit.textContent = "minutes";
+        controls.append(minutes, unit);
       } else if (condition.type === "spotifyNotAlreadyPlaying") {
         label.textContent = "Spotify is not already playing";
       } else {
@@ -2035,6 +2138,32 @@ async function initRoutinesSettings(): Promise<void> {
         return null;
     }
   }
+
+  /**
+   * Routines and Activities are two views of the same tab rather than
+   * two places in the app. Activities are personal definitions like
+   * routines are — sitting them next to weather and calendar preferences
+   * in Settings made them feel like configuration, which they aren't.
+   */
+  function initRoutinesTabSwitch(): void {
+    const routinesBtn = document.getElementById("routinesTabRoutinesBtn") as HTMLButtonElement;
+    const activitiesBtn = document.getElementById("routinesTabActivitiesBtn") as HTMLButtonElement;
+    const routinesPane = document.getElementById("routinesPane") as HTMLElement;
+    const activitiesPane = document.getElementById("activitiesPane") as HTMLElement;
+
+    const show = (activities: boolean): void => {
+      routinesPane.hidden = activities;
+      activitiesPane.hidden = !activities;
+      routinesBtn.classList.toggle("active", !activities);
+      activitiesBtn.classList.toggle("active", activities);
+    };
+
+    routinesBtn.addEventListener("click", () => show(false));
+    activitiesBtn.addEventListener("click", () => show(true));
+    show(false);
+  }
+
+  initRoutinesTabSwitch();
 
   function renderRoutineList(settings: RoutineSettings): void {
     // Refreshed in the background: a stale "last triggered" line is a
@@ -2408,6 +2537,10 @@ async function initRoutinesSettings(): Promise<void> {
     showListView();
   });
   newRoutineBtn.addEventListener("click", () => {
+    void refreshKnownActivities().then(() => {
+      fillActivityOptions(activityEndedSelect, "", "Any activity");
+      renderPendingConditions();
+    });
     resetForm();
     showEditView();
   });

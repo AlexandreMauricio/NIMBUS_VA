@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mappingsFromRoutines } from "./routineMappings";
+import { mappingsFromRoutines, knownActivityNames } from "./routineMappings";
 import { detectActivity } from "./activityDetector";
 import { Routine, validateRoutine } from "../routines/types";
 import { ActivityMapping } from "./types";
@@ -205,4 +205,42 @@ test("a routine with a valid activity passes validation", () => {
 
 test("a routine with no activity field is still valid — nothing changes for existing routines", () => {
   assert.equal(validateRoutine(routine(), KNOWN).valid, true);
+});
+
+// ------------------------------------------------- known activity names
+
+test("known activities come from both routines and standalone mappings", () => {
+  const names = knownActivityNames(
+    [routine({ id: "a", activity: { name: "Study" } })],
+    [{ activity: "Gaming" }]
+  );
+
+  assert.deepEqual(names, ["Gaming", "Study"], "sorted, so the list is stable");
+});
+
+test("the same activity defined twice appears once, keeping the first spelling", () => {
+  const names = knownActivityNames(
+    [routine({ id: "a", activity: { name: "Study" } })],
+    [{ activity: "study" }]
+  );
+
+  assert.deepEqual(names, ["Study"]);
+});
+
+test("a disabled routine still contributes its activity name", () => {
+  // Turning a routine off shouldn't make other routines' references to
+  // its activity look like they point at nothing.
+  const names = knownActivityNames([routine({ id: "a", enabled: false, activity: { name: "Study" } })]);
+
+  assert.deepEqual(names, ["Study"]);
+});
+
+test("routines with no activity contribute nothing", () => {
+  assert.deepEqual(knownActivityNames([routine()]), []);
+});
+
+test("blank names are ignored rather than offered as a choice", () => {
+  const names = knownActivityNames([routine({ id: "a", activity: { name: "   " } })], [{ activity: "" }]);
+
+  assert.deepEqual(names, []);
 });

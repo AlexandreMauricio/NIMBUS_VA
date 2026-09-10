@@ -214,6 +214,8 @@ contextBridge.exposeInMainWorld("nimbus", {
   getCurrentActivity: (): Promise<CurrentActivity | null> =>
     ipcRenderer.invoke("nimbus:get-current-activity"),
   getActivitySessions: (): Promise<ActivitySession[]> => ipcRenderer.invoke("nimbus:get-activity-sessions"),
+  /** Activity names already defined anywhere, for choosing rather than retyping. */
+  getKnownActivities: (): Promise<string[]> => ipcRenderer.invoke("nimbus:get-known-activities"),
   getActivitySettings: (): Promise<ActivityPreferences> => ipcRenderer.invoke("nimbus:get-activity-settings"),
   updateActivitySettings: (partial: {
     enabled?: boolean;

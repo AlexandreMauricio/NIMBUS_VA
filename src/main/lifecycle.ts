@@ -23,7 +23,13 @@ import { RoutineService, validateRoutine, Routine } from "../routines";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
-import { ActivityService, ActivityMapping, validateActivityMapping, mappingsFromRoutines } from "../activity";
+import {
+  ActivityService,
+  ActivityMapping,
+  validateActivityMapping,
+  mappingsFromRoutines,
+  knownActivityNames,
+} from "../activity";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
 import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
@@ -438,6 +444,11 @@ function registerIpcHandlers(): void {
   // cannot assert an activity or end a session by hand.
   ipcMain.handle("nimbus:get-current-activity", () => activityService.getCurrentActivity());
   ipcMain.handle("nimbus:get-activity-sessions", () => activityService.getRecentSessions(50));
+  // Every activity name in play, so the editor can offer them as a
+  // choice instead of asking the user to retype one exactly.
+  ipcMain.handle("nimbus:get-known-activities", () =>
+    knownActivityNames(settings.userPreferences.routines.routines, settings.userPreferences.activity.mappings)
+  );
   ipcMain.handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
   ipcMain.handle(
     "nimbus:update-activity-settings",

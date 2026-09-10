@@ -18,6 +18,20 @@ Dates are the day the work landed.
 
 ---
 
+## Unreleased
+
+- Briefing names the day of an upcoming event ("on Saturday") instead of
+  calling everything that isn't tomorrow "soon".
+- Activities are referenced rather than retyped: the activity-ended
+  trigger and the new activity conditions pick from what's already
+  defined, so a typo can't produce a routine that silently never matches.
+- The activity conditions (`activityIs`, `activityDuration`) are
+  editable in the routine form — they existed in the model with no way to
+  set them.
+- Activities moved out of Settings into the Routines tab, behind a
+  Routines / Activities switch: they're personal definitions like
+  routines, not configuration like a weather location.
+
 ## 0.2.0 — 2026-09-10
 
 Everything built since the repository was created.

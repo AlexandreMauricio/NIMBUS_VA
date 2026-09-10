@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { zonedTimeToUtcMs, localCalendarDate, localTime, addDaysToDateString } from "./icsTimeUtils";
+import {
+  zonedTimeToUtcMs,
+  localCalendarDate,
+  localTime,
+  addDaysToDateString,
+  relativeDayLabel,
+} from "./icsTimeUtils";
 
 test("zonedTimeToUtcMs converts a New York wall-clock time to the correct UTC instant (EDT, summer)", () => {
   // 2026-07-15 10:30 in America/New_York is EDT (UTC-4) in July.
@@ -43,4 +49,35 @@ test("addDaysToDateString adds whole days without drifting across month/year bou
   assert.equal(addDaysToDateString("2026-01-31", 1), "2026-02-01");
   assert.equal(addDaysToDateString("2026-12-31", 1), "2027-01-01");
   assert.equal(addDaysToDateString("2026-03-01", -1), "2026-02-28");
+});
+
+/* ------------------------- naming the day an event falls on ------------------------- */
+
+test("today and tomorrow are named as such", () => {
+  const tz = "UTC";
+  assert.equal(relativeDayLabel("2026-09-10T09:30:00Z", "2026-09-10", tz), "today");
+  assert.equal(relativeDayLabel("2026-09-11T09:30:00Z", "2026-09-10", tz), "tomorrow");
+});
+
+test("a day later this week is named by its weekday", () => {
+  // 2026-09-10 is a Thursday; the 12th is Saturday.
+  assert.match(relativeDayLabel("2026-09-12T09:30:00Z", "2026-09-10", "UTC"), /^on Saturday$/);
+});
+
+test("the far edge of the week still uses a weekday", () => {
+  assert.match(relativeDayLabel("2026-09-16T09:30:00Z", "2026-09-10", "UTC"), /^on /);
+});
+
+test("beyond a week it uses a date, since a weekday would be ambiguous", () => {
+  // Eight days out: "on Friday" would read as the nearer Friday.
+  const label = relativeDayLabel("2026-09-18T09:30:00Z", "2026-09-10", "UTC");
+  assert.equal(label.includes("Friday"), false);
+  assert.match(label, /18/);
+});
+
+test("the day is worked out in the calendar's timezone, not the machine's", () => {
+  // 23:30 UTC is already the next day in Tokyo.
+  const iso = "2026-09-10T23:30:00Z";
+  assert.equal(relativeDayLabel(iso, "2026-09-10", "UTC"), "today");
+  assert.equal(relativeDayLabel(iso, "2026-09-10", "Asia/Tokyo"), "tomorrow");
 });

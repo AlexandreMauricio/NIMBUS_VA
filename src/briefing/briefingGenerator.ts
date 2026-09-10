@@ -3,11 +3,7 @@ import { ContextSnapshot } from "../context/types";
 import { DateTimeContext } from "../context/providers/dateTimeProvider";
 import { WeatherContext } from "../context/providers/weather/types";
 import { CalendarContext } from "../context/providers/calendar/types";
-import {
-  localCalendarDate,
-  localTime,
-  addDaysToDateString,
-} from "../context/providers/calendar/icsTimeUtils";
+import { localCalendarDate, localTime, relativeDayLabel } from "../context/providers/calendar/icsTimeUtils";
 import { EmailContext } from "../context/providers/email/types";
 import { TaskContext, TaskItem } from "../context/providers/tasks/types";
 import { Briefing, BriefingItem } from "./types";
@@ -220,9 +216,10 @@ function buildCalendarItem(calendar: CalendarContext | null, now: Date): Briefin
   }
 
   if (nextEvent) {
+    // Naming the day matters for anything that isn't today: "soon at
+    // 09:30" for an event three days out tells you when but not when.
     const todayDate = localCalendarDate(now.toISOString(), timezone);
-    const eventDate = localCalendarDate(nextEvent.startsAt, timezone);
-    const dayLabel = eventDate === addDaysToDateString(todayDate, 1) ? "tomorrow" : "soon";
+    const dayLabel = relativeDayLabel(nextEvent.startsAt, todayDate, timezone);
     return {
       id: randomUUID(),
       category: "calendar",
