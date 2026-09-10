@@ -1,87 +1,66 @@
 # The Briefing system
 
-NIMBUS's first recognizable assistant behavior: it greets you and gives a
-concise summary, instead of dumping raw data. This is built as a small,
-separate system on top of Context — `src/context` still knows nothing
-about briefings, and `src/briefing` knows nothing about IPC/UI.
+NIMBUS greets you and gives a concise summary instead of dumping raw
+data. It is a small system on top of Context — `src/context` knows
+nothing about briefings, and `src/briefing` knows nothing about IPC/UI.
+It is **template-based, not AI-generated**: no LLM is involved.
 
 - [src/briefing/types.ts](../src/briefing/types.ts) — the shape. A
-  `Briefing` is just `{ id, generatedAt, items: BriefingItem[] }`. Each
+  `Briefing` is `{ id, generatedAt, items: BriefingItem[] }`. Each
   `BriefingItem` has a `category` (`greeting` | `dateTime` | `weather` |
-  `calendar` | `email` | `tasks` | `meals` | `other` — `email`/`tasks`/
-  `meals` have no producer yet, and that's fine, see below), a
-  `message`, a `timestamp`, an `importance` and `relevance` score
-  (0–100 each), and an optional `action`. **The exact wording is never
-  one hard-coded paragraph** — each category has its own small message
-  builder that reads structured Context data, e.g. the weather line is
-  assembled from `todayLowC`/`todayHighC`/`condition`/
-  `precipitationProbabilityPercent`, and the calendar line picks between
-  five deterministic phrasings ("nothing scheduled" / one event / several
-  events / all-day / an imminent-event countdown) based on
-  `CalendarContext`, never a fixed string.
+  `calendar` | `email` | `tasks` | `meals` | `other`), a `message`, a
+  `timestamp`, an `importance` and a `relevance` score (0–100 each), and
+  an optional `action`. **`meals` has no producer**, and **`action` is
+  never set or handled** — both are reserved for later.
 - [src/briefing/briefingGenerator.ts](../src/briefing/briefingGenerator.ts) —
   pure and synchronous: takes a `ContextSnapshot`, returns a `Briefing`.
-  No Electron/IPC dependency, so it's plain unit-testable. For each
-  category it has a `buildXItem(data)` function that returns `null` when
-  that data isn't available — **a provider that doesn't exist (or that
-  errored) is simply omitted, never shown as an error**. Provider
-  failures are already visible on the Context tab; the briefing stays a
-  calm summary, not a status dashboard.
-- **Prioritization foundation, not AI**: content items (currently
-  `dateTime`, `weather`, and `calendar`) are sorted by
-  `importance × relevance` and capped at 5 (`MAX_CONTENT_ITEMS`) before
-  the fixed greeting (always first) and a closing "Anything I can help
-  you with?" item (always last) are added. `relevance` can depend on the
-  actual data — the weather item scores higher when rain is likely; the
-  calendar item scores low with nothing scheduled, higher with several
-  events today, and very high once the next event is imminent (within 45
-  minutes), regardless of how many events exist overall. That's the
-  entire "smart" part today: a plain sort with real signal behind the
-  numbers. A future system could re-rank without changing
-  `BriefingItem`'s shape.
+  Each category has a builder that reads structured Context data and
+  picks between deterministic phrasings; it returns `null` when that data
+  isn't available, so **a missing or failed provider is simply omitted,
+  never shown as an error**. Builders exist for greeting, date/time,
+  weather, calendar, email and tasks, plus a fixed closing line.
+  - The **calendar** line covers nothing scheduled, one or several events,
+    all-day events and an imminent-event countdown, and names the day of
+    an upcoming event ("today", "tomorrow", "on Saturday", or a date
+    beyond a week).
+  - The **email** line only escalates when something may need attention;
+    a pile of newsletters reads the same as an empty inbox.
+  - The **tasks** line spotlights an imminent task, otherwise combines
+    overdue and due-today counts, naming a task where it helps.
+- **Prioritization, not AI**: content items are sorted by
+  `importance × relevance` and capped at 5, between the greeting (always
+  first) and the closing "Anything I can help you with?" (always last).
+  `relevance` depends on the data — rain makes weather more relevant, an
+  imminent event makes calendar very relevant.
 - [src/briefing/briefingService.ts](../src/briefing/briefingService.ts) —
-  owns the **lifecycle**: `generate()` produces a new briefing (fetches
-  context, runs the generator, caches the result); `getCurrent()` returns
-  whatever was last generated **without ever triggering generation**.
-  Concurrent `generate()` calls share one in-flight generation instead of
-  racing multiple context fetches. This is what guarantees a UI reload
-  (or several windows) doesn't produce a new briefing, or a new weather
-  API call, every time something asks.
+  owns the lifecycle: `generate()` produces a new briefing and caches it;
+  `getCurrent()` returns the last one **without ever triggering
+  generation**. Concurrent `generate()` calls share one in-flight
+  generation.
 
-## Startup wiring
+## When a briefing is generated
 
-In `src/main/lifecycle.ts`, `app.on("ready", ...)`: providers are already
-registered → `generateBriefing()` is called (not awaited, so a slow
-weather fetch can't delay the window/tray appearing) → it calls
-`briefingService.generate()`, which pulls the context snapshot and runs
-the generator → on success, every open window is notified over
-`nimbus:briefing-updated` (a plain "go re-fetch" signal, no payload). The
-renderer's `getBriefing()` (`nimbus:get-briefing`, pull-only) is called
-once on load and again on that push — so a window that was already open
-before generation finished still picks up the result, without polling.
-An explicit **Regenerate** button on the Home tab calls
-`nimbus:regenerate-briefing`, which is the only other thing that produces
-a new briefing.
+Exactly twice, never on a schedule:
 
-If generation itself fails unexpectedly (not just a provider — verified
-by temporarily forcing `BriefingGenerator.generate()` to throw), the
-`try/catch` around it in `lifecycle.ts` logs the error and leaves
-`getCurrent()` at `null`; the UI shows "Preparing your briefing…" and
-the rest of the app (Context tab, all providers) is completely
-unaffected — confirmed live, not just by reasoning about the code.
+1. **At startup**, from `app.on("ready")` in `src/main/lifecycle.ts` — not
+   awaited, so a slow provider can't delay the window or tray. When it
+   finishes, open windows get a payload-less `nimbus:briefing-updated`
+   push and re-fetch with `nimbus:get-briefing`.
+2. **On demand**, from the Home tab's **Regenerate** button
+   (`nimbus:regenerate-briefing`).
+
+If generation itself fails unexpectedly, the error is logged,
+`getCurrent()` stays at the previous value (or `null`), and the rest of
+the app is unaffected.
 
 ## Tests
 
-`briefingGenerator.test.ts`: normal snapshot (greeting → weather →
-dateTime → closing, weather ranked first because its priority score is
-higher), rain shifting weather above dateTime, a missing/errored weather
-provider being omitted (not shown as an error), a fully empty snapshot
-still producing a graceful `[greeting, closing]` result with no
-error-shaped text anywhere, and id/timestamp sanity. `briefingService.test.ts`:
-`getCurrent()` starts `null`, generation caches its result, `getCurrent()`
-never triggers a fetch, concurrent `generate()` calls share one in-flight
-promise, a throwing provider doesn't prevent a briefing from being
-produced, and a second explicit `generate()` produces a new id.
+`briefingGenerator.test.ts` covers ordering and ranking, every category's
+message branches (weather, calendar including day naming, email, tasks),
+omission of missing/errored data, and a fully empty snapshot still
+producing `[greeting, closing]`. `briefingService.test.ts` covers caching,
+`getCurrent()` never fetching, shared in-flight generation, and a
+throwing provider not preventing a briefing.
 
 ---
 

@@ -20,6 +20,11 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- Documentation accuracy pass: README, ARCHITECTURE and every guide in
+  `docs/` now describe what the code does today — the full IPC surface,
+  what is persisted where, current triggers/conditions/actions, and a
+  clear split between working, limited, foundational and planned
+  functionality. No code changes.
 - A credential that fails to decrypt is no longer deleted. The store
   used to drop any entry it couldn't read, and the next save wrote the
   file without it — so a single failed decrypt permanently erased a
