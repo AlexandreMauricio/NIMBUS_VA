@@ -156,7 +156,8 @@ Windows-specific, and how to keep that boundary — live in
 ## Versions
 
 `MAJOR.MINOR.PATCH` — major for a full release (still 0), minor for a big
-milestone, patch for everything else. See
+milestone (called by hand, when it feels like one), patch for everything
+else. See
 **[CHANGELOG.md](CHANGELOG.md)** for what each version contains, and the
 git tags (`git log v0.2.0..v0.3.0`) for exactly what changed between two.
 
