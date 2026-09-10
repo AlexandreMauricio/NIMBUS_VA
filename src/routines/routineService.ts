@@ -49,6 +49,17 @@ export class RoutineService {
   /** routine id -> session keys it has already fired for. See sessionKeyFor. */
   private readonly firedSessions = new Map<string, Set<string>>();
   private readonly history: RoutineHistoryEntry[] = [];
+  /**
+   * Routines whose start actions have run and whose activity has not yet
+   * ended — the set whose end actions are owed.
+   *
+   * Winding down is only meaningful for something that was wound up: if
+   * the user dismissed the suggestion and studied with their own music,
+   * running the end actions would stop music this routine never started.
+   */
+  private readonly awaitingStop = new Set<string>();
+  /** Steps a suggestion should run, when they are not the routine's start actions. */
+  private readonly pendingSuggestionSteps = new Map<string, RoutineActionStep[]>();
   private readonly activeSuggestions = new Map<string, AssistantSuggestion>();
   private readonly suggestionListeners = new Set<(suggestion: AssistantSuggestion) => void>();
   private readonly autoRunListeners = new Set<(routine: Routine, results: ActionResult[]) => void>();
@@ -144,7 +155,9 @@ export class RoutineService {
     if (!routine) return [];
 
     this.record(routine, "accepted");
-    const results = await this.runActions(routine);
+    const steps = this.pendingSuggestionSteps.get(suggestionId);
+    this.pendingSuggestionSteps.delete(suggestionId);
+    const results = await this.runActions(routine, steps);
     const failures = results.filter((r) => r.status === "failure").length;
     this.record(
       routine,
@@ -158,6 +171,7 @@ export class RoutineService {
   dismissSuggestion(suggestionId: string): void {
     const suggestion = this.activeSuggestions.get(suggestionId);
     this.activeSuggestions.delete(suggestionId);
+    this.pendingSuggestionSteps.delete(suggestionId);
     if (!suggestion) return;
     const routine = this.getRoutines().find((r) => r.id === suggestion.routineId);
     if (routine) this.record(routine, "dismissed");
@@ -224,6 +238,13 @@ export class RoutineService {
   }
 
   private async handleEvent(event: ContextEvent): Promise<void> {
+    // An activity ending winds down the routines that started with it.
+    // Separate from trigger matching below: this is a routine completing
+    // its own lifecycle, not a new routine being considered.
+    if (event.type === "activityEnded") {
+      await this.runStopActionsFor(event.activity);
+    }
+
     // A closing application ends its session, so the next launch is a
     // genuinely new one for any "once per session" routine. Nothing
     // triggers on this event; it is bookkeeping only.
@@ -414,6 +435,46 @@ export class RoutineService {
     }
   }
 
+  /**
+   * Runs the end actions of every routine that declared this activity and
+   * actually started during it.
+   *
+   * Deliberately NOT gated on conditions or cooldown. Those decide
+   * whether a routine should START; applying them here would mean a
+   * routine that began at 22:00 fails to stop the timer at 23:30 because
+   * its time window closed — leaving exactly the mess it exists to
+   * prevent.
+   */
+  private async runStopActionsFor(activity: string): Promise<void> {
+    const ending = activity.trim().toLowerCase();
+
+    for (const routine of this.getRoutines()) {
+      if (!routine.stopActions?.length) continue;
+      if (routine.activity?.name?.trim().toLowerCase() !== ending) continue;
+      if (!this.awaitingStop.delete(routine.id)) continue; // never started; nothing to wind down
+
+      const steps = routine.stopActions;
+      if (routine.stopAutoRun === false) {
+        // The user asked to be consulted rather than have it just happen.
+        this.createSuggestion(routine, null, steps);
+        continue;
+      }
+
+      const results = await this.runActions(routine, steps);
+      const failures = results.filter((r) => r.status === "failure").length;
+      this.record(
+        routine,
+        "actionsCompleted",
+        `wind-down: ${results.length} action${results.length === 1 ? "" : "s"}, ${failures} failed`
+      );
+      logger.info(`Routine "${routine.name}" wound down`, {
+        routineId: routine.id,
+        activity,
+        failureCount: failures,
+      });
+    }
+  }
+
   private async runAutoRun(routine: Routine, sessionKey: string | null = null): Promise<void> {
     // Cooldown starts the moment this fires, exactly like a normal
     // suggestion's cooldown starts the moment it's shown — not tied to
@@ -447,7 +508,11 @@ export class RoutineService {
     return this.now().getTime() - last < cooldownMs;
   }
 
-  private createSuggestion(routine: Routine, sessionKey: string | null = null): AssistantSuggestion {
+  private createSuggestion(
+    routine: Routine,
+    sessionKey: string | null = null,
+    steps?: RoutineActionStep[]
+  ): AssistantSuggestion {
     const now = this.now();
     // Cooldown starts the moment a suggestion is made — not when/if the
     // user acts on it — so a dismissed-then-re-triggered routine still
@@ -466,8 +531,9 @@ export class RoutineService {
       primaryLabel: routine.suggestion.primaryLabel,
       secondaryLabel: routine.suggestion.secondaryLabel,
       expiresAt: new Date(now.getTime() + this.suggestionTtlMs).toISOString(),
-      actionSummary: this.summarizeActions(routine),
+      actionSummary: this.summarizeActions(routine, steps),
     };
+    if (steps) this.pendingSuggestionSteps.set(suggestion.id, steps);
 
     this.activeSuggestions.set(suggestion.id, suggestion);
     this.record(routine, "suggested");
@@ -494,9 +560,12 @@ export class RoutineService {
    * (e.g. Spotify was disabled after the routine was saved) falls back
    * to its raw id rather than disappearing silently.
    */
-  private summarizeActions(routine: Routine): AssistantSuggestion["actionSummary"] {
+  private summarizeActions(
+    routine: Routine,
+    steps: RoutineActionStep[] = routine.actions
+  ): AssistantSuggestion["actionSummary"] {
     const definitions = this.actionService.listActions();
-    return routine.actions.map((step) => {
+    return steps.map((step) => {
       const def = definitions.find((d) => d.id === step.actionId);
       return {
         label: def?.name ?? step.actionId,
@@ -505,9 +574,21 @@ export class RoutineService {
     });
   }
 
-  private async runActions(routine: Routine): Promise<ActionResult[]> {
+  /**
+   * Runs a set of the routine's steps. `steps` defaults to the start
+   * actions; the wind-down passes its own.
+   */
+  private async runActions(
+    routine: Routine,
+    steps: RoutineActionStep[] = routine.actions
+  ): Promise<ActionResult[]> {
+    // Only the start half owes a wind-down.
+    if (steps === routine.actions && routine.stopActions?.length) {
+      this.awaitingStop.add(routine.id);
+    }
+
     const results: ActionResult[] = [];
-    for (const step of routine.actions) {
+    for (const step of steps) {
       const result = await this.actionService.executeAction(step.actionId, step.params);
       results.push(result);
       // Deliberately continues after a failed step: an earlier action

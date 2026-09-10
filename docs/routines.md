@@ -182,6 +182,34 @@ timer, or open a page. The play button beside it — **Run now** — is the
 explicit way to run a routine's actions on demand, and is what the old
 "Test" button used to do.
 
+## One routine, both halves
+
+A routine can carry two sets of actions: **when it starts** (its
+`actions`, unchanged) and **when it ends** (`stopActions`). The second
+runs when the activity the routine names comes to an end, so starting
+and stopping a study session are one thing you configure rather than two
+routines to keep in step.
+
+End actions need the routine to declare an activity — without one there
+is nothing whose ending could run them, and the editor says so rather
+than letting you configure steps that can never fire.
+
+Two rules make them safe:
+
+- **They only run if the routine actually started.** If you dismissed the
+  suggestion and studied with your own music, winding down would stop
+  something this routine never started.
+- **They ignore conditions and cooldown.** Those decide whether a routine
+  should *start*. A routine that began at 22:00 must still stop the timer
+  at 23:30, not fail to because its time window closed.
+
+They run without asking by default, unlike the start half. You already
+approved the routine when you accepted its suggestion, and winding down
+what it started is the end of that same decision rather than a new one —
+being asked "shall I stop the timer?" after you have stopped studying is
+a question with one sensible answer. The toggle turns it back into a
+suggestion if you'd rather be asked.
+
 ## Decision history
 
 `RoutineService.getHistory()` returns the recent decisions, newest first:

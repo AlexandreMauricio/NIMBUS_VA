@@ -229,6 +229,32 @@ export interface Routine {
   /** Defaults to "none" when absent — again, the pre-existing behaviour. */
   sessionRestriction?: SessionRestriction;
   /**
+   * Actions to run when this routine's own activity ENDS — the wind-down
+   * half of the same routine, so "start studying" and "stop studying"
+   * are one thing you configure rather than two routines to keep in step.
+   *
+   * Requires the routine to declare an `activity`: without one there is
+   * nothing whose ending could be detected. They run only if this
+   * routine's start actions actually ran during that activity — winding
+   * down something you never wound up would, at best, do nothing, and at
+   * worst stop music the user had started themselves.
+   *
+   * `actions` remains the start half, unchanged, so every routine saved
+   * before this existed keeps behaving exactly as it did.
+   */
+  stopActions?: RoutineActionStep[];
+  /**
+   * Whether the stop actions run without asking. Defaults to TRUE, unlike
+   * `autoRun` for the start half.
+   *
+   * The asymmetry is deliberate: the user already approved this routine
+   * when they accepted its suggestion, and winding down what it started
+   * is the completion of that same decision rather than a new one. Being
+   * asked "shall I stop the timer?" after you have already stopped
+   * studying is a question with only one sensible answer.
+   */
+  stopAutoRun?: boolean;
+  /**
    * What this routine's trigger MEANS the user is doing, if anything.
    *
    * Setting it makes the routine's own trigger double as an activity
@@ -319,6 +345,37 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
 
   if (routine.autoRun !== undefined && typeof routine.autoRun !== "boolean") {
     return { valid: false, error: "autoRun must be a boolean." };
+  }
+
+  if (routine.stopActions !== undefined) {
+    if (!Array.isArray(routine.stopActions)) {
+      return { valid: false, error: "stopActions must be an array." };
+    }
+    for (const step of routine.stopActions) {
+      if (!step || typeof step.actionId !== "string" || step.actionId.trim().length === 0) {
+        return { valid: false, error: "Each end action needs an actionId." };
+      }
+      if (!knownActionIds.includes(step.actionId)) {
+        return { valid: false, error: `Unknown action "${step.actionId}".` };
+      }
+      if (
+        step.params !== undefined &&
+        (typeof step.params !== "object" || step.params === null || Array.isArray(step.params))
+      ) {
+        return { valid: false, error: `Action "${step.actionId}" params must be a plain object.` };
+      }
+    }
+    if (routine.stopActions.length > 0 && !routine.activity?.name) {
+      return {
+        valid: false,
+        error:
+          "End actions need this routine to say what it means you're doing — otherwise there's no activity whose ending could run them.",
+      };
+    }
+  }
+
+  if (routine.stopAutoRun !== undefined && typeof routine.stopAutoRun !== "boolean") {
+    return { valid: false, error: "stopAutoRun must be a boolean." };
   }
 
   if (routine.activity !== undefined) {

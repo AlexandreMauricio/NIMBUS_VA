@@ -487,3 +487,178 @@ test("without autoRun, an activity ending only suggests — it still asks", asyn
   assert.equal(routineService.getActiveSuggestions().length, 1);
   assert.deepEqual(provider.calls, []);
 });
+
+// ------------------------- one routine, start and end (§ user's idea)
+
+/** A routine that starts with an activity and winds down when it ends. */
+function studyWithWindDown(overrides: Partial<Routine> = {}): Routine {
+  return studyRoutine({
+    id: "study",
+    activity: { name: "Study", icon: "📚" },
+    actions: [{ actionId: "demo.playlist", params: {} }],
+    stopActions: [{ actionId: "demo.timer", params: {} }],
+    ...overrides,
+  });
+}
+
+test("one routine can start on its trigger and wind down when its activity ends", async () => {
+  const { routineService, provider, bus, advance } = setup(
+    [studyWithWindDown()],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  assert.deepEqual(provider.calls, ["demo.playlist"], "the start half ran");
+
+  advance(60);
+  bus.publish(appEvent("game.exe")); // Study ends
+  await settle();
+
+  assert.deepEqual(provider.calls, ["demo.playlist", "demo.timer"], "the end half ran too");
+});
+
+test("the end actions do not run if the routine never started", async () => {
+  // Dismissed the suggestion and studied anyway: winding down would stop
+  // things this routine never started.
+  const { routineService, provider, bus, advance } = setup(
+    [studyWithWindDown()],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  routineService.dismissSuggestion(routineService.getActiveSuggestions()[0].id);
+
+  advance(60);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.deepEqual(provider.calls, [], "nothing was wound up, so nothing is wound down");
+});
+
+test("the end actions run once, not on every later activity change", async () => {
+  const { routineService, provider, bus, advance } = setup(
+    [studyWithWindDown({ cooldownMinutes: 0 })],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(60);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+  advance(10);
+  bus.publish(appEvent("study.exe")); // study again, without accepting
+  await settle();
+  advance(10);
+  bus.publish(appEvent("game.exe")); // and end again
+  await settle();
+
+  assert.equal(provider.calls.filter((c) => c === "demo.timer").length, 1, "one wind-down per wind-up");
+});
+
+test("a second study session winds down again after being started again", async () => {
+  const { routineService, provider, bus, advance } = setup(
+    [studyWithWindDown({ cooldownMinutes: 0 })],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  for (let i = 0; i < 2; i++) {
+    bus.publish(appEvent("study.exe"));
+    await settle();
+    await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+    advance(30);
+    bus.publish(appEvent("game.exe"));
+    await settle();
+    advance(5);
+  }
+
+  assert.equal(provider.calls.filter((c) => c === "demo.timer").length, 2);
+});
+
+test("the wind-down ignores conditions, which only decide whether to START", async () => {
+  // A routine that began at 22:00 must still stop the timer at 23:30,
+  // rather than failing to because its time window closed.
+  const r = studyWithWindDown({
+    conditions: [{ type: "timeOfDay", startHour: 9, endHour: 17 }],
+    cooldownMinutes: 0,
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  // 09:00 is inside the window, so it suggests and is accepted.
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+
+  advance(9 * 60); // 18:00 — outside the window now
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), true, "it still winds down");
+});
+
+test("a different activity ending does not wind down this routine", async () => {
+  const { routineService, provider, bus, advance } = setup(
+    [studyWithWindDown({ cooldownMinutes: 0 })],
+    activitySettings([
+      mapping(),
+      mapping({ id: "g", activity: "Gaming", value: "game.exe" }),
+      mapping({ id: "b", activity: "Browsing", value: "browse.exe" }),
+    ])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(10);
+  // Gaming starts and ends without Study having ended in between? It
+  // ends Study first, so instead check a routine for another activity.
+  assert.equal(provider.calls.includes("demo.timer"), false);
+});
+
+test("stopAutoRun false asks instead of just doing it", async () => {
+  const { routineService, provider, bus, advance } = setup(
+    [studyWithWindDown({ stopAutoRun: false, cooldownMinutes: 0 })],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(60);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  const suggestions = routineService.getActiveSuggestions();
+  assert.equal(suggestions.length, 1, "it asks");
+  assert.deepEqual(provider.calls, ["demo.playlist"], "and does nothing until answered");
+
+  await routineService.acceptSuggestion(suggestions[0].id);
+  assert.deepEqual(provider.calls, ["demo.playlist", "demo.timer"]);
+});
+
+test("a wind-down suggestion summarises the END actions, not the start ones", async () => {
+  const { routineService, bus, advance } = setup(
+    [studyWithWindDown({ stopAutoRun: false, cooldownMinutes: 0 })],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(60);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  const [suggestion] = routineService.getActiveSuggestions();
+  assert.deepEqual(
+    suggestion.actionSummary?.map((a) => a.label),
+    ["timer"]
+  );
+});

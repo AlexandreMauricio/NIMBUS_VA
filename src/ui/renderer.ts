@@ -387,6 +387,8 @@ interface Routine {
   conditionLogic?: "all" | "any";
   sessionRestriction?: "none" | "oncePerSession";
   activity?: { name: string; icon?: string };
+  stopActions?: RoutineActionStep[];
+  stopAutoRun?: boolean;
 }
 
 interface RoutineSettings {
@@ -1563,8 +1565,73 @@ async function initRoutinesSettings(): Promise<void> {
     return params;
   }
 
+  function countLabel(count: number): string {
+    return count === 0 ? "none" : `${count} action${count === 1 ? "" : "s"}`;
+  }
+
+  /**
+   * The wind-down list. Deliberately simpler than the start list: add and
+   * remove, no in-place edit or reordering. Undoing what a routine
+   * started is usually one or two steps, and "remove and add again" is a
+   * smaller thing to learn than a second editing mode.
+   */
+  function renderStopActions(): void {
+    stopActionListEl.innerHTML = "";
+
+    pendingStopActions.forEach((step, index) => {
+      const row = document.createElement("div");
+      row.className = "action-row";
+
+      const info = document.createElement("span");
+      info.className = "action-row-label";
+      const badge = document.createElement("span");
+      badge.className = "tag tag-accent action-row-index";
+      badge.textContent = String(index + 1);
+      info.appendChild(badge);
+      const def = availableActions.find((a) => a.id === step.actionId);
+      const name = document.createElement("span");
+      name.textContent = def?.name ?? step.actionId;
+      info.appendChild(name);
+      row.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "action-row-actions";
+      const remove = document.createElement("button");
+      remove.className = "btn btn-ghost action-row-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        pendingStopActions = pendingStopActions.filter((_, i) => i !== index);
+        renderStopActions();
+      });
+      actions.appendChild(remove);
+      row.appendChild(actions);
+
+      stopActionListEl.appendChild(row);
+    });
+
+    stopCountEl.textContent = countLabel(pendingStopActions.length);
+    syncStopSectionAvailability();
+  }
+
+  /**
+   * End actions need an activity to hang off — without one there is
+   * nothing whose ending could run them. Rather than let someone
+   * configure steps that can never fire and only find out on save, the
+   * section says so and refuses to add.
+   */
+  function syncStopSectionAvailability(): void {
+    const hasActivity = activityNameInput.value.trim().length > 0;
+    addStopActionBtn.disabled = !hasActivity;
+    stopHintEl.textContent = hasActivity
+      ? `Runs when "${activityNameInput.value.trim()}" comes to an end — the wind-down half of this routine. Only runs if this routine actually started.`
+      : 'Fill in "This means I\'m doing" above first: end actions run when that activity ends, so without one there is nothing to run them.';
+    // A section with something in it stays open, so it isn't forgotten.
+    if (pendingStopActions.length > 0) stopSectionEl.open = true;
+  }
+
   function renderPendingActions(): void {
     actionListEl.innerHTML = "";
+    startCountEl.textContent = countLabel(pendingActions.length);
     pendingActions.forEach((step, index) => {
       const row = document.createElement("div");
       row.className = "action-row";
@@ -1705,6 +1772,10 @@ async function initRoutinesSettings(): Promise<void> {
     renderPendingConditions();
     pendingActions = [];
     renderPendingActions();
+    pendingStopActions = [];
+    stopAutoRunCheckbox.checked = true;
+    stopSectionEl.open = false;
+    renderStopActions();
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
   }
 
@@ -1780,6 +1851,12 @@ async function initRoutinesSettings(): Promise<void> {
 
     pendingActions = routine.actions.map((step) => ({ ...step, params: { ...step.params } }));
     renderPendingActions();
+    pendingStopActions = (routine.stopActions ?? []).map((step) => ({
+      ...step,
+      params: { ...step.params },
+    }));
+    stopAutoRunCheckbox.checked = routine.stopAutoRun !== false;
+    renderStopActions();
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
 
     document.getElementById("routineName")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1852,6 +1929,17 @@ async function initRoutinesSettings(): Promise<void> {
     }
     select.value = selected;
   }
+
+  /** The wind-down half, kept separate so each section owns its own list. */
+  let pendingStopActions: RoutineActionStep[] = [];
+
+  const stopActionListEl = document.getElementById("routineStopActionList") as HTMLElement;
+  const addStopActionBtn = document.getElementById("routineAddStopActionBtn") as HTMLButtonElement;
+  const stopAutoRunCheckbox = document.getElementById("routineStopAutoRun") as HTMLInputElement;
+  const startCountEl = document.getElementById("routineStartCount") as HTMLElement;
+  const stopCountEl = document.getElementById("routineStopCount") as HTMLElement;
+  const stopSectionEl = document.getElementById("routineStopSection") as HTMLDetailsElement;
+  const stopHintEl = document.getElementById("routineStopHint") as HTMLElement;
 
   const conditionListEl = document.getElementById("routineConditionList") as HTMLElement;
   const conditionEmptyEl = document.getElementById("routineConditionEmpty") as HTMLElement;
@@ -2065,6 +2153,9 @@ async function initRoutinesSettings(): Promise<void> {
 
     parts.push(`${routine.actions.length} action${routine.actions.length === 1 ? "" : "s"}`);
 
+    if (routine.stopActions?.length) {
+      parts.push(`${routine.stopActions.length} on end`);
+    }
     if (routine.activity?.name) {
       parts.push(`means ${routine.activity.icon ? routine.activity.icon + " " : ""}${routine.activity.name}`);
     }
@@ -2373,6 +2464,28 @@ async function initRoutinesSettings(): Promise<void> {
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
   });
 
+  addStopActionBtn.addEventListener("click", () => {
+    const def = availableActions.find((a) => a.id === actionSelect.value);
+    if (!def) return;
+    const params = collectActionParams(def);
+    const missing = def.parameters.filter((prm) => prm.required && params[prm.name] === undefined);
+    if (missing.length > 0) {
+      const fields = missing
+        .map((prm) => document.getElementById(paramFieldId(prm.name)))
+        .filter((el): el is HTMLElement => el !== null);
+      showFormError(`This action still needs: ${missing.map((prm) => prm.name).join(", ")}.`, fields);
+      return;
+    }
+    clearFormError();
+    pendingStopActions.push({ actionId: def.id, params });
+    renderStopActions();
+  });
+
+  // Typing an activity name is what makes the end section usable, so the
+  // section unlocks as soon as there is one rather than on the next
+  // render.
+  activityNameInput.addEventListener("input", () => syncStopSectionAvailability());
+
   addActionBtn.addEventListener("click", () => {
     const def = availableActions.find((a) => a.id === actionSelect.value);
     if (!def) return;
@@ -2479,6 +2592,8 @@ async function initRoutinesSettings(): Promise<void> {
           actions: pendingActions,
           cooldownMinutes,
           conditions: buildConditionsFromForm(),
+          stopActions: pendingStopActions.length > 0 ? pendingStopActions : undefined,
+          stopAutoRun: stopAutoRunCheckbox.checked,
           conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
           sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
           description: descriptionInput.value.trim() || undefined,
@@ -2493,6 +2608,8 @@ async function initRoutinesSettings(): Promise<void> {
           enabled: routineEnabledCheckbox.checked,
           trigger,
           conditions: buildConditionsFromForm(),
+          stopActions: pendingStopActions.length > 0 ? pendingStopActions : undefined,
+          stopAutoRun: stopAutoRunCheckbox.checked,
           conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
           sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
           description: descriptionInput.value.trim() || undefined,

@@ -673,12 +673,55 @@
               </div>
             </div>
 
-            <h6 class="section-kicker">Actions <span class="required-marker" aria-hidden="true">*</span></h6>
-            <div id="routineActionList"></div>
+            <!-- Two halves of one routine: what it does when it starts, and
+                 what it undoes when the activity it named comes to an end.
+                 Collapsible so a routine that only starts things doesn't
+                 carry an empty second section around. -->
+            <details class="action-section" id="routineStartSection" open>
+              <summary>
+                <span class="section-kicker">
+                  When it starts <span class="required-marker" aria-hidden="true">*</span>
+                </span>
+                <span class="action-section-count" id="routineStartCount"></span>
+              </summary>
+              <div id="routineActionList"></div>
+              <button class="btn btn-secondary btn-spaced" id="routineAddActionBtn">
+                Add the action below
+              </button>
+            </details>
+
+            <details class="action-section" id="routineStopSection">
+              <summary>
+                <span class="section-kicker">When it ends</span>
+                <span class="action-section-count" id="routineStopCount"></span>
+              </summary>
+              <p class="opt-desc" id="routineStopHint">
+                Runs when the activity this routine names comes to an end — the wind-down half of the same
+                routine, so you don't need a second one. Needs "This means I'm doing" filled in above, and
+                only runs if this routine actually started.
+              </p>
+              <div id="routineStopActionList"></div>
+              <label class="opt-row">
+                <span>
+                  <span class="opt-title">Run these without asking</span>
+                  <span class="opt-desc">
+                    On by default: you already approved this routine when you accepted it, and winding down
+                    what it started is the end of that same decision rather than a new one.
+                  </span>
+                </span>
+                <span class="toggle">
+                  <input type="checkbox" id="routineStopAutoRun" checked />
+                  <span class="track"></span>
+                </span>
+              </label>
+              <button class="btn btn-secondary btn-spaced" id="routineAddStopActionBtn">
+                Add the action below
+              </button>
+            </details>
+
             <div class="action-picker-row">
               <select id="routineActionServiceSelect" class="input"></select>
               <select id="routineActionSelect" class="input"></select>
-              <button class="btn btn-secondary" id="routineAddActionBtn">Add action</button>
               <button class="btn btn-ghost" id="routineCancelActionEditBtn" hidden>Cancel</button>
             </div>
             <div id="routineActionParamFields"></div>
