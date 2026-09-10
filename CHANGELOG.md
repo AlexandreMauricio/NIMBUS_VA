@@ -31,9 +31,12 @@ Dates are the day the work landed.
 - Activities moved out of Settings into the Routines tab, behind a
   Routines / Activities switch: they're personal definitions like
   routines, not configuration like a weather location.
-- A routine can now carry both halves: "when it starts" and "when it
-  ends", in collapsible sections, so starting and stopping a study
-  session is one routine instead of two kept in step by hand.
+- A routine is now two complete rules sharing an identity: "when it
+  starts" and "when it ends", each with its own trigger, conditions and
+  actions, in collapsible sections. Starting and stopping a study
+  session is one routine instead of two kept in step by hand, and the
+  end half isn't limited to an activity ending — a timer completing will
+  do just as well.
 
 ## 0.2.0 — 2026-09-10
 

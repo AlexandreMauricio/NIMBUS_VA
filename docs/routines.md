@@ -184,15 +184,29 @@ explicit way to run a routine's actions on demand, and is what the old
 
 ## One routine, both halves
 
-A routine can carry two sets of actions: **when it starts** (its
-`actions`, unchanged) and **when it ends** (`stopActions`). The second
-runs when the activity the routine names comes to an end, so starting
-and stopping a study session are one thing you configure rather than two
-routines to keep in step.
+A routine is two rules that share a name, an identity and a cooldown.
+Each half is complete on its own — something happens, some conditions
+hold, some actions run:
 
-End actions need the routine to declare an activity — without one there
-is nothing whose ending could run them, and the editor says so rather
-than letting you configure steps that can never fire.
+| | **When it starts** | **When it ends** |
+| --- | --- | --- |
+| Trigger | `trigger` | `stopTrigger` |
+| Conditions | `conditions` | `stopConditions` |
+| Actions | `actions` | `stopActions` |
+
+The end half's trigger defaults to "the activity this routine names has
+ended", which is what it meant before it could be chosen — so a routine
+saved without one behaves identically. But it need not be an activity at
+all: a focus timer completing, or another application opening, can just
+as well be what winds a routine down.
+
+Conditions are deliberately separate rather than shared. "Only start
+between 18:00 and 23:00" must not also mean "only stop between 18:00 and
+23:00" — a routine that began at 22:00 still has to wind down afterwards.
+
+End actions need something able to fire them — an end trigger, or an
+activity for this routine to name — and the editor says so rather than
+letting you configure steps that can never run.
 
 Two rules make them safe:
 

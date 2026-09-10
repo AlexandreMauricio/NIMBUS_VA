@@ -461,62 +461,6 @@
                   >
                   <input class="input" type="text" id="routineName" placeholder="e.g. Study" />
                 </div>
-                <div class="field">
-                  <label for="routineTriggerType">Trigger</label>
-                  <select id="routineTriggerType" class="input">
-                    <option value="applicationOpened">Application opened</option>
-                    <option value="websiteOpened">Website opened</option>
-                    <option value="folderOpened">Folder opened</option>
-                    <option value="activityEnded">Activity ended</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="field-grid">
-                <div id="routineTriggerFields-applicationOpened" class="field">
-                  <label for="routineAppName">
-                    Application (.exe name) — comma-separated for more than one
-                    <span class="required-marker" aria-hidden="true">*</span>
-                  </label>
-                  <input
-                    class="input"
-                    type="text"
-                    id="routineAppName"
-                    placeholder="e.g. steam.exe, epicgameslauncher.exe"
-                  />
-                </div>
-                <div id="routineTriggerFields-websiteOpened" class="field" hidden>
-                  <label for="routineWebsitePattern">
-                    Website contains — comma-separated for more than one
-                    <span class="required-marker" aria-hidden="true">*</span>
-                  </label>
-                  <input
-                    class="input"
-                    type="text"
-                    id="routineWebsitePattern"
-                    placeholder="e.g. skillcert, nowuniversity"
-                  />
-                </div>
-                <div id="routineTriggerFields-activityEnded" class="field" hidden>
-                  <label for="routineActivityEndedName">Activity that ended</label>
-                  <select class="input" id="routineActivityEndedName"></select>
-                </div>
-                <div id="routineTriggerFields-activityEndedMin" class="field field-narrow" hidden>
-                  <label for="routineActivityEndedMinutes">Ignore sessions shorter than (minutes)</label>
-                  <input class="input" type="number" id="routineActivityEndedMinutes" min="0" value="0" />
-                </div>
-                <div id="routineTriggerFields-folderOpened" class="field" hidden>
-                  <label for="routineFolderPath">
-                    Folder path contains — comma-separated for more than one
-                    <span class="required-marker" aria-hidden="true">*</span>
-                  </label>
-                  <input
-                    class="input"
-                    type="text"
-                    id="routineFolderPath"
-                    placeholder="e.g. Projects, Coursework"
-                  />
-                </div>
               </div>
 
               <div class="field-grid">
@@ -581,36 +525,6 @@
                   id="routineDescription"
                   placeholder="A note to yourself about what this routine is for"
                 />
-              </div>
-            </div>
-
-            <div class="panel-card">
-              <div class="conditions-head">
-                <div>
-                  <h6 class="section-kicker section-kicker-flush">Conditions</h6>
-                  <p class="opt-desc">
-                    Extra requirements checked after the trigger fires. With no conditions, the trigger alone
-                    decides.
-                  </p>
-                </div>
-                <select id="routineConditionLogic" class="input input-compact">
-                  <option value="all">Match ALL conditions</option>
-                  <option value="any">Match ANY condition</option>
-                </select>
-              </div>
-
-              <div id="routineConditionList"></div>
-              <p class="feed-empty" id="routineConditionEmpty">No conditions — the trigger alone decides.</p>
-
-              <div class="action-picker-row">
-                <select id="routineConditionTypeSelect" class="input input-compact">
-                  <option value="timeOfDay">Time of day</option>
-                  <option value="daysOfWeek">Days of the week</option>
-                  <option value="activityIs">Current activity is…</option>
-                  <option value="activityDuration">Current activity has lasted…</option>
-                  <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
-                </select>
-                <button class="btn btn-secondary" id="routineAddConditionBtn">Add condition</button>
               </div>
             </div>
 
@@ -684,6 +598,94 @@
                 </span>
                 <span class="action-section-count" id="routineStartCount"></span>
               </summary>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="routineTriggerType">Trigger</label>
+                  <select id="routineTriggerType" class="input">
+                    <option value="applicationOpened">Application opened</option>
+                    <option value="websiteOpened">Website opened</option>
+                    <option value="folderOpened">Folder opened</option>
+                    <option value="activityEnded">Activity ended</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field-grid">
+                <div id="routineTriggerFields-applicationOpened" class="field">
+                  <label for="routineAppName">
+                    Application (.exe name) — comma-separated for more than one
+                    <span class="required-marker" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineAppName"
+                    placeholder="e.g. steam.exe, epicgameslauncher.exe"
+                  />
+                </div>
+                <div id="routineTriggerFields-websiteOpened" class="field" hidden>
+                  <label for="routineWebsitePattern">
+                    Website contains — comma-separated for more than one
+                    <span class="required-marker" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineWebsitePattern"
+                    placeholder="e.g. skillcert, nowuniversity"
+                  />
+                </div>
+                <div id="routineTriggerFields-activityEnded" class="field" hidden>
+                  <label for="routineActivityEndedName">Activity that ended</label>
+                  <select class="input" id="routineActivityEndedName"></select>
+                </div>
+                <div id="routineTriggerFields-activityEndedMin" class="field field-narrow" hidden>
+                  <label for="routineActivityEndedMinutes">Ignore sessions shorter than (minutes)</label>
+                  <input class="input" type="number" id="routineActivityEndedMinutes" min="0" value="0" />
+                </div>
+                <div id="routineTriggerFields-folderOpened" class="field" hidden>
+                  <label for="routineFolderPath">
+                    Folder path contains — comma-separated for more than one
+                    <span class="required-marker" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    class="input"
+                    type="text"
+                    id="routineFolderPath"
+                    placeholder="e.g. Projects, Coursework"
+                  />
+                </div>
+              </div>
+
+              <div class="conditions-head">
+                <div>
+                  <h6 class="section-kicker section-kicker-flush">Conditions</h6>
+                  <p class="opt-desc">
+                    Extra requirements checked after the trigger fires. With no conditions, the trigger alone
+                    decides.
+                  </p>
+                </div>
+                <select id="routineConditionLogic" class="input input-compact">
+                  <option value="all">Match ALL conditions</option>
+                  <option value="any">Match ANY condition</option>
+                </select>
+              </div>
+
+              <div id="routineConditionList"></div>
+              <p class="feed-empty" id="routineConditionEmpty">No conditions — the trigger alone decides.</p>
+
+              <div class="action-picker-row">
+                <select id="routineConditionTypeSelect" class="input input-compact">
+                  <option value="timeOfDay">Time of day</option>
+                  <option value="daysOfWeek">Days of the week</option>
+                  <option value="activityIs">Current activity is…</option>
+                  <option value="activityDuration">Current activity has lasted…</option>
+                  <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
+                </select>
+                <button class="btn btn-secondary" id="routineAddConditionBtn">Add condition</button>
+              </div>
+
+              <h6 class="section-kicker">Then</h6>
               <div id="routineActionList"></div>
               <button class="btn btn-secondary btn-spaced" id="routineAddActionBtn">
                 Add the action below
@@ -700,6 +702,71 @@
                 routine, so you don't need a second one. Needs "This means I'm doing" filled in above, and
                 only runs if this routine actually started.
               </p>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="routineStopTriggerType">End trigger</label>
+                  <select id="routineStopTriggerType" class="input">
+                    <option value="activityEnded">Activity ended</option>
+                    <option value="timerCompleted">Timer completed</option>
+                    <option value="applicationOpened">Application opened</option>
+                    <option value="websiteOpened">Website opened</option>
+                    <option value="folderOpened">Folder opened</option>
+                  </select>
+                </div>
+                <div id="routineStopTriggerFields-activityEnded" class="field">
+                  <label for="routineStopActivityName">Activity that ended</label>
+                  <select class="input" id="routineStopActivityName"></select>
+                </div>
+                <div id="routineStopTriggerFields-timerCompleted" class="field" hidden>
+                  <label for="routineStopTimerType">Timer type — leave empty for any</label>
+                  <input class="input" type="text" id="routineStopTimerType" placeholder="e.g. focus" />
+                </div>
+                <div id="routineStopTriggerFields-applicationOpened" class="field" hidden>
+                  <label for="routineStopAppName">Application (.exe name)</label>
+                  <input class="input" type="text" id="routineStopAppName" placeholder="e.g. game.exe" />
+                </div>
+                <div id="routineStopTriggerFields-websiteOpened" class="field" hidden>
+                  <label for="routineStopWebsitePattern">Website contains</label>
+                  <input class="input" type="text" id="routineStopWebsitePattern" placeholder="e.g. mail" />
+                </div>
+                <div id="routineStopTriggerFields-folderOpened" class="field" hidden>
+                  <label for="routineStopFolderPath">Folder path contains</label>
+                  <input class="input" type="text" id="routineStopFolderPath" placeholder="e.g. Projects" />
+                </div>
+              </div>
+
+              <div class="conditions-head">
+                <div>
+                  <h6 class="section-kicker section-kicker-flush">Conditions</h6>
+                  <p class="opt-desc">
+                    Checked when the end trigger fires. Kept separate from the start half's — "only start in
+                    the evening" shouldn't also mean "only stop in the evening".
+                  </p>
+                </div>
+                <select id="routineStopConditionLogic" class="input input-compact">
+                  <option value="all">Match ALL conditions</option>
+                  <option value="any">Match ANY condition</option>
+                </select>
+              </div>
+
+              <div id="routineStopConditionList"></div>
+              <p class="feed-empty" id="routineStopConditionEmpty">
+                No conditions — the end trigger alone decides.
+              </p>
+
+              <div class="action-picker-row">
+                <select id="routineStopConditionTypeSelect" class="input input-compact">
+                  <option value="timeOfDay">Time of day</option>
+                  <option value="daysOfWeek">Days of the week</option>
+                  <option value="activityIs">Current activity is…</option>
+                  <option value="activityDuration">Current activity has lasted…</option>
+                  <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
+                </select>
+                <button class="btn btn-secondary" id="routineAddStopConditionBtn">Add condition</button>
+              </div>
+
+              <h6 class="section-kicker">Then</h6>
               <div id="routineStopActionList"></div>
               <label class="opt-row">
                 <span>

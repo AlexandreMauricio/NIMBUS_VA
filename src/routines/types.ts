@@ -244,6 +244,26 @@ export interface Routine {
    */
   stopActions?: RoutineActionStep[];
   /**
+   * What ends this routine. Defaults to "the activity this routine names
+   * has ended", which is what the end half meant before it could be
+   * chosen — so a routine saved without one behaves identically.
+   *
+   * Having its own trigger is what makes each half of a routine a
+   * complete rule: something happens, some conditions hold, some actions
+   * run. The end half is not limited to activities ending; a timer
+   * completing or another app opening can just as well be what winds a
+   * routine down.
+   */
+  stopTrigger?: TriggerConfig;
+  /**
+   * Conditions for the end half, evaluated separately from the start
+   * half's. "Only start between 18:00 and 23:00" should not also mean
+   * "only stop between 18:00 and 23:00" — a routine that began at 22:00
+   * still has to wind down afterwards.
+   */
+  stopConditions?: RoutineCondition[];
+  stopConditionLogic?: ConditionLogic;
+  /**
    * Whether the stop actions run without asking. Defaults to TRUE, unlike
    * `autoRun` for the start half.
    *
@@ -365,13 +385,39 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
         return { valid: false, error: `Action "${step.actionId}" params must be a plain object.` };
       }
     }
-    if (routine.stopActions.length > 0 && !routine.activity?.name) {
+    // Something has to be able to fire them: either an explicit end
+    // trigger, or the activity this routine names, whose ending is the
+    // default. Without either, the actions could never run.
+    if (routine.stopActions.length > 0 && !routine.stopTrigger && !routine.activity?.name) {
       return {
         valid: false,
         error:
-          "End actions need this routine to say what it means you're doing — otherwise there's no activity whose ending could run them.",
+          "End actions need something to run them: either an end trigger, or this routine saying what it means you're doing.",
       };
     }
+  }
+
+  if (routine.stopTrigger !== undefined) {
+    const stopTriggerError = validateTrigger(routine.stopTrigger);
+    if (stopTriggerError) return { valid: false, error: `End trigger: ${stopTriggerError}` };
+  }
+
+  if (routine.stopConditions !== undefined) {
+    if (!Array.isArray(routine.stopConditions)) {
+      return { valid: false, error: "stopConditions must be an array." };
+    }
+    for (const condition of routine.stopConditions) {
+      const conditionError = validateCondition(condition);
+      if (conditionError) return { valid: false, error: `End condition: ${conditionError}` };
+    }
+  }
+
+  if (
+    routine.stopConditionLogic !== undefined &&
+    routine.stopConditionLogic !== "all" &&
+    routine.stopConditionLogic !== "any"
+  ) {
+    return { valid: false, error: 'stopConditionLogic must be "all" or "any".' };
   }
 
   if (routine.stopAutoRun !== undefined && typeof routine.stopAutoRun !== "boolean") {
@@ -621,3 +667,20 @@ export interface RoutineStateStore {
 }
 
 export const MAX_ROUTINE_HISTORY_ENTRIES = 200;
+
+/**
+ * What actually ends a routine: its own end trigger, or — when it has
+ * none — the ending of the activity it names.
+ *
+ * Keeping the fallback here rather than writing it into saved routines
+ * means an existing routine's end half keeps working untouched, and a
+ * routine that later renames its activity doesn't need its end trigger
+ * updated to match.
+ */
+export function effectiveStopTrigger(routine: Routine): TriggerConfig | null {
+  if (routine.stopTrigger) return routine.stopTrigger;
+  if (routine.activity?.name) {
+    return { type: "activityEnded", activity: routine.activity.name };
+  }
+  return null;
+}

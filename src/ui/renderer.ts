@@ -332,8 +332,16 @@ interface ActivityEndedTriggerConfig {
   activity: string;
   minMinutes?: number;
 }
+interface TimerCompletedTriggerConfig {
+  type: "timerCompleted";
+  timerType: string;
+}
 type TriggerConfig =
-  ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig | ActivityEndedTriggerConfig;
+  | ApplicationTriggerConfig
+  | WebsiteTriggerConfig
+  | FolderTriggerConfig
+  | ActivityEndedTriggerConfig
+  | TimerCompletedTriggerConfig;
 
 /**
  * Mirrors src/routines/types.ts's RoutineCondition. Kept as one loose
@@ -388,6 +396,9 @@ interface Routine {
   sessionRestriction?: "none" | "oncePerSession";
   activity?: { name: string; icon?: string };
   stopActions?: RoutineActionStep[];
+  stopTrigger?: TriggerConfig;
+  stopConditions?: RoutineCondition[];
+  stopConditionLogic?: "all" | "any";
   stopAutoRun?: boolean;
 }
 
@@ -1274,10 +1285,15 @@ const TRIGGER_TYPES: TriggerConfig["type"][] = [
 function buildTriggerFromForm(existing?: TriggerConfig): TriggerConfig | null {
   const type = (document.getElementById("routineTriggerType") as HTMLSelectElement)
     .value as TriggerConfig["type"];
-  // "activityEnded" matches an activity by name rather than by pattern,
-  // so it has no match mode to carry over.
+  // Only the pattern-matching triggers carry a match mode to preserve;
+  // "activity ended" and "timer completed" match by name, not pattern.
   const matchMode: StringMatchMode =
-    existing && existing.type === type && existing.type !== "activityEnded" ? existing.matchMode : "contains";
+    existing &&
+    existing.type === type &&
+    existing.type !== "activityEnded" &&
+    existing.type !== "timerCompleted"
+      ? existing.matchMode
+      : "contains";
 
   if (type === "applicationOpened") {
     const application = (document.getElementById("routineAppName") as HTMLInputElement).value.trim();
@@ -1575,6 +1591,81 @@ async function initRoutinesSettings(): Promise<void> {
    * started is usually one or two steps, and "remove and add again" is a
    * smaller thing to learn than a second editing mode.
    */
+  const STOP_TRIGGER_TYPES = [
+    "activityEnded",
+    "timerCompleted",
+    "applicationOpened",
+    "websiteOpened",
+    "folderOpened",
+  ];
+
+  function syncStopTriggerFields(): void {
+    for (const type of STOP_TRIGGER_TYPES) {
+      const el = document.getElementById(`routineStopTriggerFields-${type}`) as HTMLElement | null;
+      if (el) el.hidden = type !== stopTriggerTypeSelect.value;
+    }
+  }
+
+  /**
+   * The end half's trigger. Mirrors buildTriggerFromForm for the start
+   * half, over its own fields — the two halves are the same kind of rule,
+   * so they are configured the same way.
+   */
+  function buildStopTriggerFromForm(): TriggerConfig | null {
+    const value = (id: string): string =>
+      (document.getElementById(id) as HTMLInputElement | HTMLSelectElement).value.trim();
+
+    switch (stopTriggerTypeSelect.value) {
+      case "activityEnded":
+        // An empty activity means "any activity ending" — a real choice,
+        // so this never fails for want of a value.
+        return { type: "activityEnded", activity: stopActivitySelect.value.trim() };
+      case "timerCompleted":
+        return { type: "timerCompleted", timerType: value("routineStopTimerType") };
+      case "applicationOpened": {
+        const application = value("routineStopAppName");
+        return application ? { type: "applicationOpened", application, matchMode: "contains" } : null;
+      }
+      case "websiteOpened": {
+        const pattern = value("routineStopWebsitePattern");
+        return pattern
+          ? { type: "websiteOpened", matchField: "windowTitle", pattern, matchMode: "contains" }
+          : null;
+      }
+      case "folderOpened": {
+        const path = value("routineStopFolderPath");
+        return path ? { type: "folderOpened", path, matchMode: "contains" } : null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  function loadStopTrigger(trigger: TriggerConfig | undefined): void {
+    const set = (id: string, v: string) => {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (el) el.value = v;
+    };
+    set("routineStopTimerType", "");
+    set("routineStopAppName", "");
+    set("routineStopWebsitePattern", "");
+    set("routineStopFolderPath", "");
+
+    // No saved end trigger means the default: this routine's own activity
+    // ending. Shown as such rather than left blank.
+    stopTriggerTypeSelect.value = trigger?.type ?? "activityEnded";
+    if (trigger?.type === "activityEnded") {
+      fillActivityOptions(stopActivitySelect, trigger.activity, "Any activity");
+    } else {
+      fillActivityOptions(stopActivitySelect, activityNameInput.value.trim(), "Any activity");
+    }
+    if (trigger?.type === "timerCompleted") set("routineStopTimerType", trigger.timerType);
+    if (trigger?.type === "applicationOpened") set("routineStopAppName", trigger.application);
+    if (trigger?.type === "websiteOpened") set("routineStopWebsitePattern", trigger.pattern);
+    if (trigger?.type === "folderOpened") set("routineStopFolderPath", trigger.path);
+    syncStopTriggerFields();
+  }
+
   function renderStopActions(): void {
     stopActionListEl.innerHTML = "";
 
@@ -1620,11 +1711,18 @@ async function initRoutinesSettings(): Promise<void> {
    * section says so and refuses to add.
    */
   function syncStopSectionAvailability(): void {
+    // The end half needs something able to fire it: an end trigger of its
+    // own, or — for the default "activity ended" — an activity for this
+    // routine to name.
+    const usesOwnActivity =
+      stopTriggerTypeSelect.value === "activityEnded" && stopActivitySelect.value.trim().length === 0;
     const hasActivity = activityNameInput.value.trim().length > 0;
-    addStopActionBtn.disabled = !hasActivity;
-    stopHintEl.textContent = hasActivity
-      ? `Runs when "${activityNameInput.value.trim()}" comes to an end — the wind-down half of this routine. Only runs if this routine actually started.`
-      : 'Fill in "This means I\'m doing" above first: end actions run when that activity ends, so without one there is nothing to run them.';
+    const usable = !usesOwnActivity || hasActivity;
+
+    addStopActionBtn.disabled = !usable;
+    stopHintEl.textContent = usable
+      ? "Only runs if this routine actually started — winding down something that was never wound up would, at best, do nothing."
+      : 'This ends when an activity does, so either pick one above, or fill in "This means I\'m doing" for this routine to name its own.';
     // A section with something in it stays open, so it isn't forgotten.
     if (pendingStopActions.length > 0) stopSectionEl.open = true;
   }
@@ -1773,8 +1871,12 @@ async function initRoutinesSettings(): Promise<void> {
     pendingActions = [];
     renderPendingActions();
     pendingStopActions = [];
+    pendingStopConditions = [];
     stopAutoRunCheckbox.checked = true;
+    stopConditionLogicSelect.value = "all";
     stopSectionEl.open = false;
+    loadStopTrigger(undefined);
+    renderStopConditions();
     renderStopActions();
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
   }
@@ -1856,6 +1958,13 @@ async function initRoutinesSettings(): Promise<void> {
       params: { ...step.params },
     }));
     stopAutoRunCheckbox.checked = routine.stopAutoRun !== false;
+    pendingStopConditions = (routine.stopConditions ?? []).map((c) => ({
+      ...c,
+      days: c.days ? [...c.days] : undefined,
+    }));
+    stopConditionLogicSelect.value = routine.stopConditionLogic ?? "all";
+    loadStopTrigger(routine.stopTrigger);
+    renderStopConditions();
     renderStopActions();
     renderActionParamFields(availableActions.find((a) => a.id === actionSelect.value));
 
@@ -1867,13 +1976,17 @@ async function initRoutinesSettings(): Promise<void> {
    * form owns a working copy and only writes it back into a Routine on
    * save, so cancelling leaves the stored routine untouched.
    *
-   * `actionsNotAlreadyActive` is deliberately NOT in here — it is the
-   * "Skip if already active" switch below. Keeping one setting in two
+   * There are two of these now — one per half of the routine — so the
+   * editor below is built once and pointed at whichever it is editing.
+   *
+   * `actionsNotAlreadyActive` is deliberately NOT in the start list — it
+   * is the "Skip if already active" switch. Keeping one setting in two
    * places is worse than the small asymmetry of leaving it out, and a
    * routine that already has it keeps it through an edit either way (see
    * buildConditionsFromForm).
    */
   let pendingConditions: RoutineCondition[] = [];
+  let pendingStopConditions: RoutineCondition[] = [];
 
   /**
    * Activity names already defined anywhere — refreshed whenever the
@@ -1942,6 +2055,15 @@ async function initRoutinesSettings(): Promise<void> {
   const stopHintEl = document.getElementById("routineStopHint") as HTMLElement;
 
   const conditionListEl = document.getElementById("routineConditionList") as HTMLElement;
+  const stopConditionListEl = document.getElementById("routineStopConditionList") as HTMLElement;
+  const stopConditionEmptyEl = document.getElementById("routineStopConditionEmpty") as HTMLElement;
+  const stopConditionLogicSelect = document.getElementById("routineStopConditionLogic") as HTMLSelectElement;
+  const stopConditionTypeSelect = document.getElementById(
+    "routineStopConditionTypeSelect"
+  ) as HTMLSelectElement;
+  const addStopConditionBtn = document.getElementById("routineAddStopConditionBtn") as HTMLButtonElement;
+  const stopTriggerTypeSelect = document.getElementById("routineStopTriggerType") as HTMLSelectElement;
+  const stopActivitySelect = document.getElementById("routineStopActivityName") as HTMLSelectElement;
   const conditionEmptyEl = document.getElementById("routineConditionEmpty") as HTMLElement;
   const conditionLogicSelect = document.getElementById("routineConditionLogic") as HTMLSelectElement;
   const conditionTypeSelect = document.getElementById("routineConditionTypeSelect") as HTMLSelectElement;
@@ -1959,26 +2081,50 @@ async function initRoutinesSettings(): Promise<void> {
     return `${String(hour).padStart(2, "0")}:${String(minute ?? 0).padStart(2, "0")}`;
   }
 
+  /** A blank condition of the chosen type, ready to be edited in place. */
+  function newCondition(type: string): RoutineCondition | null {
+    if (type === "timeOfDay") return { type: "timeOfDay", startHour: 18, endHour: 23 };
+    if (type === "daysOfWeek") return { type: "daysOfWeek", days: [1, 2, 3, 4, 5] };
+    if (type === "activityIs") return { type: "activityIs", activity: knownActivities[0] ?? "" };
+    if (type === "activityDuration") return { type: "activityDuration", minMinutes: 90 };
+    if (type === "spotifyNotAlreadyPlaying") return { type: "spotifyNotAlreadyPlaying" };
+    return null;
+  }
+
   function addCondition(type: string): void {
-    if (type === "timeOfDay") {
-      pendingConditions.push({ type: "timeOfDay", startHour: 18, endHour: 23 });
-    } else if (type === "daysOfWeek") {
-      pendingConditions.push({ type: "daysOfWeek", days: [1, 2, 3, 4, 5] });
-    } else if (type === "activityIs") {
-      pendingConditions.push({ type: "activityIs", activity: knownActivities[0] ?? "" });
-    } else if (type === "activityDuration") {
-      pendingConditions.push({ type: "activityDuration", minMinutes: 90 });
-    } else if (type === "spotifyNotAlreadyPlaying") {
-      pendingConditions.push({ type: "spotifyNotAlreadyPlaying" });
-    }
+    const condition = newCondition(type);
+    if (condition) pendingConditions.push(condition);
     renderPendingConditions();
   }
 
   function renderPendingConditions(): void {
-    conditionListEl.innerHTML = "";
-    conditionEmptyEl.hidden = pendingConditions.length > 0;
+    renderConditionsInto(conditionListEl, conditionEmptyEl, pendingConditions, (next) => {
+      pendingConditions = next;
+      renderPendingConditions();
+    });
+  }
 
-    pendingConditions.forEach((condition, index) => {
+  function renderStopConditions(): void {
+    renderConditionsInto(stopConditionListEl, stopConditionEmptyEl, pendingStopConditions, (next) => {
+      pendingStopConditions = next;
+      renderStopConditions();
+    });
+  }
+
+  /**
+   * Draws one list of conditions. Both halves of a routine use this —
+   * the rows are identical, only the array they edit differs.
+   */
+  function renderConditionsInto(
+    listEl: HTMLElement,
+    emptyEl: HTMLElement,
+    conditions: RoutineCondition[],
+    onChange: (next: RoutineCondition[]) => void
+  ): void {
+    listEl.innerHTML = "";
+    emptyEl.hidden = conditions.length > 0;
+
+    conditions.forEach((condition, index) => {
       const row = document.createElement("div");
       row.className = "condition-row";
 
@@ -2080,16 +2226,26 @@ async function initRoutinesSettings(): Promise<void> {
       remove.className = "btn btn-ghost action-row-remove";
       remove.textContent = "Remove";
       remove.addEventListener("click", () => {
-        pendingConditions = pendingConditions.filter((_, i) => i !== index);
-        renderPendingConditions();
+        onChange(conditions.filter((_, i) => i !== index));
       });
       controls.appendChild(remove);
 
-      conditionListEl.appendChild(row);
+      listEl.appendChild(row);
     });
   }
 
   addConditionBtn.addEventListener("click", () => addCondition(conditionTypeSelect.value));
+  stopTriggerTypeSelect.addEventListener("change", () => {
+    syncStopTriggerFields();
+    syncStopSectionAvailability();
+  });
+  stopActivitySelect.addEventListener("change", () => syncStopSectionAvailability());
+
+  addStopConditionBtn.addEventListener("click", () => {
+    const condition = newCondition(stopConditionTypeSelect.value);
+    if (condition) pendingStopConditions.push(condition);
+    renderStopConditions();
+  });
 
   /**
    * The conditions to save: the edited list, plus the "Skip if already
@@ -2593,6 +2749,9 @@ async function initRoutinesSettings(): Promise<void> {
           cooldownMinutes,
           conditions: buildConditionsFromForm(),
           stopActions: pendingStopActions.length > 0 ? pendingStopActions : undefined,
+          stopTrigger: pendingStopActions.length > 0 ? (buildStopTriggerFromForm() ?? undefined) : undefined,
+          stopConditions: pendingStopConditions.length > 0 ? pendingStopConditions : undefined,
+          stopConditionLogic: stopConditionLogicSelect.value === "any" ? "any" : "all",
           stopAutoRun: stopAutoRunCheckbox.checked,
           conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
           sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
@@ -2609,6 +2768,9 @@ async function initRoutinesSettings(): Promise<void> {
           trigger,
           conditions: buildConditionsFromForm(),
           stopActions: pendingStopActions.length > 0 ? pendingStopActions : undefined,
+          stopTrigger: pendingStopActions.length > 0 ? (buildStopTriggerFromForm() ?? undefined) : undefined,
+          stopConditions: pendingStopConditions.length > 0 ? pendingStopConditions : undefined,
+          stopConditionLogic: stopConditionLogicSelect.value === "any" ? "any" : "all",
           stopAutoRun: stopAutoRunCheckbox.checked,
           conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
           sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",

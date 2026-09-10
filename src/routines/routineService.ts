@@ -10,6 +10,7 @@ import { matchesTrigger } from "./triggerMatcher";
 import { evaluateConditionsDetailed } from "./conditionEvaluator";
 import {
   DEFAULT_ROUTINE_COOLDOWN_MINUTES,
+  effectiveStopTrigger,
   DEFAULT_SUGGESTION_TTL_MS,
   MAX_ROUTINE_HISTORY_ENTRIES,
   Routine,
@@ -238,12 +239,10 @@ export class RoutineService {
   }
 
   private async handleEvent(event: ContextEvent): Promise<void> {
-    // An activity ending winds down the routines that started with it.
-    // Separate from trigger matching below: this is a routine completing
-    // its own lifecycle, not a new routine being considered.
-    if (event.type === "activityEnded") {
-      await this.runStopActionsFor(event.activity);
-    }
+    // The end half of every routine gets a look at this event first.
+    // Separate from the trigger matching below: this is a routine
+    // completing its own lifecycle, not a new routine being considered.
+    await this.runStopActionsFor(event);
 
     // A closing application ends its session, so the next launch is a
     // genuinely new one for any "once per session" routine. Nothing
@@ -445,12 +444,41 @@ export class RoutineService {
    * its time window closed — leaving exactly the mess it exists to
    * prevent.
    */
-  private async runStopActionsFor(activity: string): Promise<void> {
-    const ending = activity.trim().toLowerCase();
-
+  private async runStopActionsFor(event: ContextEvent): Promise<void> {
     for (const routine of this.getRoutines()) {
+      if (!routine.enabled) continue;
       if (!routine.stopActions?.length) continue;
-      if (routine.activity?.name?.trim().toLowerCase() !== ending) continue;
+
+      const trigger = effectiveStopTrigger(routine);
+      if (!trigger || !matchesTrigger(event, trigger)) continue;
+
+      // Conditions for the end half are its own — the start half's must
+      // not apply, or a routine that began inside its time window would
+      // fail to wind down once the window closed.
+      let conditionsOk: boolean;
+      try {
+        conditionsOk = (
+          await evaluateConditionsDetailed(
+            routine.stopConditions ?? [],
+            {
+              now: this.now(),
+              isSpotifyPlaying: this.isSpotifyPlaying,
+              routineActions: routine.stopActions,
+              areActionsAlreadyActive: this.areActionsAlreadyActive,
+              getCurrentActivity: this.getCurrentActivity,
+            },
+            routine.stopConditionLogic ?? "all"
+          )
+        ).passed;
+      } catch (err) {
+        logger.warn(`Routine "${routine.name}" end-condition evaluation failed`, {
+          routineId: routine.id,
+          error: String(err),
+        });
+        continue;
+      }
+      if (!conditionsOk) continue;
+
       if (!this.awaitingStop.delete(routine.id)) continue; // never started; nothing to wind down
 
       const steps = routine.stopActions;
@@ -469,7 +497,6 @@ export class RoutineService {
       );
       logger.info(`Routine "${routine.name}" wound down`, {
         routineId: routine.id,
-        activity,
         failureCount: failures,
       });
     }

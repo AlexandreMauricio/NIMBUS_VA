@@ -662,3 +662,152 @@ test("a wind-down suggestion summarises the END actions, not the start ones", as
     ["timer"]
   );
 });
+
+// ------------------- the end half as a rule of its own (§ user's idea)
+
+test("an explicit end trigger can be something other than the activity ending", async () => {
+  // Wind down when a *different* app opens, rather than when Study ends.
+  const r = studyWithWindDown({
+    cooldownMinutes: 0,
+    stopTrigger: { type: "applicationOpened", application: "shutdown.exe", matchMode: "exact" },
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "s", activity: "Other", value: "shutdown.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(30);
+
+  bus.publish(appEvent("shutdown.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), true, "the explicit end trigger fired it");
+});
+
+test("with an explicit end trigger, the activity ending no longer winds it down", async () => {
+  const r = studyWithWindDown({
+    cooldownMinutes: 0,
+    stopTrigger: { type: "timerCompleted", timerType: "" },
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(30);
+  bus.publish(appEvent("game.exe")); // Study ends, but that isn't the end trigger any more
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), false);
+});
+
+test("end conditions are evaluated separately from the start half's", async () => {
+  // Starting is limited to the morning; that must not stop it winding
+  // down in the afternoon.
+  const r = studyWithWindDown({
+    cooldownMinutes: 0,
+    conditions: [{ type: "timeOfDay", startHour: 9, endHour: 12 }],
+    stopConditions: [],
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe")); // 09:00, inside the start window
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+
+  advance(6 * 60); // 15:00 — outside the start window
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), true);
+});
+
+test("an end condition that fails blocks the wind-down", async () => {
+  const r = studyWithWindDown({
+    cooldownMinutes: 0,
+    stopConditions: [{ type: "timeOfDay", startHour: 0, endHour: 1 }], // 09:00 is outside
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(30);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), false);
+});
+
+test("end conditions honour their own ANY/ALL logic", async () => {
+  const r = studyWithWindDown({
+    cooldownMinutes: 0,
+    stopConditionLogic: "any",
+    stopConditions: [
+      { type: "timeOfDay", startHour: 0, endHour: 1 }, // fails at 09:30
+      { type: "daysOfWeek", days: [0, 1, 2, 3, 4, 5, 6] }, // always passes
+    ],
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(30);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), true, "one holding is enough under ANY");
+});
+
+test("a routine with no end trigger still winds down on its own activity ending", async () => {
+  // The default, and what every routine written before end triggers did.
+  const r = studyWithWindDown({ cooldownMinutes: 0 });
+  delete (r as Partial<Routine>).stopTrigger;
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  advance(30);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), true);
+});
+
+test("a disabled routine never winds down", async () => {
+  const r = studyWithWindDown({ cooldownMinutes: 0 });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
+  r.enabled = false;
+  advance(30);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(provider.calls.includes("demo.timer"), false);
+});
