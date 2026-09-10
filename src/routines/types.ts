@@ -229,12 +229,12 @@ export interface Routine {
   /** Defaults to "none" when absent — again, the pre-existing behaviour. */
   sessionRestriction?: SessionRestriction;
   /**
-   * Actions to run when this routine's own activity ENDS — the wind-down
-   * half of the same routine, so "start studying" and "stop studying"
-   * are one thing you configure rather than two routines to keep in step.
+   * Actions to run when this routine winds DOWN — the other half of the
+   * same routine, so "start studying" and "stop studying" are one thing
+   * you configure rather than two routines to keep in step.
    *
-   * Requires the routine to declare an `activity`: without one there is
-   * nothing whose ending could be detected. They run only if this
+   * Requires a `stopTrigger` to say what "ends" means: an activity
+   * finishing, a timer completing, an app opening. They run only if this
    * routine's start actions actually ran during that activity — winding
    * down something you never wound up would, at best, do nothing, and at
    * worst stop music the user had started themselves.
@@ -274,27 +274,6 @@ export interface Routine {
    * studying is a question with only one sensible answer.
    */
   stopAutoRun?: boolean;
-  /**
-   * What this routine's trigger MEANS the user is doing, if anything.
-   *
-   * Setting it makes the routine's own trigger double as an activity
-   * mapping, so an app or website is configured once rather than twice
-   * (see src/activity/routineMappings.ts). Absent means the routine says
-   * nothing about activity — the pre-existing behaviour, and still the
-   * case for every routine saved before this field existed.
-   *
-   * It does not change what the routine DOES. Activity is context;
-   * whether this routine suggests anything is still decided by its
-   * trigger, conditions and cooldown exactly as before.
-   */
-  activity?: RoutineActivityConfig;
-}
-
-export interface RoutineActivityConfig {
-  /** The activity name, e.g. "Study". Free text, matched case-insensitively by activity conditions. */
-  name: string;
-  /** Optional emoji for the UI. */
-  icon?: string;
 }
 
 export const DEFAULT_ROUTINE_COOLDOWN_MINUTES = 30;
@@ -385,14 +364,13 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
         return { valid: false, error: `Action "${step.actionId}" params must be a plain object.` };
       }
     }
-    // Something has to be able to fire them: either an explicit end
-    // trigger, or the activity this routine names, whose ending is the
-    // default. Without either, the actions could never run.
-    if (routine.stopActions.length > 0 && !routine.stopTrigger && !routine.activity?.name) {
+    // Something has to be able to fire them. Activities are their own
+    // thing now, so there is no implicit "ends when my activity ends" —
+    // an end trigger is what makes these actions reachable.
+    if (routine.stopActions.length > 0 && !routine.stopTrigger) {
       return {
         valid: false,
-        error:
-          "End actions need something to run them: either an end trigger, or this routine saying what it means you're doing.",
+        error: "End actions need an end trigger — without one, nothing could ever run them.",
       };
     }
   }
@@ -422,27 +400,6 @@ export function validateRoutine(routine: Routine, knownActionIds: string[]): Rou
 
   if (routine.stopAutoRun !== undefined && typeof routine.stopAutoRun !== "boolean") {
     return { valid: false, error: "stopAutoRun must be a boolean." };
-  }
-
-  if (routine.activity !== undefined) {
-    if (
-      typeof routine.activity !== "object" ||
-      routine.activity === null ||
-      typeof routine.activity.name !== "string" ||
-      routine.activity.name.trim().length === 0
-    ) {
-      return { valid: false, error: "A routine's activity needs a name." };
-    }
-    if (routine.activity.icon !== undefined && typeof routine.activity.icon !== "string") {
-      return { valid: false, error: "A routine's activity icon must be a string." };
-    }
-    if (routine.trigger?.type === "timerCompleted") {
-      return {
-        valid: false,
-        error:
-          "A timer-completed trigger is a moment, not something you spend time doing — it can't define an activity.",
-      };
-    }
   }
 
   if (routine.description !== undefined && typeof routine.description !== "string") {
@@ -669,18 +626,13 @@ export interface RoutineStateStore {
 export const MAX_ROUTINE_HISTORY_ENTRIES = 200;
 
 /**
- * What actually ends a routine: its own end trigger, or — when it has
- * none — the ending of the activity it names.
+ * What ends this routine, or null when nothing does.
  *
- * Keeping the fallback here rather than writing it into saved routines
- * means an existing routine's end half keeps working untouched, and a
- * routine that later renames its activity doesn't need its end trigger
- * updated to match.
+ * A thin accessor rather than a plain field read: the end half used to
+ * have an implicit trigger (the activity the routine declared, before
+ * activities became their own thing), and callers should keep asking the
+ * question rather than assuming the answer is always stored.
  */
 export function effectiveStopTrigger(routine: Routine): TriggerConfig | null {
-  if (routine.stopTrigger) return routine.stopTrigger;
-  if (routine.activity?.name) {
-    return { type: "activityEnded", activity: routine.activity.name };
-  }
-  return null;
+  return routine.stopTrigger ?? null;
 }

@@ -394,7 +394,6 @@ interface Routine {
   description?: string;
   conditionLogic?: "all" | "any";
   sessionRestriction?: "none" | "oncePerSession";
-  activity?: { name: string; icon?: string };
   stopActions?: RoutineActionStep[];
   stopTrigger?: TriggerConfig;
   stopConditions?: RoutineCondition[];
@@ -1657,7 +1656,7 @@ async function initRoutinesSettings(): Promise<void> {
     if (trigger?.type === "activityEnded") {
       fillActivityOptions(stopActivitySelect, trigger.activity, "Any activity");
     } else {
-      fillActivityOptions(stopActivitySelect, activityNameInput.value.trim(), "Any activity");
+      fillActivityOptions(stopActivitySelect, "", "Any activity");
     }
     if (trigger?.type === "timerCompleted") set("routineStopTimerType", trigger.timerType);
     if (trigger?.type === "applicationOpened") set("routineStopAppName", trigger.application);
@@ -1884,8 +1883,6 @@ async function initRoutinesSettings(): Promise<void> {
     routineEnabledCheckbox.checked = true; // a routine you just created is meant to run
     oncePerSessionCheckbox.checked = false;
     descriptionInput.value = "";
-    activityNameInput.value = "";
-    activityIconInput.value = "";
     conditionLogicSelect.value = "all";
     pendingConditions = [];
     renderPendingConditions();
@@ -1920,6 +1917,10 @@ async function initRoutinesSettings(): Promise<void> {
         routine.trigger.type === "activityEnded" ? routine.trigger.activity : "",
         "Any activity"
       );
+      // The end half has its own picker over the same list, and its
+      // selection was made before the list arrived.
+      fillActivityOptions(stopActivitySelect, stopActivitySelect.value, "Any activity");
+      renderStopConditions();
       renderPendingConditions();
     });
     showEditView();
@@ -1940,8 +1941,6 @@ async function initRoutinesSettings(): Promise<void> {
     routineEnabledCheckbox.checked = routine.enabled;
     oncePerSessionCheckbox.checked = (routine.sessionRestriction ?? "none") === "oncePerSession";
     descriptionInput.value = routine.description ?? "";
-    activityNameInput.value = routine.activity?.name ?? "";
-    activityIconInput.value = routine.activity?.icon ?? "";
     conditionLogicSelect.value = routine.conditionLogic ?? "all";
     // Everything except the "Skip if already active" switch, which owns
     // that one condition — see buildConditionsFromForm. Deep-copied so
@@ -2046,16 +2045,6 @@ async function initRoutinesSettings(): Promise<void> {
 
     const names = [...knownActivities];
 
-    // The activity being typed into THIS form counts, even though it
-    // hasn't been saved yet. Otherwise naming a routine's activity and
-    // then trying to reference it in the same routine offers nothing —
-    // which is exactly what someone does when setting both halves up at
-    // once.
-    const draft = activityNameInput.value.trim();
-    if (draft && !names.some((n) => n.toLowerCase() === draft.toLowerCase())) {
-      names.push(draft);
-    }
-
     if (selected && !names.some((n) => n.toLowerCase() === selected.toLowerCase())) {
       names.push(selected);
     }
@@ -2103,8 +2092,6 @@ async function initRoutinesSettings(): Promise<void> {
   const conditionTypeSelect = document.getElementById("routineConditionTypeSelect") as HTMLSelectElement;
   const addConditionBtn = document.getElementById("routineAddConditionBtn") as HTMLButtonElement;
   const descriptionInput = document.getElementById("routineDescription") as HTMLInputElement;
-  const activityNameInput = document.getElementById("routineActivityName") as HTMLInputElement;
-  const activityIconInput = document.getElementById("routineActivityIcon") as HTMLInputElement;
   const oncePerSessionCheckbox = document.getElementById("routineOncePerSession") as HTMLInputElement;
   const routineEnabledCheckbox = document.getElementById("routineEnabled") as HTMLInputElement;
 
@@ -2275,16 +2262,6 @@ async function initRoutinesSettings(): Promise<void> {
   });
   stopActivitySelect.addEventListener("change", () => syncStopSectionAvailability());
 
-  // The activity being typed becomes selectable immediately, and unlocks
-  // the end section — otherwise naming a routine's activity and then
-  // referencing it in the same routine offers nothing, which is exactly
-  // what you do when setting both halves up at once.
-  activityNameInput.addEventListener("input", () => {
-    fillActivityOptions(stopActivitySelect, stopActivitySelect.value, "Any activity");
-    renderStopConditions();
-    syncStopSectionAvailability();
-  });
-
   addStopConditionBtn.addEventListener("click", () => {
     const condition = newCondition(stopConditionTypeSelect.value);
     if (condition) pendingStopConditions.push(condition);
@@ -2355,9 +2332,6 @@ async function initRoutinesSettings(): Promise<void> {
 
     if (routine.stopActions?.length) {
       parts.push(`${routine.stopActions.length} on end`);
-    }
-    if (routine.activity?.name) {
-      parts.push(`means ${routine.activity.icon ? routine.activity.icon + " " : ""}${routine.activity.name}`);
     }
     if (routine.cooldownMinutes > 0) parts.push(`${routine.cooldownMinutes} min cooldown`);
     if ((routine.sessionRestriction ?? "none") === "oncePerSession") parts.push("once per session");
@@ -2718,12 +2692,6 @@ async function initRoutinesSettings(): Promise<void> {
     // buildTriggerFromForm.
     const editingTrigger = editingRoutineId ? (editedRoutineTrigger ?? undefined) : undefined;
     const trigger = buildTriggerFromForm(editingTrigger);
-    // Empty name means the routine says nothing about activity, which is
-    // the default and what every routine did before this existed.
-    const activityName = activityNameInput.value.trim();
-    const activity = activityName
-      ? { name: activityName, icon: activityIconInput.value.trim() || undefined }
-      : undefined;
     const title = suggestionTitleInput.value.trim();
     const message = suggestionMessageInput.value.trim();
     const cooldownMinutes = Number(cooldownInput.value) || 0;
@@ -2792,7 +2760,6 @@ async function initRoutinesSettings(): Promise<void> {
           conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
           sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
           description: descriptionInput.value.trim() || undefined,
-          activity,
           autoRun: autoRunCheckbox.checked,
         };
         updatedRoutines = current.routines.map((r) => (r.id === editingRoutineId ? updated : r));
@@ -2811,7 +2778,6 @@ async function initRoutinesSettings(): Promise<void> {
           conditionLogic: conditionLogicSelect.value === "any" ? "any" : "all",
           sessionRestriction: oncePerSessionCheckbox.checked ? "oncePerSession" : "none",
           description: descriptionInput.value.trim() || undefined,
-          activity,
           suggestion: { title, message, primaryLabel: "Yes", secondaryLabel: "Not now" },
           actions: pendingActions,
           cooldownMinutes,
@@ -2854,7 +2820,9 @@ async function initRoutinesSettings(): Promise<void> {
   newRoutineBtn.addEventListener("click", () => {
     void refreshKnownActivities().then(() => {
       fillActivityOptions(activityEndedSelect, "", "Any activity");
+      fillActivityOptions(stopActivitySelect, "", "Any activity");
       renderPendingConditions();
+      renderStopConditions();
     });
     resetForm();
     showEditView();
@@ -3801,6 +3769,52 @@ async function initActivitySettings(): Promise<void> {
   const priorityInput = document.getElementById("activityMappingPriority") as HTMLInputElement;
   const graceInput = document.getElementById("activityGraceMinutes") as HTMLInputElement;
   const addBtn = document.getElementById("addActivityMappingBtn") as HTMLButtonElement;
+  const cancelEditBtn = document.getElementById("cancelActivityMappingEditBtn") as HTMLButtonElement;
+  const errorEl = document.getElementById("activityMappingError") as HTMLElement;
+
+  /** The activity being edited, or null when the form is adding a new one. */
+  let editingMappingId: string | null = null;
+
+  function showError(message: string): void {
+    // Not alert(): a modal dialog in Electron takes keyboard focus away
+    // from the form behind it, and the form is what needs fixing.
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  }
+
+  function clearError(): void {
+    errorEl.hidden = true;
+  }
+
+  function resetForm(): void {
+    editingMappingId = null;
+    nameInput.value = "";
+    iconInput.value = "";
+    valueInput.value = "";
+    priorityInput.value = "0";
+    sourceSelect.value = "application";
+    addBtn.textContent = "Add activity";
+    cancelEditBtn.hidden = true;
+    clearError();
+  }
+
+  /**
+   * Loads an existing activity back into the same fields that create one.
+   * One form for both, rather than a second editing surface to keep in
+   * step with the first.
+   */
+  function startEditing(mapping: ActivityMapping): void {
+    editingMappingId = mapping.id;
+    nameInput.value = mapping.activity;
+    iconInput.value = mapping.icon ?? "";
+    sourceSelect.value = mapping.source;
+    valueInput.value = mapping.value;
+    priorityInput.value = String(mapping.priority);
+    addBtn.textContent = "Update activity";
+    cancelEditBtn.hidden = false;
+    clearError();
+    nameInput.focus();
+  }
 
   const SOURCE_LABELS: Record<string, string> = {
     application: "App",
@@ -3852,10 +3866,19 @@ async function initActivitySettings(): Promise<void> {
       toggle.appendChild(toggleText);
       actions.appendChild(toggle);
 
+      const edit = document.createElement("button");
+      edit.className = "calendar-feed-remove";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => startEditing(m));
+      actions.appendChild(edit);
+
       const remove = document.createElement("button");
       remove.className = "calendar-feed-remove";
       remove.textContent = "Remove";
       remove.addEventListener("click", async () => {
+        // Editing the very row being removed would leave the form
+        // pointing at something that no longer exists.
+        if (editingMappingId === m.id) resetForm();
         const updated = settings.mappings.filter((x) => x.id !== m.id);
         render(await window.nimbus.updateActivitySettings({ mappings: updated }));
       });
@@ -3880,18 +3903,24 @@ async function initActivitySettings(): Promise<void> {
       render(await window.nimbus.updateActivitySettings({ graceMinutes: minutes }));
     });
 
+    cancelEditBtn.addEventListener("click", () => resetForm());
+
     addBtn.addEventListener("click", async () => {
       const activity = nameInput.value.trim();
       const value = valueInput.value.trim();
       if (!activity || !value) {
-        alert("Give the activity a name and something to match against.");
+        showError("Give the activity a name and something to match against.");
         return;
       }
+      clearError();
 
       const current = await window.nimbus.getActivitySettings();
+      const existing = current.mappings.find((m) => m.id === editingMappingId);
       const mapping: ActivityMapping = {
-        id: `activity-${Date.now()}`,
-        enabled: true,
+        id: existing?.id ?? `activity-${Date.now()}`,
+        // Editing an activity shouldn't silently switch a disabled one
+        // back on; that is what the row's own toggle is for.
+        enabled: existing?.enabled ?? true,
         activity,
         icon: iconInput.value.trim() || undefined,
         source: sourceSelect.value as ActivityMapping["source"],
@@ -3903,19 +3932,17 @@ async function initActivitySettings(): Promise<void> {
         priority: Number(priorityInput.value) || 0,
       };
 
+      const mappings = existing
+        ? current.mappings.map((m) => (m.id === existing.id ? mapping : m))
+        : [...current.mappings, mapping];
+
       try {
-        const saved = await window.nimbus.updateActivitySettings({
-          mappings: [...current.mappings, mapping],
-        });
-        render(saved);
-        nameInput.value = "";
-        iconInput.value = "";
-        valueInput.value = "";
-        priorityInput.value = "0";
+        render(await window.nimbus.updateActivitySettings({ mappings }));
+        resetForm();
       } catch (err) {
         // The main process validates before saving; show why rather than
         // failing silently.
-        alert(`Couldn't save that mapping: ${String(err)}`);
+        showError(`Couldn't save that activity: ${String(err)}`);
       }
     });
   } catch (err) {

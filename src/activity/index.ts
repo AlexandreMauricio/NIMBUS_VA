@@ -1,4 +1,4 @@
 export { ActivityService } from "./activityService";
 export { detectActivity, anchorProcessFor } from "./activityDetector";
-export { mappingsFromRoutines, knownActivityNames } from "./routineMappings";
+export { knownActivityNames } from "./knownActivities";
 export * from "./types";

@@ -355,23 +355,18 @@
 
             <div id="activitiesPane" hidden>
               <p class="setting-note">
-                What NIMBUS takes each app, site or folder to mean you're doing. Most activities are better
-                defined on the routine itself — open a routine and fill in "This means I'm doing", and its own
-                trigger becomes the mapping. The ones here are for activities you want tracked but have no
-                routine for, like seeing time spent gaming.
+                What NIMBUS takes each app, site or folder to mean you're doing. Home shows the current one
+                and how long it's been going, and routines can start or end on it. Recognising an activity
+                never does anything on its own — it's context, not a decision.
               </p>
 
               <label class="setting-row">
                 <span>
-                  <span class="setting-title">Track activities without a routine</span>
+                  <span class="setting-title">Track what I'm doing</span>
                   <span class="setting-desc">
-                    The usual way to tell NIMBUS what you're doing is on the routine itself — open a routine
-                    and fill in "This means I'm doing", and its own trigger becomes the mapping, so an app or
-                    site is configured once. The mappings here are for activities you want tracked but have no
-                    routine for, like seeing time spent gaming. NIMBUS only ever observes: recognising an
-                    activity never starts or opens anything on its own. Uses the same app/window-name check
-                    Routines already use; nothing extra is collected, and nothing you type or read is
-                    recorded.
+                    Uses the same app and window-name check Routines already use; nothing extra is collected,
+                    and nothing you type or read is recorded. Off means the activities below are kept but
+                    nothing is detected or timed.
                   </span>
                 </span>
                 <input type="checkbox" id="activityEnabled" />
@@ -380,7 +375,7 @@
               <div class="manual-location-fields">
                 <div id="activityMappingList" class="calendar-feed-list"></div>
                 <p class="feed-empty" id="activityMappingEmpty">
-                  No standalone mappings — routines that declare an activity work without one.
+                  No activities yet. Add one below to have NIMBUS recognise and time it.
                 </p>
 
                 <div class="field-grid">
@@ -428,7 +423,11 @@
                     <input class="input" type="number" id="activityGraceMinutes" min="0" value="5" />
                   </div>
                 </div>
-                <button class="btn btn-secondary" id="addActivityMappingBtn">Add mapping</button>
+                <p class="form-error" id="activityMappingError" hidden></p>
+                <div class="action-picker-row">
+                  <button class="btn btn-secondary" id="addActivityMappingBtn">Add activity</button>
+                  <button class="btn btn-ghost" id="cancelActivityMappingEditBtn" hidden>Cancel</button>
+                </div>
                 <p class="setting-note">
                   When two mappings both match, the higher priority wins — that's how "Chrome is Browsing, but
                   Chrome on my course site is Study" works. The grace period is how long an activity survives
@@ -494,28 +493,6 @@
                   <input class="input" type="number" id="routineCooldown" min="0" value="30" />
                 </div>
               </div>
-
-              <div class="field-grid">
-                <div class="field">
-                  <label for="routineActivityName">This means I'm doing (optional)</label>
-                  <input
-                    class="input"
-                    type="text"
-                    id="routineActivityName"
-                    placeholder="e.g. Study — leave empty for none"
-                  />
-                </div>
-                <div class="field field-narrow">
-                  <label for="routineActivityIcon">Icon</label>
-                  <input class="input" type="text" id="routineActivityIcon" placeholder="📚" maxlength="4" />
-                </div>
-              </div>
-              <p class="setting-note">
-                Reuses this routine's own trigger to tell NIMBUS what you're doing, so the app or site is
-                configured once. It doesn't change what the routine does — it still asks before acting. Home
-                then shows the activity and how long it's been going, and other routines can use it as a
-                condition.
-              </p>
 
               <div class="field">
                 <label for="routineDescription">Description (optional)</label>

@@ -1,7 +1,7 @@
 # Activity & Sessions
 
 NIMBUS knows what happened — "SkillCert was opened". Activity is the
-layer that says what that *means* and how long it has been going on:
+layer that says what that _means_ and how long it has been going on:
 "Study, for 47 minutes."
 
 ```
@@ -22,31 +22,28 @@ condition, which produces a Suggestion the user accepts:
 Context → Event → Activity → Routine evaluation → Suggestion → Action
 ```
 
-## Two ways to say what something means
+## Where activities are defined
 
-**On the routine (the usual way).** A routine that fires when a study
-site opens has already named that site. Fill in its **"This means I'm
-doing"** field and its own trigger becomes the mapping — the app or
-website is configured once, and changing the trigger moves the mapping
-with it, because the mapping is derived rather than stored as a second
-copy. Setting it is itself the opt-in; there is no separate switch to
-remember. It does not change what the routine does: activity is context,
-and the routine still asks before acting.
+**Routines → Activities.** One place, one list. An activity says "when
+this is open, I am doing that", and NIMBUS times it. Editing one edits it
+everywhere it is referenced, because references are by name and there is
+only ever one definition.
 
-A routine with a `timerCompleted` trigger cannot declare an activity — a
-timer finishing is a moment, not something you spend time doing.
-Disabling a routine stops it declaring anything, since a disabled
-routine is off in every sense.
+Activities were briefly declared on the routine that implied them (a
+`"This means I'm doing"` field, whose trigger doubled as the mapping).
+That saved retyping an application or website, but it meant an activity
+had no home of its own: it could not be edited without opening whichever
+routine happened to own it, and a routine that merely _referred_ to an
+activity looked no different from one that defined it. Settings files
+from that period are migrated on load — see
+`src/settings/activityMigration.ts` — so each routine-declared activity
+becomes a standalone one carrying the trigger it had.
 
-**Standalone mappings (Settings → Activity).** For activities you want
-tracked but have no routine for — seeing time spent gaming, say. Same
-shape, just not attached to anything.
-
-Both feed the same detector, and precedence works across both: a routine
-trigger is usually the specific rule ("that one study site") while a
-standalone mapping is often the broad one ("any browser window"), and
-the specificity tie-break already prefers the longer pattern. An explicit
-priority still has the final say.
+Routines relate to activities in one direction only, as readers: a
+routine can start or end on one (`activityEnded`) and test one
+(`activityIs`, `activityDuration`). Recognising an activity still does
+nothing on its own — activity is context, and the routine still asks
+before acting.
 
 ## Mappings
 
@@ -54,18 +51,18 @@ NIMBUS has no built-in belief that any application means anything.
 "Study" is a string you typed, not a case in a switch. A mapping says
 "when this is open, I am doing that":
 
-| Field | Meaning |
-| --- | --- |
-| `activity` | What to call it — "Study", "Gaming", "Coding". Free text. |
-| `icon` | Optional emoji, shown beside it. Never matched on. |
-| `source` | `application`, `website` (window title) or `folder`. |
-| `value` | What to match. Comma-separated for alternatives, exactly like a Routine trigger — they share the implementation (`common/patternMatch.ts`). |
-| `priority` | Higher wins when several mappings match at once. |
+| Field      | Meaning                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `activity` | What to call it — "Study", "Gaming", "Coding". Free text.                                                                                   |
+| `icon`     | Optional emoji, shown beside it. Never matched on.                                                                                          |
+| `source`   | `application`, `website` (window title) or `folder`.                                                                                        |
+| `value`    | What to match. Comma-separated for alternatives, exactly like a Routine trigger — they share the implementation (`common/patternMatch.ts`). |
+| `priority` | Higher wins when several mappings match at once.                                                                                            |
 
-Standalone mappings live under **Settings → Activity**, off by default:
-NIMBUS should not be interpreting what you are doing until you ask it to.
-A routine that declares an activity needs no such switch — declaring it
-is the request.
+Activities live under **Routines → Activities**, off by default: NIMBUS
+should not be interpreting what you are doing until you ask it to. The
+switch is kept separately from the list, so turning detection off keeps
+the activities you defined.
 
 ### Precedence
 
@@ -94,12 +91,12 @@ Three rules make sessions useful rather than noise:
 
 **Anchor process.** Each session is anchored to the executable whose
 running-or-not decides whether it is still alive — the app itself, or
-the *browser* for a website session. A folder session has no anchor and
+the _browser_ for a website session. A folder session has no anchor and
 ends only when another activity begins.
 
 **Websites are the exception to rule 2.** NIMBUS cannot see tabs:
 closing the study tab or navigating away simply makes that browser
-report a different window title. So for a website session, its *own*
+report a different window title. So for a website session, its _own_
 browser reporting a title that no longer matches counts as the site
 going away, and starts the grace period. Waiting for the whole browser
 to close would leave a study session running all day. Another browser
@@ -115,9 +112,8 @@ so it needs no timer and gives the same answer whenever it is asked.
 
 **Duration** is always computed from `startedAt`, never accumulated, so
 it cannot drift. A session that ends after its anchor closed is dated
-from the *close*, not from when NIMBUS noticed — so closing a study app
-and starting a game two minutes later records 30 minutes of study, not
-32.
+from the _close_, not from when NIMBUS noticed — so closing a study app
+and starting a game two minutes later records 30 minutes of study, not 32.
 
 ## Restarts
 
@@ -129,7 +125,7 @@ history. Sessions are ended at shutdown for the same reason.
 
 ## Using activity in routines
 
-### Reacting to an activity *ending*
+### Reacting to an activity _ending_
 
 An `activityEnded` **trigger** fires when a session finishes — the one
 thing no other event can say, since every other event announces
@@ -139,13 +135,13 @@ not fire because a tab was open for ninety seconds.
 
 This is how "stop the Pomodoro when I stop studying" is expressed:
 
-| | |
-| --- | --- |
-| Trigger | Activity ended → `Study`, ignore under 20 min |
-| Action | Stop the timer (`timer.stop`) |
-| Run automatically | on |
+|                   |                                               |
+| ----------------- | --------------------------------------------- |
+| Trigger           | Activity ended → `Study`, ignore under 20 min |
+| Action            | Stop the timer (`timer.stop`)                 |
+| Run automatically | on                                            |
 
-Note what is *not* in that routine: anything about music. Stopping the
+Note what is _not_ in that routine: anything about music. Stopping the
 timer and stopping playback are separate actions, so leaving music
 playing is simply the result of not adding that step — you may well have
 moved on to listening to something else.
@@ -154,9 +150,9 @@ moved on to listening to something else.
 
 Two conditions:
 
-| Condition | Meaning |
-| --- | --- |
-| `activityIs` | The current activity is this one (case-insensitive). |
+| Condition          | Meaning                                                 |
+| ------------------ | ------------------------------------------------------- |
+| `activityIs`       | The current activity is this one (case-insensitive).    |
 | `activityDuration` | The current activity has been going at least N minutes. |
 
 Together they express "you have been studying for 90 minutes — break?".
@@ -172,7 +168,7 @@ process names, known-browser window titles and open folder paths (see
 [docs/routines.md](routines.md) for exactly what that collects, and what
 it does not).
 
-What gets *stored* is narrower still. A session records the activity
+What gets _stored_ is narrower still. A session records the activity
 name, the **configured pattern that matched**, and timestamps — never
 the raw observed value. For an application those are much the same; for
 a website they are very much not, because a window title carries
@@ -189,14 +185,14 @@ the other machine state (`routine-state.json`), not in `settings.json`.
 
 ## Where it lives
 
-| File | Role |
-| --- | --- |
-| `src/activity/types.ts` | The model, and mapping validation |
-| `src/activity/activityDetector.ts` | Pure event → activity, including precedence |
-| `src/activity/activityService.ts` | Session lifecycle; subscribes to the shared event bus |
-| `src/main/activityStateStore.ts` | Persistence (Windows-specific path, so under `main/`) |
-| `src/activity/routineMappings.ts` | Derives mappings from routines that declare an activity |
-| `src/common/patternMatch.ts` | Matching shared with Routine triggers |
+| File                               | Role                                                    |
+| ---------------------------------- | ------------------------------------------------------- |
+| `src/activity/types.ts`            | The model, and mapping validation                       |
+| `src/activity/activityDetector.ts` | Pure event → activity, including precedence             |
+| `src/activity/activityService.ts`  | Session lifecycle; subscribes to the shared event bus   |
+| `src/main/activityStateStore.ts`   | Persistence (Windows-specific path, so under `main/`)   |
+| `src/activity/routineMappings.ts`  | Derives mappings from routines that declare an activity |
+| `src/common/patternMatch.ts`       | Matching shared with Routine triggers                   |
 
 ---
 

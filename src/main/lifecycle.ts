@@ -23,13 +23,7 @@ import { RoutineService, validateRoutine, Routine } from "../routines";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
-import {
-  ActivityService,
-  ActivityMapping,
-  validateActivityMapping,
-  mappingsFromRoutines,
-  knownActivityNames,
-} from "../activity";
+import { ActivityService, ActivityMapping, validateActivityMapping, knownActivityNames } from "../activity";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
 import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
@@ -447,7 +441,7 @@ function registerIpcHandlers(): void {
   // Every activity name in play, so the editor can offer them as a
   // choice instead of asking the user to retype one exactly.
   ipcMain.handle("nimbus:get-known-activities", () =>
-    knownActivityNames(settings.userPreferences.routines.routines, settings.userPreferences.activity.mappings)
+    knownActivityNames(settings.userPreferences.activity.mappings)
   );
   ipcMain.handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
   ipcMain.handle(
@@ -703,25 +697,7 @@ export function startApp(): void {
   // Routine engine below reads it through a condition, which is the only
   // route from "what the user is doing" to anything happening.
   activityService = new ActivityService(
-    // Two sources of mappings, composed here so ActivityService itself
-    // stays unaware that routines exist. The routine-derived ones come
-    // first only for readability; precedence is decided by the detector,
-    // not by order.
-    () => {
-      const configured = settings.userPreferences.activity;
-      const fromRoutines = mappingsFromRoutines(settings.userPreferences.routines.routines);
-      return {
-        ...configured,
-        // Declaring "this routine means Study" IS the opt-in. Requiring a
-        // separate master switch on top would leave a routine's activity
-        // silently doing nothing — the same trap the routines switch
-        // already had to close for itself (see the save handler in
-        // renderer.ts). No new data is observed either way: these are the
-        // very events the routine already reacts to.
-        enabled: configured.enabled || fromRoutines.length > 0,
-        mappings: [...fromRoutines, ...configured.mappings],
-      };
-    },
+    () => settings.userPreferences.activity,
     contextEventBus,
     () => new Date(),
     new FileActivityStateStore()

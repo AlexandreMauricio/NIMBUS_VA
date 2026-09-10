@@ -4,11 +4,11 @@
 
 NIMBUS uses `MAJOR.MINOR.PATCH`:
 
-| Part | Bumped when |
-| --- | --- |
+| Part      | Bumped when                                                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | **MAJOR** | A full release of the app. Stays at **0** until NIMBUS is something you'd call finished — even though it's for your own use. |
-| **MINOR** | A big milestone. **Alexandre decides when one has been reached** — work accumulates as patches until he calls it. |
-| **PATCH** | Everything else — fixes, features, refactors, docs. |
+| **MINOR** | A big milestone. **Alexandre decides when one has been reached** — work accumulates as patches until he calls it.            |
+| **PATCH** | Everything else — fixes, features, refactors, docs.                                                                          |
 
 The version lives in `package.json` and is shown in the sidebar, so what
 you see running is what you can point at in the history. Each release is
@@ -19,6 +19,21 @@ Dates are the day the work landed.
 ---
 
 ## Unreleased
+
+- Activities have one home. They live under **Routines → Activities**,
+  where they can now be edited rather than only added and removed, and
+  the routine form's "This means I'm doing" field is gone — an activity
+  is no longer something a routine owns on the side. Existing settings
+  are migrated on load: each routine-declared activity becomes a
+  standalone one carrying the trigger it had, and a wind-down half that
+  relied on the implicit "ends when my activity ends" gets that written
+  down as a real end trigger.
+- The end trigger's activity can be picked freely. It no longer depends
+  on the routine naming an activity of its own, and "Any activity" means
+  any, rather than quietly meaning "mine".
+- The Activities form reports problems inline instead of through
+  `alert()`, which took keyboard focus away from the form it was asking
+  you to fix.
 
 - Briefing names the day of an upcoming event ("on Saturday") instead of
   calling everything that isn't tomorrow "soon".

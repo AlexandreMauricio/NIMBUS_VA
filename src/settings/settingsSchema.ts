@@ -1,3 +1,4 @@
+import { migrateRoutineActivities } from "./activityMigration";
 import { Routine } from "../routines/types";
 import { ActivityMapping, DEFAULT_ACTIVITY_GRACE_MINUTES } from "../activity/types";
 
@@ -263,6 +264,9 @@ export function isLegacyShape(parsed: any): boolean {
  */
 export function applyDefaults(parsed: any): NimbusSettings {
   const defaults = structuredClone(DEFAULT_SETTINGS);
+  // Before the merge, so a file written by a NIMBUS that kept activities
+  // on routines is read as though it had always kept them separately.
+  migrateRoutineActivities(parsed);
   return {
     windowsClient: {
       ...defaults.windowsClient,

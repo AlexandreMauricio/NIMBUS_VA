@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ActivityService } from "./activityService";
 import { ActivityMapping, ActivitySettings } from "./types";
 import { RoutineService } from "../routines/routineService";
-import { Routine } from "../routines/types";
+import { Routine, validateRoutine } from "../routines/types";
 import { ActionService } from "../actions/actionService";
 import { ActionDefinition, ActionProvider, ActionResult, ActionValidationResult } from "../actions/types";
 import { ContextEventBus } from "../events/eventBus";
@@ -490,11 +490,11 @@ test("without autoRun, an activity ending only suggests — it still asks", asyn
 
 // ------------------------- one routine, start and end (§ user's idea)
 
-/** A routine that starts with an activity and winds down when it ends. */
+/** A routine that starts on its trigger and winds down when Study ends. */
 function studyWithWindDown(overrides: Partial<Routine> = {}): Routine {
   return studyRoutine({
     id: "study",
-    activity: { name: "Study", icon: "📚" },
+    stopTrigger: { type: "activityEnded", activity: "Study" },
     actions: [{ actionId: "demo.playlist", params: {} }],
     stopActions: [{ actionId: "demo.timer", params: {} }],
     ...overrides,
@@ -775,23 +775,18 @@ test("end conditions honour their own ANY/ALL logic", async () => {
   assert.equal(provider.calls.includes("demo.timer"), true, "one holding is enough under ANY");
 });
 
-test("a routine with no end trigger still winds down on its own activity ending", async () => {
-  // The default, and what every routine written before end triggers did.
+test("wind-down actions without an end trigger are rejected, not silently dead", () => {
+  // They used to have an implicit trigger -- the activity the routine
+  // itself declared. Activities are their own thing now, so an end half
+  // with nothing to fire it is a configuration error worth naming rather
+  // than actions that quietly never run.
   const r = studyWithWindDown({ cooldownMinutes: 0 });
   delete (r as Partial<Routine>).stopTrigger;
-  const { routineService, provider, bus, advance } = setup(
-    [r],
-    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
-  );
 
-  bus.publish(appEvent("study.exe"));
-  await settle();
-  await routineService.acceptSuggestion(routineService.getActiveSuggestions()[0].id);
-  advance(30);
-  bus.publish(appEvent("game.exe"));
-  await settle();
+  const result = validateRoutine(r, ["demo.playlist", "demo.timer"]);
 
-  assert.equal(provider.calls.includes("demo.timer"), true);
+  assert.equal(result.valid, false);
+  assert.match(result.error ?? "", /end trigger/i);
 });
 
 test("a disabled routine never winds down", async () => {
