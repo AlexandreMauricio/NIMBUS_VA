@@ -21,6 +21,7 @@ export type ContextEventType =
   | "websiteOpened"
   | "folderOpened"
   | "timerCompleted"
+  | "activityEnded"
   // Reserved for future producers — not emitted by anything yet, but
   // included so the trigger/routine types this task builds don't need to
   // change shape when they are. See "Context events" in docs/context-system.md.
@@ -102,9 +103,28 @@ export interface TimerCompletedEvent extends ContextEventBase {
   timerType: string;
 }
 
+/**
+ * A period of a recognized activity finished — the user stopped doing
+ * the thing (see src/activity/).
+ *
+ * Published by ActivityService so Routines can react to an activity
+ * *ending*, which nothing else can express: every other event says
+ * something started. "When I stop studying, stop the focus timer" needs
+ * this. It carries no reason for the ending; a routine reacts to the
+ * fact, not the mechanism.
+ */
+export interface ActivityEndedEvent extends ContextEventBase {
+  type: "activityEnded";
+  /** The activity's name, as configured — e.g. "Study". */
+  activity: string;
+  /** How long it lasted, so a routine can tell a real session from a two-minute blip. */
+  durationMs: number;
+}
+
 export type ContextEvent =
   | ApplicationOpenedEvent
   | ApplicationClosedEvent
   | WebsiteOpenedEvent
   | FolderOpenedEvent
-  | TimerCompletedEvent;
+  | TimerCompletedEvent
+  | ActivityEndedEvent;

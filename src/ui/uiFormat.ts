@@ -17,8 +17,10 @@
 
 /** Mirrors the subset of the renderer's own types these helpers need, so this module stands alone. */
 export interface TriggerConfig {
-  type: "applicationOpened" | "websiteOpened" | "folderOpened";
+  type: "applicationOpened" | "websiteOpened" | "folderOpened" | "activityEnded";
   application?: string;
+  activity?: string;
+  minMinutes?: number;
   matchField?: string;
   pattern?: string;
   path?: string;
@@ -59,6 +61,10 @@ export function triggerSummary(trigger: TriggerConfig): string {
       return `Website ${trigger.matchField} contains: ${trigger.pattern}`;
     case "folderOpened":
       return `Folder path contains: ${trigger.path}`;
+    case "activityEnded": {
+      const what = trigger.activity ? `${trigger.activity} ends` : "any activity ends";
+      return trigger.minMinutes ? `When ${what} (after ${trigger.minMinutes} min)` : `When ${what}`;
+    }
   }
 }
 

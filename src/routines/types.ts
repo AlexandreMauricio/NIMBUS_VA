@@ -45,8 +45,25 @@ export interface TimerCompletedTriggerConfig {
   timerType: string;
 }
 
+/**
+ * Fires when a recognized activity finishes (see src/activity/).
+ * `activity`, when set, restricts it to that one; empty matches any
+ * activity ending. `minMinutes` ignores blips — a session shorter than
+ * it never fires the routine, so "when I finish studying" doesn't fire
+ * because a tab was open for ninety seconds.
+ */
+export interface ActivityEndedTriggerConfig {
+  type: "activityEnded";
+  activity: string;
+  minMinutes?: number;
+}
+
 export type TriggerConfig =
-  ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig | TimerCompletedTriggerConfig;
+  | ApplicationTriggerConfig
+  | WebsiteTriggerConfig
+  | FolderTriggerConfig
+  | TimerCompletedTriggerConfig
+  | ActivityEndedTriggerConfig;
 
 /**
  * A time-of-day window, in the user's local time. `startHour`/`endHour`
@@ -381,6 +398,19 @@ function validateTrigger(trigger: TriggerConfig): string | null {
     case "timerCompleted":
       if (typeof trigger.timerType !== "string") {
         return "Timer-completed trigger needs a timerType (may be empty for any type).";
+      }
+      return null;
+    case "activityEnded":
+      if (typeof trigger.activity !== "string") {
+        return "Activity-ended trigger needs an activity name (may be empty for any activity).";
+      }
+      if (
+        trigger.minMinutes !== undefined &&
+        (typeof trigger.minMinutes !== "number" ||
+          !Number.isFinite(trigger.minMinutes) ||
+          trigger.minMinutes < 0)
+      ) {
+        return "Activity-ended trigger minMinutes must be a non-negative number.";
       }
       return null;
     default:

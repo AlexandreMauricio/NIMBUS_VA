@@ -36,6 +36,18 @@ export function matchesTrigger(event: ContextEvent, trigger: TriggerConfig): boo
       if (event.type !== "timerCompleted") return false;
       return trigger.timerType.trim().length === 0 || event.timerType === trigger.timerType;
 
+    case "activityEnded": {
+      if (event.type !== "activityEnded") return false;
+      // Matched by name rather than pattern: an activity name is chosen
+      // from a short list the user wrote, not observed from the world.
+      const wanted = trigger.activity.trim();
+      if (wanted.length > 0 && wanted.toLowerCase() !== event.activity.trim().toLowerCase()) {
+        return false;
+      }
+      const minMs = (trigger.minMinutes ?? 0) * 60_000;
+      return event.durationMs >= minMs;
+    }
+
     default:
       return false;
   }

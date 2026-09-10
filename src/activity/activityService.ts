@@ -134,7 +134,27 @@ export class ActivityService {
     }
 
     const match = detectActivity(event, settings.mappings ?? []);
-    if (!match) return; // rule 2: says nothing about what the user is doing
+    if (!match) {
+      // Rule 2 with one exception. An unmapped *application* opening says
+      // nothing — alt-tabbing to a chat app is not "stopped studying".
+      // But a website session is defined by what its browser is showing,
+      // and NIMBUS cannot see tabs: closing the tab or navigating away
+      // just makes that browser report a different title. If the browser
+      // this session is anchored to is now showing something that
+      // doesn't match, the site is gone, and waiting for the whole
+      // browser to close would leave the session running all day.
+      //
+      // It starts the grace period rather than ending outright, so
+      // flicking to another tab and back continues the same session.
+      if (
+        event.type === "websiteOpened" &&
+        this.current?.source === "website" &&
+        this.current.anchorProcess === event.browserExecutable.toLowerCase()
+      ) {
+        this.beginGrace();
+      }
+      return;
+    }
 
     const at = this.now();
     this.resolveGrace();
@@ -187,7 +207,20 @@ export class ActivityService {
   private handleProcessClosed(executableName: string): void {
     if (!this.current) return;
     if (this.current.anchorProcess !== executableName.toLowerCase()) return;
-    if (this.anchorClosedAt) return;
+    this.beginGrace();
+  }
+
+  /**
+   * The thing that defined this activity is no longer visible — the app
+   * closed, or the browser moved off the site. Starts the countdown to
+   * the session ending, without ending it yet.
+   *
+   * Idempotent: a second signal while already counting down must not
+   * push the deadline back, or a browser cycling through unmatched tabs
+   * would keep a finished session alive indefinitely.
+   */
+  private beginGrace(): void {
+    if (!this.current || this.anchorClosedAt) return;
     this.anchorClosedAt = this.now();
     this.resolveGrace();
   }
@@ -220,11 +253,23 @@ export class ActivityService {
     if (this.history.length > MAX_ACTIVITY_SESSIONS) {
       this.history.length = MAX_ACTIVITY_SESSIONS;
     }
+    const durationMs = new Date(ended.endedAt!).getTime() - new Date(ended.startedAt).getTime();
     logger.info("Activity ended", {
       activity: ended.activity,
-      durationMinutes: Math.round(
-        (new Date(ended.endedAt!).getTime() - new Date(ended.startedAt).getTime()) / 60_000
-      ),
+      durationMinutes: Math.round(durationMs / 60_000),
+    });
+
+    // Announced so Routines can react to an activity finishing — the one
+    // thing no other event can express. Still only a *statement* that it
+    // happened: what to do about it stays a Routine's decision, and the
+    // user's to approve.
+    this.eventBus.publish({
+      id: randomUUID(),
+      type: "activityEnded",
+      occurredAt: ended.endedAt!,
+      source: "activityService",
+      activity: ended.activity,
+      durationMs,
     });
     this.current = null;
     this.anchorClosedAt = null;

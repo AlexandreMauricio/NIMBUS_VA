@@ -371,6 +371,7 @@
                     <option value="applicationOpened">Application opened</option>
                     <option value="websiteOpened">Website opened</option>
                     <option value="folderOpened">Folder opened</option>
+                    <option value="activityEnded">Activity ended</option>
                   </select>
                 </div>
               </div>
@@ -397,6 +398,14 @@
                     id="routineWebsitePattern"
                     placeholder="e.g. skillcert, nowuniversity"
                   />
+                </div>
+                <div id="routineTriggerFields-activityEnded" class="field" hidden>
+                  <label for="routineActivityEndedName"> Activity that ended — leave empty for any </label>
+                  <input class="input" type="text" id="routineActivityEndedName" placeholder="e.g. Study" />
+                </div>
+                <div id="routineTriggerFields-activityEndedMin" class="field field-narrow" hidden>
+                  <label for="routineActivityEndedMinutes">Ignore sessions shorter than (minutes)</label>
+                  <input class="input" type="number" id="routineActivityEndedMinutes" min="0" value="0" />
                 </div>
                 <div id="routineTriggerFields-folderOpened" class="field" hidden>
                   <label for="routineFolderPath">

@@ -2,7 +2,11 @@ import { ActionDefinition, ActionProvider, ActionResult, ActionValidationResult 
 import { TimerService, TimerPlanPhase } from "../../timers/timerService";
 import { TimerType } from "../../timers/types";
 
-export const TIMER_ACTIONS = { START: "timer.start", ADD_STUDY: "timer.addStudy" } as const;
+export const TIMER_ACTIONS = {
+  START: "timer.start",
+  ADD_STUDY: "timer.addStudy",
+  STOP: "timer.stop",
+} as const;
 
 const VALID_TIMER_TYPES: TimerType[] = ["focus", "pomodoro", "break", "custom"];
 const VALID_MODES = ["single", "pomodoro"] as const;
@@ -87,6 +91,16 @@ export class TimerActionProvider implements ActionProvider {
         affectsService: "timer",
       },
       {
+        id: TIMER_ACTIONS.STOP,
+        name: "Stop the timer",
+        description: "Stops the countdown that's running, including the rest of a Pomodoro plan.",
+        parameters: [],
+        readOnly: false,
+        changesExternalState: true,
+        requiresConfirmation: false,
+        affectsService: "timer",
+      },
+      {
         id: TIMER_ACTIONS.ADD_STUDY,
         name: "Add another study",
         description:
@@ -112,6 +126,8 @@ export class TimerActionProvider implements ActionProvider {
   }
 
   validate(actionId: string, params: Record<string, unknown>): ActionValidationResult {
+    if (actionId === TIMER_ACTIONS.STOP) return { valid: true };
+
     if (actionId === TIMER_ACTIONS.ADD_STUDY) {
       const count = params.count;
       if (count !== undefined && (typeof count !== "number" || !Number.isInteger(count) || count < 1)) {
@@ -154,8 +170,16 @@ export class TimerActionProvider implements ActionProvider {
 
   async execute(actionId: string, params: Record<string, unknown>): Promise<ActionResult> {
     const startedAt = this.now();
-    if (actionId !== TIMER_ACTIONS.START && actionId !== TIMER_ACTIONS.ADD_STUDY) {
+    if (
+      actionId !== TIMER_ACTIONS.START &&
+      actionId !== TIMER_ACTIONS.ADD_STUDY &&
+      actionId !== TIMER_ACTIONS.STOP
+    ) {
       return this.failure(actionId, startedAt, "That action isn't available.");
+    }
+
+    if (actionId === TIMER_ACTIONS.STOP) {
+      return this.stopTimer(actionId, startedAt);
     }
 
     if (actionId === TIMER_ACTIONS.ADD_STUDY) {
@@ -203,6 +227,31 @@ export class TimerActionProvider implements ActionProvider {
       status: "success",
       message: `Started a ${formatDuration(durationMinutes)} ${title.toLowerCase() === title ? title : title} timer.`,
       data: { timerId: state.id, title: state.title, type: state.type, durationMs: state.durationMs },
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+    };
+  }
+
+  /**
+   * Stops whatever countdown is running, and with it the rest of a
+   * Pomodoro plan — cancelling is deliberately the whole plan, not just
+   * the phase in progress (see TimerService.cancel).
+   *
+   * Succeeds quietly when nothing is running: a routine that stops the
+   * timer when an activity ends should not report a failure just because
+   * there was no timer to stop.
+   */
+  private stopTimer(actionId: string, startedAt: Date): ActionResult {
+    const current = this.timerService.getState();
+    if (current) this.timerService.cancel(current.id);
+
+    const finishedAt = this.now();
+    return {
+      actionId,
+      status: "success",
+      message: current ? `Stopped "${current.title}".` : "No timer was running.",
+      data: { stopped: current !== null, timerId: current?.id ?? null },
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),

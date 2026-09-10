@@ -327,7 +327,13 @@ interface FolderTriggerConfig {
   path: string;
   matchMode: StringMatchMode;
 }
-type TriggerConfig = ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig;
+interface ActivityEndedTriggerConfig {
+  type: "activityEnded";
+  activity: string;
+  minMinutes?: number;
+}
+type TriggerConfig =
+  ApplicationTriggerConfig | WebsiteTriggerConfig | FolderTriggerConfig | ActivityEndedTriggerConfig;
 
 /**
  * Mirrors src/routines/types.ts's RoutineCondition. Kept as one loose
@@ -1236,7 +1242,12 @@ function initNowPlayingCard(): void {
   window.addEventListener(NOW_PLAYING_REFRESH_EVENT, () => refreshUntilChanged());
 }
 
-const TRIGGER_TYPES: TriggerConfig["type"][] = ["applicationOpened", "websiteOpened", "folderOpened"];
+const TRIGGER_TYPES: TriggerConfig["type"][] = [
+  "applicationOpened",
+  "websiteOpened",
+  "folderOpened",
+  "activityEnded",
+];
 
 /**
  * Builds a trigger from the form.
@@ -1251,7 +1262,10 @@ const TRIGGER_TYPES: TriggerConfig["type"][] = ["applicationOpened", "websiteOpe
 function buildTriggerFromForm(existing?: TriggerConfig): TriggerConfig | null {
   const type = (document.getElementById("routineTriggerType") as HTMLSelectElement)
     .value as TriggerConfig["type"];
-  const matchMode: StringMatchMode = existing?.type === type ? existing.matchMode : "contains";
+  // "activityEnded" matches an activity by name rather than by pattern,
+  // so it has no match mode to carry over.
+  const matchMode: StringMatchMode =
+    existing && existing.type === type && existing.type !== "activityEnded" ? existing.matchMode : "contains";
 
   if (type === "applicationOpened") {
     const application = (document.getElementById("routineAppName") as HTMLInputElement).value.trim();
@@ -1262,6 +1276,21 @@ function buildTriggerFromForm(existing?: TriggerConfig): TriggerConfig | null {
     const matchField = existing?.type === "websiteOpened" ? existing.matchField : ("windowTitle" as const);
     return pattern ? { type, matchField, pattern, matchMode } : null;
   }
+  if (type === "activityEnded") {
+    // An empty activity name is meaningful here — it means "any activity
+    // ending" — so unlike the other triggers this one is never null for
+    // want of a value.
+    const activity = (document.getElementById("routineActivityEndedName") as HTMLInputElement).value.trim();
+    const minutes = Number(
+      (document.getElementById("routineActivityEndedMinutes") as HTMLInputElement).value
+    );
+    return {
+      type,
+      activity,
+      minMinutes: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined,
+    };
+  }
+
   const path = (document.getElementById("routineFolderPath") as HTMLInputElement).value.trim();
   return path ? { type: "folderOpened", path, matchMode } : null;
 }
@@ -1362,6 +1391,9 @@ async function initRoutinesSettings(): Promise<void> {
       const el = document.getElementById(`routineTriggerFields-${type}`) as HTMLElement;
       el.hidden = type !== triggerTypeSelect.value;
     }
+    // "Activity ended" is the one trigger with a second field of its own.
+    const minEl = document.getElementById("routineTriggerFields-activityEndedMin") as HTMLElement;
+    minEl.hidden = triggerTypeSelect.value !== "activityEnded";
   }
 
   function paramFieldId(name: string): string {
@@ -1644,6 +1676,8 @@ async function initRoutinesSettings(): Promise<void> {
     (document.getElementById("routineAppName") as HTMLInputElement).value = "";
     (document.getElementById("routineWebsitePattern") as HTMLInputElement).value = "";
     (document.getElementById("routineFolderPath") as HTMLInputElement).value = "";
+    (document.getElementById("routineActivityEndedName") as HTMLInputElement).value = "";
+    (document.getElementById("routineActivityEndedMinutes") as HTMLInputElement).value = "0";
     syncTriggerFieldsVisibility();
     suggestionTitleInput.value = "";
     suggestionMessageInput.value = "";
@@ -1712,6 +1746,13 @@ async function initRoutinesSettings(): Promise<void> {
     } else if (routine.trigger.type === "folderOpened") {
       triggerTypeSelect.value = "folderOpened";
       (document.getElementById("routineFolderPath") as HTMLInputElement).value = routine.trigger.path;
+    } else if (routine.trigger.type === "activityEnded") {
+      triggerTypeSelect.value = "activityEnded";
+      (document.getElementById("routineActivityEndedName") as HTMLInputElement).value =
+        routine.trigger.activity;
+      (document.getElementById("routineActivityEndedMinutes") as HTMLInputElement).value = String(
+        routine.trigger.minMinutes ?? 0
+      );
     }
     syncTriggerFieldsVisibility();
 

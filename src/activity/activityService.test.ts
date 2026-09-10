@@ -393,3 +393,90 @@ test("shutting down after the app closed ends the session at the close, not at s
     "not 33"
   );
 });
+
+// -------------------------------- website sessions and the browser tab
+
+test("navigating the browser away from the site starts the grace period", () => {
+  // NIMBUS cannot see tabs: closing one just makes the browser report a
+  // different title. Waiting for the whole browser to close would leave
+  // a study session running all day.
+  const { service, bus, advance } = setup(
+    settings({ mappings: [mapping({ source: "website", value: "myschool", matchMode: "contains" })] })
+  );
+
+  bus.publish(siteEvent("MySchool - Chrome"));
+  advance(30);
+  bus.publish(siteEvent("Something else entirely - Chrome"));
+  advance(6); // past the 5-minute grace
+
+  assert.equal(service.getCurrentActivity(), null);
+  const [session] = service.getRecentSessions();
+  assert.equal(
+    new Date(session.endedAt!).getTime() - new Date(session.startedAt).getTime(),
+    30 * 60_000,
+    "ends when the browser left the site"
+  );
+});
+
+test("flicking to another tab and back within the grace continues the session", () => {
+  const { service, bus, advance } = setup(
+    settings({ mappings: [mapping({ source: "website", value: "myschool", matchMode: "contains" })] })
+  );
+
+  bus.publish(siteEvent("MySchool - Chrome"));
+  const startedAt = service.getCurrentActivity()!.startedAt;
+  advance(20);
+  bus.publish(siteEvent("Docs - Chrome"));
+  advance(1);
+  bus.publish(siteEvent("MySchool - Chrome"));
+  advance(10);
+
+  const current = service.getCurrentActivity()!;
+  assert.equal(current.startedAt, startedAt, "same session");
+  assert.equal(current.durationMs, 31 * 60_000);
+  assert.equal(service.getRecentSessions().length, 1);
+});
+
+test("a browser cycling through unmatched tabs cannot keep a finished session alive", () => {
+  // Each unmatched title must not push the deadline back.
+  const { service, bus, advance } = setup(
+    settings({ mappings: [mapping({ source: "website", value: "myschool", matchMode: "contains" })] })
+  );
+
+  bus.publish(siteEvent("MySchool - Chrome"));
+  advance(10);
+  for (let i = 0; i < 10; i++) {
+    bus.publish(siteEvent(`Other page ${i} - Chrome`));
+    advance(1);
+  }
+
+  assert.equal(service.getCurrentActivity(), null, "the grace ran out despite the churn");
+});
+
+test("a different browser moving on does not touch the session", () => {
+  const { service, bus, advance } = setup(
+    settings({ mappings: [mapping({ source: "website", value: "myschool", matchMode: "contains" })] })
+  );
+
+  bus.publish(siteEvent("MySchool - Chrome"));
+  advance(10);
+  bus.publish({ ...siteEvent("Anything - Firefox"), browserExecutable: "firefox.exe" });
+  advance(10);
+
+  assert.equal(service.getCurrentActivity()?.activity, "Study");
+});
+
+test("an unmapped application still does not end a website session", () => {
+  // Rule 2 stands for applications — only the session's own browser
+  // moving away counts.
+  const { service, bus, advance } = setup(
+    settings({ mappings: [mapping({ source: "website", value: "myschool", matchMode: "contains" })] })
+  );
+
+  bus.publish(siteEvent("MySchool - Chrome"));
+  advance(10);
+  bus.publish(appEvent("chat.exe"));
+  advance(10);
+
+  assert.equal(service.getCurrentActivity()?.activity, "Study");
+});

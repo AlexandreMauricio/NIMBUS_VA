@@ -94,9 +94,17 @@ Three rules make sessions useful rather than noise:
 
 **Anchor process.** Each session is anchored to the executable whose
 running-or-not decides whether it is still alive — the app itself, or
-the *browser* for a website session (a tab closing is invisible to
-NIMBUS). A folder session has no anchor and ends only when another
-activity begins.
+the *browser* for a website session. A folder session has no anchor and
+ends only when another activity begins.
+
+**Websites are the exception to rule 2.** NIMBUS cannot see tabs:
+closing the study tab or navigating away simply makes that browser
+report a different window title. So for a website session, its *own*
+browser reporting a title that no longer matches counts as the site
+going away, and starts the grace period. Waiting for the whole browser
+to close would leave a study session running all day. Another browser
+doing the same is ignored, as is any unmapped application — rule 2
+stands everywhere else.
 
 **Grace period.** When the anchor closes, the session does not end
 immediately. Reopening within the grace period (default 5 minutes,
@@ -120,6 +128,29 @@ inventing that time would put fabricated durations into your own
 history. Sessions are ended at shutdown for the same reason.
 
 ## Using activity in routines
+
+### Reacting to an activity *ending*
+
+An `activityEnded` **trigger** fires when a session finishes — the one
+thing no other event can say, since every other event announces
+something starting. `activity` limits it to one activity (empty matches
+any), and `minMinutes` ignores blips, so "when I finish studying" does
+not fire because a tab was open for ninety seconds.
+
+This is how "stop the Pomodoro when I stop studying" is expressed:
+
+| | |
+| --- | --- |
+| Trigger | Activity ended → `Study`, ignore under 20 min |
+| Action | Stop the timer (`timer.stop`) |
+| Run automatically | on |
+
+Note what is *not* in that routine: anything about music. Stopping the
+timer and stopping playback are separate actions, so leaving music
+playing is simply the result of not adding that step — you may well have
+moved on to listening to something else.
+
+### Conditions
 
 Two conditions:
 

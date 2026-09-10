@@ -346,3 +346,144 @@ test("switching to a game ends the study session and starts a gaming one, routin
   const kinds = routineService.getHistory().map((h) => h.kind);
   assert.equal(kinds.filter((k) => k === "suggested").length, 1, "only the original suggestion");
 });
+
+// ------------------------------ reacting to an activity ENDING (§ user)
+
+test("an activityEnded routine stops the timer without touching music", async () => {
+  // The shape the user asked for: when studying stops, end the Pomodoro
+  // — but leave playback alone, since they may have moved on to other
+  // listening. Expressed entirely as configuration: one trigger, one
+  // action, and no mention of music anywhere.
+  const stopTimer = studyRoutine({
+    id: "wrap-up",
+    name: "Wrap up study",
+    trigger: { type: "activityEnded", activity: "Study" },
+    actions: [{ actionId: "demo.timer", params: {} }],
+    autoRun: true,
+    cooldownMinutes: 0,
+  });
+  const { provider, bus, advance } = setup(
+    [stopTimer],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  advance(60);
+  bus.publish(appEvent("game.exe")); // Study ends here
+  await settle();
+
+  assert.deepEqual(provider.calls, ["demo.timer"], "only the timer action ran");
+});
+
+test("an activityEnded trigger can be limited to one activity", async () => {
+  const r = studyRoutine({
+    id: "wrap-up",
+    trigger: { type: "activityEnded", activity: "Gaming" },
+    actions: [{ actionId: "demo.timer", params: {} }],
+    autoRun: true,
+    cooldownMinutes: 0,
+  });
+  const { provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  advance(60);
+  bus.publish(appEvent("game.exe")); // Study ended, not Gaming
+  await settle();
+
+  assert.deepEqual(provider.calls, [], "a different activity ending must not fire it");
+});
+
+test("an empty activity name matches any activity ending", async () => {
+  const r = studyRoutine({
+    id: "any",
+    trigger: { type: "activityEnded", activity: "" },
+    actions: [{ actionId: "demo.timer", params: {} }],
+    autoRun: true,
+    cooldownMinutes: 0,
+  });
+  const { provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  advance(60);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.deepEqual(provider.calls, ["demo.timer"]);
+});
+
+test("a blip shorter than minMinutes does not fire the routine", async () => {
+  // "When I finish studying" shouldn't fire because a tab was open for
+  // ninety seconds.
+  const r = studyRoutine({
+    id: "wrap-up",
+    trigger: { type: "activityEnded", activity: "Study", minMinutes: 20 },
+    actions: [{ actionId: "demo.timer", params: {} }],
+    autoRun: true,
+    cooldownMinutes: 0,
+  });
+  const { provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  advance(2);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.deepEqual(provider.calls, [], "two minutes is not a study session");
+});
+
+test("a real session past minMinutes does fire it", async () => {
+  const r = studyRoutine({
+    id: "wrap-up",
+    trigger: { type: "activityEnded", activity: "Study", minMinutes: 20 },
+    actions: [{ actionId: "demo.timer", params: {} }],
+    autoRun: true,
+    cooldownMinutes: 0,
+  });
+  const { provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  advance(45);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.deepEqual(provider.calls, ["demo.timer"]);
+});
+
+test("without autoRun, an activity ending only suggests — it still asks", async () => {
+  const r = studyRoutine({
+    id: "wrap-up",
+    trigger: { type: "activityEnded", activity: "Study" },
+    actions: [{ actionId: "demo.timer", params: {} }],
+    cooldownMinutes: 0,
+  });
+  const { routineService, provider, bus, advance } = setup(
+    [r],
+    activitySettings([mapping(), mapping({ id: "g", activity: "Gaming", value: "game.exe" })])
+  );
+
+  bus.publish(appEvent("study.exe"));
+  await settle();
+  advance(60);
+  bus.publish(appEvent("game.exe"));
+  await settle();
+
+  assert.equal(routineService.getActiveSuggestions().length, 1);
+  assert.deepEqual(provider.calls, []);
+});

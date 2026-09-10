@@ -108,12 +108,12 @@ test("listActions declares timer.start with no confirmation required", () => {
   assert.equal(start!.affectsService, "timer");
 });
 
-test("listActions also declares timer.addStudy, and nothing else", () => {
+test("listActions declares exactly start, addStudy and stop", () => {
   const ids = provider()
     .listActions()
     .map((a) => a.id)
     .sort();
-  assert.deepEqual(ids, [TIMER_ACTIONS.ADD_STUDY, TIMER_ACTIONS.START].sort());
+  assert.deepEqual(ids, [TIMER_ACTIONS.ADD_STUDY, TIMER_ACTIONS.START, TIMER_ACTIONS.STOP].sort());
 });
 
 test("validate accepts mode: pomodoro with no other params (all default)", () => {
@@ -331,4 +331,26 @@ test("a plain single timer can be extended into a two-study plan", async () => {
 
   assert.equal(result.status, "success");
   assert.equal(timerService.getState()!.title, "Focus 1 of 2");
+});
+
+test("stopping cancels the running timer and the rest of its plan", async () => {
+  const { provider, timerService } = pomodoroSetup();
+  await provider.execute(TIMER_ACTIONS.START, { mode: "pomodoro", cycles: 3 });
+
+  const result = await provider.execute(TIMER_ACTIONS.STOP, {});
+
+  assert.equal(result.status, "success");
+  assert.equal(timerService.getState(), null);
+  assert.equal(timerService.getPlan(), null, "the queued phases go too");
+});
+
+test("stopping when nothing is running succeeds quietly", async () => {
+  // A routine that stops the timer when an activity ends shouldn't
+  // report a failure just because there was no timer.
+  const { provider } = pomodoroSetup();
+
+  const result = await provider.execute(TIMER_ACTIONS.STOP, {});
+
+  assert.equal(result.status, "success");
+  assert.match(result.message!, /No timer was running/);
 });
