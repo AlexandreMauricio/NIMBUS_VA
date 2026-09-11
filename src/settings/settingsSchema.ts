@@ -2,6 +2,7 @@ import { migrateRoutineActivities } from "./activityMigration";
 import { Routine } from "../routines/types";
 import { ActivityMapping, DEFAULT_ACTIVITY_GRACE_MINUTES } from "../activity/types";
 import { StockPosition } from "../context/providers/stocks/types";
+import type { AttentionSettings } from "../attention/types";
 import type { DividendTaxSetting } from "../context/providers/stocks/dividends";
 import type { ClosedPosition } from "../context/providers/stocks/closed";
 import type { IrsSettings } from "../context/providers/stocks/irs";
@@ -191,6 +192,8 @@ export interface UserPreferences {
   routines: RoutineSettings;
   activity: ActivityPreferences;
   stocks: StockPreferences;
+  /** The Attention engine's two switches (see src/attention/). */
+  attention: AttentionSettings;
 }
 
 export interface NimbusSettings {
@@ -240,6 +243,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       mappings: [],
       graceMinutes: DEFAULT_ACTIVITY_GRACE_MINUTES,
     },
+    attention: { enabled: true, popups: true },
     stocks: {
       enabled: true,
       newsEnabled: true,
@@ -347,6 +351,10 @@ export function applyDefaults(parsed: any): NimbusSettings {
       activity: {
         ...defaults.userPreferences.activity,
         ...parsed.userPreferences?.activity,
+      },
+      attention: {
+        ...defaults.userPreferences.attention,
+        ...parsed.userPreferences?.attention,
       },
       stocks: {
         ...defaults.userPreferences.stocks,

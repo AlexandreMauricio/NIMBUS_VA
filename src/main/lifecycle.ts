@@ -43,6 +43,7 @@ import { SpotifyAuthManager } from "./spotify";
 import { BriefingService } from "../briefing";
 import { ContextEventBus } from "../events";
 import { RoutineService, validateRoutine, Routine } from "../routines";
+import { AttentionService, explainItem } from "../attention";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
@@ -67,6 +68,7 @@ let spotifyClient: SpotifyApiClient;
 let spotifyContextProvider: SpotifyContextProvider;
 const contextEventBus = new ContextEventBus();
 let routineService: RoutineService;
+let attentionService: AttentionService;
 let taskProvider: TaskProvider;
 let stockProvider: StockProvider;
 let activityMonitor: DesktopActivityMonitor | null = null;
@@ -727,19 +729,50 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:get-activity-snapshot", () => activityMonitor?.getLastSnapshot() ?? null);
 
   ipcMain.handle("nimbus:get-active-suggestions", () => routineService.getActiveSuggestions());
-  ipcMain.handle("nimbus:accept-suggestion", (_event, suggestionId: string) =>
-    routineService.acceptSuggestion(suggestionId)
-  );
-  ipcMain.handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
-    routineService.dismissSuggestion(suggestionId);
+  // One answer path for every suggestion. Attention's own are informational:
+  // answering them only tells Attention not to show them again — nothing
+  // runs. Every other suggestion is a routine's, answered by
+  // RoutineService exactly as before; Attention is then told it's resolved,
+  // so it leaves the popup queue.
+  ipcMain.handle("nimbus:accept-suggestion", async (_event, suggestionId: string) => {
+    if (attentionService.acknowledgeSuggestion(suggestionId)) return [];
+    const results = await routineService.acceptSuggestion(suggestionId);
+    attentionService.suggestionResolved(suggestionId, "accepted");
+    return results;
   });
+  ipcMain.handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
+    if (attentionService.dismissSuggestion(suggestionId)) return;
+    routineService.dismissSuggestion(suggestionId);
+    attentionService.suggestionResolved(suggestionId, "dismissed");
+  });
+  // The Attention debug view (Context tab): every current item, its score,
+  // decision and why. Read-only.
+  ipcMain.handle("nimbus:get-attention", () => attentionService.getDebugState());
+  ipcMain.handle(
+    "nimbus:update-attention-settings",
+    (_event, partial: { enabled?: unknown; popups?: unknown }) => {
+      const current = settings.userPreferences.attention;
+      settings.userPreferences.attention = {
+        enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
+        popups: typeof partial?.popups === "boolean" ? partial.popups : current.popups,
+      };
+      saveSettings(settings);
+      logger.info("Attention settings updated", { ...settings.userPreferences.attention });
+      void attentionService.tick();
+      return settings.userPreferences.attention;
+    }
+  );
 
   // The suggestion popup window's own small surface (src/main/suggestionWindow.ts,
   // src/preload/suggestionPreload.ts) — reuses the accept/dismiss handlers
   // above, just adds a way for that window to read what it should show
   // and to close itself.
   ipcMain.handle("nimbus:get-popup-suggestion", () => getCurrentPopupSuggestion());
-  ipcMain.handle("nimbus:close-suggestion-popup", () => closeSuggestionPopup());
+  ipcMain.handle("nimbus:close-suggestion-popup", () => {
+    closeSuggestionPopup();
+    // Whatever was waiting for the popup may be shown now.
+    attentionService?.popupClosed();
+  });
 
   // The timer popup window's surface (src/main/timerWindow.ts,
   // src/timers/). A generic timer engine — nothing here is Spotify- or
@@ -1033,6 +1066,35 @@ export function startApp(): void {
     () => activityService.getCurrentActivity()
   );
   routineService.start();
+
+  // The Attention & Priority engine (src/attention/) — decides what
+  // deserves attention: proactive items from Context and Activity, and the
+  // order routine suggestions reach the popup in. It has no Action service;
+  // what it surfaces goes through the same popup and feed as before.
+  attentionService = new AttentionService({
+    getSettings: () => settings.userPreferences.attention,
+    getSnapshot: () => contextService.getSnapshot(),
+    getActivity: () => activityService.getCurrentActivity(),
+    isTimerRunning: () => timerService.getState()?.status === "running",
+    presenter: {
+      showSuggestion: (suggestion) => showSuggestionPopup(suggestion),
+      postNotice: (item) =>
+        assistantBridge.publish({
+          id: randomUUID(),
+          type: "notification",
+          source: "attention",
+          createdAt: new Date().toISOString(),
+          title: item.title,
+          body: `${item.description} (${explainItem(item)})`,
+        }),
+      currentPopup: () => {
+        const current = getCurrentPopupSuggestion();
+        return current ? { suggestionId: current.id, expiresAt: current.expiresAt } : null;
+      },
+    },
+  });
+  attentionService.start();
+
   routineService.onSuggestion((suggestion) => {
     // Reuses the existing assistant-event seam (src/common/assistantEvents.ts,
     // src/main/assistantBridge.ts) rather than a second push channel —
@@ -1054,7 +1116,10 @@ export function startApp(): void {
     // real buttons, a per-action summary, NIMBUS branding — isn't
     // something the native toast API can render anyway). This is the
     // one popup implementation shared by every kind of suggestion.
-    showSuggestionPopup(suggestion);
+    //
+    // Attention decides when: at once, unless something more important
+    // holds the popup — then it waits instead of overwriting it.
+    attentionService.offerSuggestion(suggestion);
   });
   // A routine opted into `autoRun` skips the suggestion/popup step
   // entirely (see Routine.autoRun's doc comment) — this is the one
@@ -1147,6 +1212,7 @@ export function startApp(): void {
     // Ends the session in progress at shutdown rather than leaving it
     // open to be resumed with invented time on the next launch.
     activityService?.stop();
+    attentionService?.stop();
     if (resizeSaveTimer) {
       clearTimeout(resizeSaveTimer);
       resizeSaveTimer = null;

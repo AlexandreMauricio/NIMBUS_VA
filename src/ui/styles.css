@@ -2110,3 +2110,60 @@ button.btn {
   font-size: 12px;
   color: var(--color-neutral-400);
 }
+
+/* Attention debug view (Context tab). */
+.attention-header {
+  margin-top: var(--space-6, 32px);
+}
+
+.attention-items {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.attention-item {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.attention-item-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.attention-title {
+  font-weight: 600;
+}
+
+.attention-source {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-neutral-400);
+}
+
+.attention-line {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-neutral-400);
+}
+
+.attention-why {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.attention-why summary {
+  cursor: pointer;
+}
+
+.attention-why ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}

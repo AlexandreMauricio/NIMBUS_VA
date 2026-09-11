@@ -492,6 +492,8 @@ interface NimbusApi {
   getActiveSuggestions: () => Promise<AssistantEvent[]>;
   acceptSuggestion: (suggestionId: string) => Promise<ActionResult[]>;
   dismissSuggestion: (suggestionId: string) => Promise<void>;
+  getAttention: () => Promise<AttentionDebugView>;
+  updateAttentionSettings: (partial: { enabled?: boolean; popups?: boolean }) => Promise<unknown>;
   onAssistantEvent: (callback: (event: AssistantEvent) => void) => () => void;
   onNowPlayingChanged: (callback: () => void) => () => void;
   getBriefing: () => Promise<Briefing | null>;
@@ -3551,6 +3553,115 @@ function renderContextSnapshot(snapshot: ContextSnapshot): void {
   }
 }
 
+interface AttentionItemView {
+  id: string;
+  source: string;
+  title: string;
+  description: string;
+  reasons: string[];
+  score: number;
+  priority: string;
+  factors: Array<{ label: string; points: number }>;
+  decision: string;
+  decisionReason: string;
+}
+
+interface AttentionDebugView {
+  enabled: boolean;
+  popups: boolean;
+  evaluatedAt: string | null;
+  busy: boolean;
+  busyReason: string | null;
+  items: AttentionItemView[];
+}
+
+const ATTENTION_DECISIONS: Record<string, string> = {
+  surface: "Shown now",
+  shown: "Already shown",
+  held: "Waiting",
+  quiet: "Quiet",
+  acknowledged: "Acknowledged",
+  dismissed: "Dismissed",
+};
+
+/** The Attention debug view: what NIMBUS thinks deserves attention, and why. */
+function renderAttention(state: AttentionDebugView): void {
+  (document.getElementById("attentionEnabled") as HTMLInputElement).checked = state.enabled;
+  (document.getElementById("attentionPopups") as HTMLInputElement).checked = state.popups;
+  const summary = document.getElementById("attentionSummary")!;
+  summary.textContent = !state.enabled
+    ? "Attention is off — routine suggestions pop up as they come, and nothing else is raised."
+    : state.evaluatedAt
+      ? `Last looked at ${new Date(state.evaluatedAt).toLocaleTimeString()}${state.busy ? ` · ${state.busyReason}` : ""}.`
+      : "Not evaluated yet.";
+
+  const list = document.getElementById("attentionItems")!;
+  list.innerHTML = "";
+  if (state.enabled && state.items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "feed-empty";
+    empty.textContent = "Nothing needs your attention right now.";
+    list.appendChild(empty);
+  }
+  for (const item of state.items) {
+    const card = document.createElement("div");
+    card.className = "attention-item";
+
+    const header = document.createElement("div");
+    header.className = "attention-item-header";
+    const title = document.createElement("span");
+    title.className = "attention-title";
+    title.textContent = item.title;
+    const badge = document.createElement("span");
+    badge.className = `context-badge attention-${item.priority}`;
+    badge.textContent = `${item.priority} · ${item.score}`;
+    const source = document.createElement("span");
+    source.className = "attention-source";
+    source.textContent = item.source;
+    header.append(title, badge, source);
+    card.appendChild(header);
+
+    if (item.description) {
+      const description = document.createElement("p");
+      description.className = "attention-line";
+      description.textContent = item.description;
+      card.appendChild(description);
+    }
+    const decision = document.createElement("p");
+    decision.className = "attention-line";
+    decision.textContent = `${ATTENTION_DECISIONS[item.decision] ?? item.decision} — ${item.decisionReason}`;
+    card.appendChild(decision);
+
+    const why = document.createElement("details");
+    why.className = "attention-why";
+    const whySummary = document.createElement("summary");
+    whySummary.textContent = "Why";
+    why.appendChild(whySummary);
+    const factors = document.createElement("ul");
+    for (const reason of item.reasons) {
+      const li = document.createElement("li");
+      li.textContent = reason;
+      factors.appendChild(li);
+    }
+    for (const factor of item.factors) {
+      const li = document.createElement("li");
+      li.textContent = `${factor.label}: ${factor.points > 0 ? "+" : ""}${factor.points}`;
+      factors.appendChild(li);
+    }
+    why.appendChild(factors);
+    card.appendChild(why);
+    list.appendChild(card);
+  }
+}
+
+async function loadAttention(): Promise<void> {
+  try {
+    renderAttention(await window.nimbus.getAttention());
+  } catch (err) {
+    console.error("Failed to load attention", err);
+  }
+}
+
 async function loadContext(): Promise<void> {
   try {
     const snapshot = await window.nimbus.getContext();
@@ -3562,7 +3673,18 @@ async function loadContext(): Promise<void> {
 
 function initContext(): void {
   loadContext();
+  void loadAttention();
   document.getElementById("refreshContextBtn")?.addEventListener("click", loadContext);
+  document.getElementById("refreshContextBtn")?.addEventListener("click", () => void loadAttention());
+  for (const [id, key] of [
+    ["attentionEnabled", "enabled"],
+    ["attentionPopups", "popups"],
+  ] as const) {
+    document.getElementById(id)?.addEventListener("change", async (event) => {
+      await window.nimbus.updateAttentionSettings({ [key]: (event.target as HTMLInputElement).checked });
+      await loadAttention();
+    });
+  }
 }
 
 function renderEventList(

@@ -17,7 +17,8 @@
  */
 interface AssistantSuggestion {
   id: string;
-  routineId: string;
+  routineId?: string;
+  reason?: string;
   title: string;
   message: string;
   primaryLabel: string;
@@ -59,6 +60,10 @@ function renderSuggestion(suggestion: AssistantSuggestion): void {
 
   document.getElementById("suggestionTitle")!.textContent = suggestion.title;
   document.getElementById("suggestionMessage")!.textContent = suggestion.message;
+  // Why NIMBUS raised it — only Attention's own suggestions carry one.
+  const reasonEl = document.getElementById("suggestionReason")!;
+  reasonEl.textContent = suggestion.reason ? `Why: ${suggestion.reason}` : "";
+  reasonEl.hidden = !suggestion.reason;
 
   const summaryEl = document.getElementById("actionsSummary")!;
   summaryEl.innerHTML = "";

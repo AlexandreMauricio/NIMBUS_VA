@@ -61,6 +61,11 @@ which modules are portable "Core" versus Windows-specific.
   limits, an explainable **Test**, **Run now**, optional run-automatically,
   and an end half ("when it ends") with its own trigger, conditions and
   actions. See [docs/routines.md](docs/routines.md).
+- **Attention & Priority** — a deterministic engine that scores what NIMBUS
+  knows (meetings, tasks, email, weather, stocks, long sessions, routine
+  suggestions), interrupts only for what matters most, queues the rest, and
+  explains every decision in the Context tab. See
+  [docs/attention.md](docs/attention.md).
 - **Activities & sessions** — user-defined mappings from apps/sites/folders
   to activities, with precedence, a grace period, and a session history.
   See [docs/activity.md](docs/activity.md).
@@ -239,6 +244,7 @@ that subsystem.
 | [The Action system](docs/action-system.md) | ActionProviders, the validate/execute contract, and the Context-vs-Action split |
 | [The Briefing system](docs/briefing.md) | How a context snapshot becomes the briefing the Home tab shows |
 | [Activity & Sessions](docs/activity.md) | Activity mappings, session lifecycle, and how routines read it |
+| [Attention & Priority](docs/attention.md) | What deserves attention now: signals, scoring, conflicts, and the debug view |
 | [Context-aware routines](docs/routines.md) | Triggers, conditions, suggestions, timers, desktop monitoring, and its privacy boundary |
 | [Weather](docs/weather.md) | Location resolution and the Open-Meteo integration |
 | [Calendar](docs/calendar.md) | ICS feeds, the Calendar tab, and the parser's limits |

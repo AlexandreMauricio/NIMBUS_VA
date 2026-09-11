@@ -92,6 +92,19 @@ src/
     timerService.ts              One timer or phase plan at a time; publishes
                                    timerCompleted; wall-clock based
 
+  attention/                [1] Core — Attention & Priority
+    types.ts                     AttentionSignal / AttentionItem / settings
+    signals.ts                   Pure signal builders per source (calendar,
+                                   tasks, weather, email, stocks, activity,
+                                   routine suggestions)
+    scoring.ts                   The weighted score, bands and busy rules
+    attentionEngine.ts           Dedup, expiry, escalation and conflict
+                                   decisions — deterministic
+    attentionService.ts          Runs it: reads Context/Activity, queues
+                                   routine suggestions, hands what it
+                                   surfaces to an injected presenter; has no
+                                   Action service
+
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
                                    Pure functions/classes over ContextSnapshot
@@ -184,9 +197,9 @@ renderer can only call what its preload exposes.
 | Email | `nimbus:get-email-settings`, `nimbus:update-email-settings` |
 | Tasks | `nimbus:get-task-settings`, `nimbus:update-task-settings`, `nimbus:list-tasks`, `nimbus:list-task-projects`, `nimbus:create-task`, `nimbus:update-task`, `nimbus:complete-task`, `nimbus:reopen-task`, `nimbus:delete-task` |
 | Spotify | `nimbus:get-spotify-settings`, `nimbus:update-spotify-settings`, `nimbus:spotify-connect`, `nimbus:spotify-disconnect`, `nimbus:spotify-list-playlists` |
-| Stocks | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news` (tracked symbols only) |
+| Stocks | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news`, `nimbus:find-stock-listings` (tracked symbols only), `nimbus:get-stock-dividends`, `nimbus:close-stock-position`, `nimbus:get-stock-irs-report` |
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
-| Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion` |
+| Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
 
 **Suggestion popup** (`suggestionPreload.ts`): `nimbus:get-popup-suggestion`,
@@ -305,7 +318,9 @@ Context/OS → Event → Event Bus → Trigger Matcher → Routine gates
 - **Suggestions reuse the assistant-event seam**: each is published
   through `assistantBridge` (a line in the Home feed) and shown in the
   suggestion popup, which calls the same accept/dismiss channels as the
-  main window. Suggestions expire after 60 s.
+  main window. Suggestions expire after 60 s. The popup is gated by
+  Attention (below): a suggestion waits, rather than overwriting or being
+  overwritten, while something more important is on screen.
 - **Detection**: `DesktopActivityMonitor` is the only producer of desktop
   events. An impure poller hands raw data to `diffActivitySnapshot`, a
   pure function that emits events only for what changed. It runs while
@@ -317,6 +332,29 @@ Context/OS → Event → Event Bus → Trigger Matcher → Routine gates
   extension — not implemented.
 - **Folder detection** uses Explorer's own COM API
   (`Shell.Application.Windows()`).
+
+## Attention & Priority
+
+```
+Context ─┐
+Activity ├─→ Signals ─→ AttentionEngine ─→ AttentionItems ─→ Suggestion popup / Home feed
+Routines ┘              (score, dedupe, decide, explain)      (existing presentation)
+```
+
+`src/attention/` decides what deserves attention right now. Pure signal
+builders turn Context, Activity and routine suggestions into scored
+signals with stable keys; the engine deduplicates, expires, and decides
+per item — surface, hold (with a reason), keep quiet, or already shown —
+allowing one interruption at a time. `AttentionService` runs it every
+30 s (reusing a Context snapshot for 5 minutes) and hands surfaced items
+to a presenter injected by `lifecycle.ts`: the existing suggestion popup
+for urgent/high, the Home feed for normal.
+
+The Action boundary is kept structurally: Attention has no Action service
+(a test checks the compiled module). Routine suggestions still come from
+RoutineService and are accepted there; Attention's own suggestions are
+informational, and answering them only acknowledges. See
+[docs/attention.md](docs/attention.md).
 
 ## Activity & Sessions
 
@@ -376,7 +414,7 @@ and hand the Core providers the same two functions.
 ## Settings split
 
 `UserPreferences` (weather, calendar, email, tasks, Spotify, routines,
-activity, stocks) is data that conceptually belongs to the user and would follow
+activity, stocks, attention) is data that conceptually belongs to the user and would follow
 them to another device; `WindowsClientSettings` (window bounds, startup
 behaviour) only makes sense on this Windows install. Both live in one
 local `settings.json` — there is no sync backend — but the type boundary

@@ -62,7 +62,19 @@ export interface AssistantActionRequest extends AssistantEventBase {
  */
 export interface AssistantSuggestion extends AssistantEventBase {
   type: "suggestion";
-  routineId: string;
+  /** The Routine it came from. Absent for a suggestion the Attention engine raised. */
+  routineId?: string;
+  /**
+   * Who raised it. "routine" (the default when absent — every suggestion
+   * before Attention existed): accepting runs the routine's actions.
+   * "attention": informational — accepting only acknowledges it, and
+   * nothing runs.
+   */
+  origin?: "routine" | "attention";
+  /** For an Attention suggestion: the item it stands for (see src/attention/). */
+  attentionItemId?: string;
+  /** One line on why NIMBUS thought this mattered, shown small in the popup. */
+  reason?: string;
   title: string;
   message: string;
   primaryLabel: string;

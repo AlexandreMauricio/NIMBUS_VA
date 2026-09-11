@@ -1,3 +1,4 @@
+import type { AttentionDebugState, AttentionSettings } from "../attention";
 import { contextBridge, ipcRenderer } from "electron";
 import { AssistantEvent } from "../common/assistantEvents";
 import {
@@ -283,6 +284,10 @@ contextBridge.exposeInMainWorld("nimbus", {
   getActivitySnapshot: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-activity-snapshot"),
 
   getActiveSuggestions: (): Promise<AssistantEvent[]> => ipcRenderer.invoke("nimbus:get-active-suggestions"),
+  /** The Attention debug view: current items, scores, decisions and why. Read-only. */
+  getAttention: (): Promise<AttentionDebugState> => ipcRenderer.invoke("nimbus:get-attention"),
+  updateAttentionSettings: (partial: Partial<AttentionSettings>): Promise<AttentionSettings> =>
+    ipcRenderer.invoke("nimbus:update-attention-settings", partial),
   acceptSuggestion: (suggestionId: string): Promise<PublicActionResult[]> =>
     ipcRenderer.invoke("nimbus:accept-suggestion", suggestionId),
   dismissSuggestion: (suggestionId: string): Promise<void> =>

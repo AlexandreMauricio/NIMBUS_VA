@@ -108,6 +108,15 @@
         appearance: none;
         background: transparent;
       }
+      /* The one-line "Why" on an Attention suggestion. */
+      .reason {
+        margin-top: 6px;
+        font-size: 11px;
+        opacity: 0.7;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     </style>
   </head>
   <body>
@@ -115,6 +124,7 @@
       <div class="brand"><span class="brand-dot"></span><span>NIMBUS</span></div>
       <div class="title" id="suggestionTitle"></div>
       <div class="message" id="suggestionMessage"></div>
+      <div class="reason" id="suggestionReason" hidden></div>
       <div class="actions-summary" id="actionsSummary"></div>
       <div class="buttons">
         <button class="btn btn-primary" id="primaryBtn"></button>

@@ -18,6 +18,22 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.1 — 2026-09-11
+
+- Attention & Priority engine: a deterministic layer that decides what
+  deserves attention right now. Signals from the calendar (meetings within
+  the hour), tasks (due soon, overdue, due today), email (unread and
+  important), weather (rain likely), stocks (a big portfolio move),
+  activity (long sessions) and routine suggestions are scored
+  (0.40 urgency + 0.35 importance + 0.25 relevance, adjusted when you're
+  busy or when an item is about what you're doing), deduplicated by a
+  stable key, and surfaced through the existing suggestion popup
+  (urgent/high) or the Home feed (normal). One interruption at a time:
+  routine suggestions now wait instead of overwriting each other or a more
+  important popup. Attention's own popups are informational and never run
+  anything. The Context tab shows every item with its score, decision and
+  why, plus two switches.
+
 ## 0.3.0 — 2026-09-11
 
 - Stock Tracker: a Stocks tab for positions you enter by hand — current

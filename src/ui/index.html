@@ -551,6 +551,41 @@
           </div>
           <p class="setting-note" id="contextGeneratedAt"></p>
           <div id="contextProviders" class="context-providers"></div>
+
+          <div class="panel-header attention-header">
+            <h6 class="kicker">Attention</h6>
+          </div>
+          <p class="setting-note">
+            What NIMBUS thinks deserves your attention right now, and why. Urgent and high items can pop up,
+            normal ones go to the Home feed, and low ones only appear here. Attention never runs anything.
+          </p>
+          <p class="setting-note" id="attentionSummary"></p>
+          <div id="attentionItems" class="attention-items"></div>
+          <label class="setting-row">
+            <span>
+              <span class="setting-title">Notice what matters</span>
+              <span class="setting-desc">
+                Watches your calendar, tasks, email, weather, stocks and activity, and queues routine
+                suggestions so they don't overwrite each other. Off: routine suggestions pop up as they come.
+              </span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="attentionEnabled" />
+              <span class="track"></span>
+            </span>
+          </label>
+          <label class="setting-row">
+            <span>
+              <span class="setting-title">Pop up urgent items</span>
+              <span class="setting-desc">
+                Off: NIMBUS's own items only go to the Home feed. Routine suggestions still pop up.
+              </span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="attentionPopups" />
+              <span class="track"></span>
+            </span>
+          </label>
         </section>
 
         <section id="tab-routines" class="panel">
