@@ -9,6 +9,8 @@ test("stock tracking defaults: on, with news, and no positions", () => {
     baseCurrency: "EUR",
     dividendsEnabled: true,
     dividendTax: {},
+    closedPositions: [],
+    irs: { gainsCode: "G30", counterpartyCountry: "196" },
     positions: [],
   });
 });
@@ -24,6 +26,8 @@ test("a settings file from before stocks existed gains the stocks defaults", () 
     baseCurrency: "EUR",
     dividendsEnabled: true,
     dividendTax: {},
+    closedPositions: [],
+    irs: { gainsCode: "G30", counterpartyCountry: "196" },
     positions: [],
   });
 });
@@ -50,6 +54,8 @@ test("saved positions survive a load unchanged", () => {
     baseCurrency: "EUR",
     dividendsEnabled: true,
     dividendTax: {},
+    closedPositions: [],
+    irs: { gainsCode: "G30", counterpartyCountry: "196" },
     positions,
   });
 });
@@ -82,4 +88,25 @@ test("dividend tax choices survive a load, and an old file gets an empty map", (
   });
   assert.deepEqual(loaded.userPreferences.stocks.dividendTax, { TSM: { country: "TW" } });
   assert.deepEqual(applyDefaults({}).userPreferences.stocks.dividendTax, {});
+});
+
+test("closed positions and IRS codes survive a load; an old file gets the defaults", () => {
+  const closedPositions = [
+    {
+      id: "c1",
+      symbol: "AAPL",
+      shares: 1,
+      averageCost: 100,
+      purchaseDate: "2026-01-10",
+      closeDate: "2026-05-01",
+      closePrice: 150,
+      currency: "USD",
+    },
+  ];
+  const loaded = applyDefaults({
+    userPreferences: { stocks: { closedPositions, irs: { gainsCode: "G01", counterpartyCountry: "196" } } },
+  });
+  assert.deepEqual(loaded.userPreferences.stocks.closedPositions, closedPositions);
+  assert.deepEqual(loaded.userPreferences.stocks.irs, { gainsCode: "G01", counterpartyCountry: "196" });
+  assert.deepEqual(applyDefaults({}).userPreferences.stocks.closedPositions, []);
 });

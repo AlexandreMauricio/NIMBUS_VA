@@ -234,3 +234,25 @@ test("a listing with no dividends is an empty list; a failure is a rejection", a
     /status 500/
   );
 });
+
+test("daily closes come back per exchange day, gaps dropped", async () => {
+  const fetch = fakeFetch(200, {
+    chart: {
+      result: [
+        {
+          meta: { exchangeTimezoneName: "Europe/London" },
+          timestamp: [1767312000, 1767398400, 1767484800],
+          indicators: { quote: [{ close: [0.85, null, 0.86] }] },
+        },
+      ],
+    },
+  });
+
+  const closes = await new YahooMarketDataSource(fetch.fn).fetchDailyCloses("USDEUR=X", "2026-01-01");
+
+  assert.match(fetch.calls[0].url, /\/chart\/USDEUR%3DX\?period1=1767225600&period2=\d+&interval=1d$/);
+  assert.deepEqual(closes, [
+    { date: "2026-01-02", close: 0.85 },
+    { date: "2026-01-04", close: 0.86 },
+  ]);
+});

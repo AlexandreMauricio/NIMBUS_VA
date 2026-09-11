@@ -8,4 +8,6 @@ export {
   majorCurrency,
 } from "./positionMath";
 export * from "./dividends";
+export * from "./closed";
+export * from "./irs";
 export * from "./types";

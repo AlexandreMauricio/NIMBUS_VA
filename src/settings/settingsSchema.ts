@@ -3,6 +3,8 @@ import { Routine } from "../routines/types";
 import { ActivityMapping, DEFAULT_ACTIVITY_GRACE_MINUTES } from "../activity/types";
 import { StockPosition } from "../context/providers/stocks/types";
 import type { DividendTaxSetting } from "../context/providers/stocks/dividends";
+import type { ClosedPosition } from "../context/providers/stocks/closed";
+import type { IrsSettings } from "../context/providers/stocks/irs";
 
 /**
  * Persisted NIMBUS state, split by who owns the data — not just grouped
@@ -169,6 +171,10 @@ export interface StockPreferences {
   dividendsEnabled: boolean;
   /** Per-symbol tax country choices; a symbol not listed uses the country guessed from its listing. */
   dividendTax: Record<string, DividendTaxSetting>;
+  /** Sales already made at the broker, recorded by the user. */
+  closedPositions: ClosedPosition[];
+  /** Codes the IRS helper uses for closed positions. */
+  irs: IrsSettings;
   positions: StockPosition[];
 }
 
@@ -240,6 +246,8 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       baseCurrency: "EUR",
       dividendsEnabled: true,
       dividendTax: {},
+      closedPositions: [],
+      irs: { gainsCode: "G30", counterpartyCountry: "196" },
       positions: [],
     },
   },
@@ -344,6 +352,8 @@ export function applyDefaults(parsed: any): NimbusSettings {
         ...defaults.userPreferences.stocks,
         ...parsed.userPreferences?.stocks,
         dividendTax: { ...parsed.userPreferences?.stocks?.dividendTax },
+        closedPositions: [...(parsed.userPreferences?.stocks?.closedPositions ?? [])],
+        irs: { ...defaults.userPreferences.stocks.irs, ...parsed.userPreferences?.stocks?.irs },
       },
     },
   };

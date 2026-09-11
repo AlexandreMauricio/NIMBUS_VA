@@ -1,4 +1,4 @@
-import { StockPosition, normalizeSymbol } from "./types";
+import { normalizeSymbol } from "./types";
 
 /**
  * Dividends for tracked holdings, with tax estimated for a Portugal
@@ -39,6 +39,8 @@ export const PORTUGUESE_DIVIDEND_RATE = 28;
 export interface TaxCountry {
   code: string;
   name: string;
+  /** The numeric country code the IRS forms use, e.g. "840" for the United States. */
+  numericCode: string;
   /** What the source country typically withholds from a Portugal resident, in percent. */
   withholdingPercent: number;
   /** The most Portugal credits against its own tax (the treaty rate), in percent. */
@@ -53,23 +55,23 @@ export interface TaxCountry {
  * rate.
  */
 export const TAX_COUNTRIES: readonly TaxCountry[] = [
-  { code: "PT", name: "Portugal", withholdingPercent: 0, creditCapPercent: 0 },
-  { code: "US", name: "United States", withholdingPercent: 15, creditCapPercent: 15 },
-  { code: "ES", name: "Spain", withholdingPercent: 19, creditCapPercent: 15 },
-  { code: "FR", name: "France", withholdingPercent: 25, creditCapPercent: 15 },
-  { code: "DE", name: "Germany", withholdingPercent: 26.375, creditCapPercent: 15 },
-  { code: "NL", name: "Netherlands", withholdingPercent: 15, creditCapPercent: 10 },
-  { code: "IT", name: "Italy", withholdingPercent: 26, creditCapPercent: 15 },
-  { code: "BE", name: "Belgium", withholdingPercent: 30, creditCapPercent: 15 },
-  { code: "IE", name: "Ireland", withholdingPercent: 25, creditCapPercent: 15 },
-  { code: "CH", name: "Switzerland", withholdingPercent: 35, creditCapPercent: 15 },
-  { code: "GB", name: "United Kingdom", withholdingPercent: 0, creditCapPercent: 0 },
-  { code: "CA", name: "Canada", withholdingPercent: 25, creditCapPercent: 15 },
-  { code: "JP", name: "Japan", withholdingPercent: 15.315, creditCapPercent: 10 },
-  { code: "KR", name: "South Korea", withholdingPercent: 22, creditCapPercent: 15 },
+  { code: "PT", name: "Portugal", numericCode: "620", withholdingPercent: 0, creditCapPercent: 0 },
+  { code: "US", name: "United States", numericCode: "840", withholdingPercent: 15, creditCapPercent: 15 },
+  { code: "ES", name: "Spain", numericCode: "724", withholdingPercent: 19, creditCapPercent: 15 },
+  { code: "FR", name: "France", numericCode: "250", withholdingPercent: 25, creditCapPercent: 15 },
+  { code: "DE", name: "Germany", numericCode: "276", withholdingPercent: 26.375, creditCapPercent: 15 },
+  { code: "NL", name: "Netherlands", numericCode: "528", withholdingPercent: 15, creditCapPercent: 10 },
+  { code: "IT", name: "Italy", numericCode: "380", withholdingPercent: 26, creditCapPercent: 15 },
+  { code: "BE", name: "Belgium", numericCode: "056", withholdingPercent: 30, creditCapPercent: 15 },
+  { code: "IE", name: "Ireland", numericCode: "372", withholdingPercent: 25, creditCapPercent: 15 },
+  { code: "CH", name: "Switzerland", numericCode: "756", withholdingPercent: 35, creditCapPercent: 15 },
+  { code: "GB", name: "United Kingdom", numericCode: "826", withholdingPercent: 0, creditCapPercent: 0 },
+  { code: "CA", name: "Canada", numericCode: "124", withholdingPercent: 25, creditCapPercent: 15 },
+  { code: "JP", name: "Japan", numericCode: "392", withholdingPercent: 15.315, creditCapPercent: 10 },
+  { code: "KR", name: "South Korea", numericCode: "410", withholdingPercent: 22, creditCapPercent: 15 },
   // No double-tax treaty: the credit is limited only by the Portuguese tax.
-  { code: "TW", name: "Taiwan", withholdingPercent: 21, creditCapPercent: 21 },
-  { code: "HK", name: "Hong Kong", withholdingPercent: 0, creditCapPercent: 0 },
+  { code: "TW", name: "Taiwan", numericCode: "158", withholdingPercent: 21, creditCapPercent: 21 },
+  { code: "HK", name: "Hong Kong", numericCode: "344", withholdingPercent: 0, creditCapPercent: 0 },
 ];
 
 /** A holding's tax country setting value for "I'll enter the rate myself". */
@@ -330,11 +332,19 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/** A lot as dividends see it. A sold lot still earned the dividends that went ex while it was held. */
+export interface DividendLot {
+  shares: number;
+  purchaseDate?: string;
+  /** Set for a sold lot: it gets dividends that went ex on or before this date. */
+  closeDate?: string;
+}
+
 export interface HoldingDividendsInput {
   symbol: string;
   sourceSymbol: string;
-  /** Every lot of this holding. */
-  lots: StockPosition[];
+  /** Every lot of this holding, open or sold. */
+  lots: DividendLot[];
   series: DividendSeries;
   stale: boolean;
   tax: ResolvedTax;
@@ -352,7 +362,12 @@ export function computeHoldingDividends(input: HoldingDividendsInput): HoldingDi
   const received: ReceivedDividend[] = [];
   for (const event of past) {
     const shares = lots
-      .filter((lot) => lot.purchaseDate !== undefined && lot.purchaseDate < event.exDate)
+      .filter(
+        (lot) =>
+          lot.purchaseDate !== undefined &&
+          lot.purchaseDate < event.exDate &&
+          (lot.closeDate === undefined || lot.closeDate >= event.exDate)
+      )
       .reduce((sum, lot) => sum + lot.shares, 0);
     if (shares <= 0) continue;
     received.push({
@@ -369,7 +384,8 @@ export function computeHoldingDividends(input: HoldingDividendsInput): HoldingDi
   let frequency: DividendFrequency | null = null;
   let expected: ExpectedDividend | null = null;
   let estimatedAnnual: DividendAmounts | null = null;
-  const totalShares = lots.reduce((sum, lot) => sum + lot.shares, 0);
+  const openLots = lots.filter((lot) => lot.closeDate === undefined);
+  const totalShares = openLots.reduce((sum, lot) => sum + lot.shares, 0);
 
   if (recent.length >= 2) {
     const gaps = recent.slice(1).map((e, i) => dayNumber(e.exDate) - dayNumber(recent[i].exDate));
@@ -377,7 +393,7 @@ export function computeHoldingDividends(input: HoldingDividendsInput): HoldingDi
     frequency = frequencyFor(gap);
     const last = recent[recent.length - 1];
     const nextDay = dayNumber(last.exDate) + gap;
-    if (todayNumber - nextDay <= OVERDUE_TOLERANCE_DAYS) {
+    if (totalShares > 0 && todayNumber - nextDay <= OVERDUE_TOLERANCE_DAYS) {
       expected = {
         exDate: fromDayNumber(nextDay),
         amountPerShare: last.amount,
@@ -385,7 +401,7 @@ export function computeHoldingDividends(input: HoldingDividendsInput): HoldingDi
         ...taxDividend(last.amount * totalShares, tax),
       };
     }
-    estimatedAnnual = taxDividend(last.amount * PER_YEAR[frequency] * totalShares, tax);
+    if (totalShares > 0) estimatedAnnual = taxDividend(last.amount * PER_YEAR[frequency] * totalShares, tax);
   }
 
   return {
@@ -400,7 +416,7 @@ export function computeHoldingDividends(input: HoldingDividendsInput): HoldingDi
     frequency,
     expected,
     estimatedAnnual,
-    lotsWithoutDate: lots.filter((lot) => lot.purchaseDate === undefined).length,
+    lotsWithoutDate: openLots.filter((lot) => lot.purchaseDate === undefined).length,
   };
 }
 

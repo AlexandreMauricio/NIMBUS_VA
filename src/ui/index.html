@@ -327,6 +327,35 @@
             </p>
             <p class="setting-note" id="stockSourceNote" hidden></p>
 
+            <details class="stock-section" id="stockClosedSection" hidden>
+              <summary class="stock-section-summary" id="stockClosedCount">Closed positions</summary>
+              <div class="stock-section-controls">
+                <label for="stockClosedYear">Year</label>
+                <select id="stockClosedYear" class="select"></select>
+              </div>
+              <p class="setting-note" id="stockClosedTotals"></p>
+              <div class="stock-positions" id="stockClosedList"></div>
+            </details>
+
+            <details class="stock-section" id="stockIrsSection">
+              <summary class="stock-section-summary">IRS helper &middot; Anexo J</summary>
+              <div class="stock-section-controls">
+                <label
+                  >Year
+                  <select id="stockIrsYear" class="select"></select
+                ></label>
+                <label
+                  >Gains income code <input id="stockIrsGainsCode" class="input stock-irs-code" maxlength="3"
+                /></label>
+                <label
+                  >Broker's country code
+                  <input id="stockIrsCounterparty" class="input stock-irs-code" maxlength="3"
+                /></label>
+                <button class="btn btn-secondary" id="stockIrsCopy" type="button">Copy tables</button>
+              </div>
+              <div id="stockIrsBody"></div>
+            </details>
+
             <label class="setting-row">
               <span>
                 <span class="setting-title">Track prices</span>
@@ -457,6 +486,59 @@
               <div class="field-row">
                 <button class="btn btn-secondary" id="savePositionBtn">Save position</button>
                 <button class="btn btn-ghost" id="cancelPositionBtn">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <div id="stockCloseView" hidden>
+            <button class="btn btn-ghost" id="backFromCloseFormBtn">&larr; Back</button>
+            <div class="manual-location-fields">
+              <div class="setting-title" id="stockCloseHeading">Close a position</div>
+              <p class="setting-note">
+                This records a sale you already made at your broker, so NIMBUS keeps it for your records and
+                the IRS helper. NIMBUS doesn't trade and doesn't contact your broker.
+              </p>
+              <label class="field-row">
+                <span class="setting-title"
+                  >Shares or units sold <span class="required-marker" aria-hidden="true">*</span></span
+                >
+                <input type="number" id="stockCloseShares" min="0" step="any" />
+              </label>
+              <label class="field-row">
+                <span class="setting-title"
+                  >Close date <span class="required-marker" aria-hidden="true">*</span></span
+                >
+                <input type="date" id="stockCloseDate" />
+              </label>
+              <label class="field-row">
+                <span class="setting-title"
+                  >Close price per share <span class="required-marker" aria-hidden="true">*</span></span
+                >
+                <input type="number" id="stockClosePrice" min="0" step="any" />
+              </label>
+              <label class="field-row">
+                <span class="setting-title"
+                  >Currency <span class="required-marker" aria-hidden="true">*</span></span
+                >
+                <input type="text" id="stockCloseCurrency" maxlength="3" placeholder="e.g. USD" />
+              </label>
+              <label class="field-row">
+                <span class="setting-title">Fees (optional)</span>
+                <input
+                  type="number"
+                  id="stockCloseFees"
+                  min="0"
+                  step="any"
+                  placeholder="In the same currency"
+                />
+              </label>
+              <label class="field-row">
+                <span class="setting-title">Notes (optional)</span>
+                <input type="text" id="stockCloseNotes" maxlength="1000" />
+              </label>
+              <p class="form-error" id="stockCloseError" role="alert" hidden></p>
+              <div class="field-row">
+                <button class="btn btn-secondary" id="saveCloseBtn">Record the sale</button>
+                <button class="btn btn-ghost" id="cancelCloseBtn">Cancel</button>
               </div>
             </div>
           </div>

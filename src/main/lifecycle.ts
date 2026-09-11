@@ -16,9 +16,15 @@ import { TaskProvider, TaskWriteRequest } from "../context/providers/tasks";
 import {
   StockProvider,
   StockPosition,
+  ClosedPosition,
+  MAX_CLOSED_POSITIONS,
+  closeLot,
   normalizeCurrencyCode,
   normalizeDividendTax,
+  normalizeIrsSettings,
   normalizeSymbol,
+  rebuildClosedPosition,
+  validateClosedPositions,
   validateStockPositions,
 } from "../context/providers/stocks";
 import { SpotifyContextProvider, SpotifyApiClient, mapPlaylists } from "../context/providers/spotify";
@@ -398,6 +404,8 @@ function registerIpcHandlers(): void {
         baseCurrency?: unknown;
         dividendsEnabled?: unknown;
         dividendTax?: unknown;
+        closedPositions?: unknown;
+        irs?: unknown;
         positions?: unknown;
       }
     ) => {
@@ -425,6 +433,18 @@ function registerIpcHandlers(): void {
         if (!code) throw new Error("Base currency must be a three-letter code such as EUR.");
         baseCurrency = code;
       }
+      let closedPositions = current.closedPositions;
+      if (partial?.closedPositions !== undefined) {
+        const result = validateClosedPositions(partial.closedPositions);
+        if (!result.valid) throw new Error(`Invalid closed position: ${result.error}`);
+        closedPositions = (partial.closedPositions as ClosedPosition[]).map(rebuildClosedPosition);
+      }
+      let irs = current.irs;
+      if (partial?.irs !== undefined) {
+        const checked = normalizeIrsSettings(partial.irs);
+        if (checked.error) throw new Error(checked.error);
+        irs = checked.settings!;
+      }
       let dividendTax = current.dividendTax;
       if (partial?.dividendTax !== undefined) {
         const checked = normalizeDividendTax(partial.dividendTax);
@@ -440,6 +460,8 @@ function registerIpcHandlers(): void {
             ? partial.dividendsEnabled
             : current.dividendsEnabled,
         dividendTax,
+        closedPositions,
+        irs,
         positions,
       };
       saveSettings(settings);
@@ -478,6 +500,47 @@ function registerIpcHandlers(): void {
   });
   // Dividend history per holding, with tax estimated for a Portugal resident.
   ipcMain.handle("nimbus:get-stock-dividends", () => stockProvider.getDividends());
+  // Records a sale the user already made at their broker: shares move from
+  // an open lot to the closed list. NIMBUS itself never trades.
+  ipcMain.handle("nimbus:close-stock-position", (_event, request: unknown) => {
+    const current = settings.userPreferences.stocks;
+    if (current.closedPositions.length >= MAX_CLOSED_POSITIONS) {
+      throw new Error(`At most ${MAX_CLOSED_POSITIONS} closed positions can be kept.`);
+    }
+    const r = (request && typeof request === "object" ? request : {}) as Record<string, unknown>;
+    const result = closeLot(
+      current.positions,
+      {
+        positionId: String(r.positionId ?? ""),
+        shares: Number(r.shares),
+        closeDate: String(r.closeDate ?? ""),
+        closePrice: Number(r.closePrice),
+        fees: r.fees === undefined || r.fees === null || r.fees === "" ? undefined : Number(r.fees),
+        currency: String(r.currency ?? ""),
+        companyName: typeof r.companyName === "string" ? r.companyName : undefined,
+        notes: typeof r.notes === "string" ? r.notes : undefined,
+      },
+      `closed-${Date.now()}`
+    );
+    if ("error" in result) throw new Error(result.error);
+    settings.userPreferences.stocks = {
+      ...current,
+      positions: result.positions,
+      closedPositions: [...current.closedPositions, result.closed],
+    };
+    saveSettings(settings);
+    logger.info("Stock position closed", {
+      openCount: result.positions.length,
+      closedCount: settings.userPreferences.stocks.closedPositions.length,
+    });
+    return settings.userPreferences.stocks;
+  });
+  // Anexo J figures for one year — a helper for the user's IRS return.
+  ipcMain.handle("nimbus:get-stock-irs-report", (_event, year: unknown) => {
+    const y = Number(year);
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Error("Choose a year between 2000 and 2100.");
+    return stockProvider.getIrsReport(y);
+  });
 
   // Spotify's connection state is derived from SpotifyAuthManager (has a
   // stored refresh token or not) rather than persisted as its own

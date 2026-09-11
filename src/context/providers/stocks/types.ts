@@ -1,4 +1,6 @@
+import type { ClosedPosition } from "./closed";
 import type { DividendSeries, DividendTaxSetting } from "./dividends";
+import type { IrsSettings } from "./irs";
 
 /**
  * Stock tracking — read-only market information for positions the user
@@ -48,6 +50,9 @@ export interface StockProviderConfig {
   dividendsEnabled?: boolean;
   /** Per-symbol tax country choices; a symbol not listed uses the country guessed from its listing. */
   dividendTax?: Record<string, DividendTaxSetting>;
+  /** Sales already made, kept for the record and the IRS helper. */
+  closedPositions?: ClosedPosition[];
+  irs?: IrsSettings;
   positions: StockPosition[];
 }
 
@@ -249,6 +254,14 @@ export interface MarketDataSource {
   searchListings?(query: string, limit: number): Promise<ListingMatch[]>;
   /** Ex-dividend dates and amounts from `fromDate` ("YYYY-MM-DD"). Optional — without it, no dividends are shown. */
   fetchDividends?(symbol: string, fromDate: string): Promise<DividendSeries>;
+  /** Daily closes from `fromDate` until now, oldest first. Used for historical exchange rates. */
+  fetchDailyCloses?(symbol: string, fromDate: string): Promise<DailyClose[]>;
+}
+
+export interface DailyClose {
+  /** "YYYY-MM-DD" on the exchange's calendar. */
+  date: string;
+  close: number;
 }
 
 export interface NewsSource {

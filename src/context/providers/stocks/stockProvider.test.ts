@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { StockProvider } from "./stockProvider";
 import { DividendSeries } from "./dividends";
 import {
+  DailyClose,
   ListingMatch,
   MarketDataSource,
   NewsSource,
@@ -22,6 +23,7 @@ class FakeMarket implements MarketDataSource {
   failing = new Set<string>();
   searchListings?: (query: string, limit: number) => Promise<ListingMatch[]>;
   fetchDividends?: (symbol: string, fromDate: string) => Promise<DividendSeries>;
+  fetchDailyCloses?: (symbol: string, fromDate: string) => Promise<DailyClose[]>;
 
   async fetchQuote(symbol: string): Promise<RawQuote> {
     this.calls.push(symbol);
@@ -664,4 +666,47 @@ test("leveraged holdings get no dividend request", async () => {
 
   assert.deepEqual(calls, []);
   assert.deepEqual(result.holdings, []);
+});
+
+// ---------------------------------------------------------------------- IRS
+
+test("the IRS report values a sale and its dividends in euros at each day's rate", async () => {
+  const { settings, market, provider } = setup([]);
+  settings.closedPositions = [
+    {
+      id: "c1",
+      symbol: "AAPL",
+      shares: 10,
+      averageCost: 100,
+      purchaseDate: "2026-01-10",
+      closeDate: "2026-05-01",
+      closePrice: 150,
+      currency: "USD",
+    },
+  ];
+  withDividends(market, { AAPL: QUARTERLY });
+  const pairs: string[] = [];
+  market.fetchDailyCloses = async (symbol: string) => {
+    pairs.push(symbol);
+    return [
+      { date: "2026-01-02", close: 0.9 },
+      { date: "2026-04-30", close: 0.8 },
+    ];
+  };
+
+  const report = await provider.getIrsReport(2026);
+
+  assert.deepEqual(pairs, ["USDEUR=X"]);
+  const [sale] = report.gains.rows;
+  assert.ok(Math.abs(sale.acquisitionValue - 900) < 1e-9, "bought at the 0.9 rate");
+  assert.ok(Math.abs(sale.realizationValue - 1200) < 1e-9, "sold at the 0.8 rate");
+  assert.equal(report.gains.groups[0].code, "G30");
+  assert.equal(report.gains.groups[0].sourceCountry, "840");
+  assert.equal(report.gains.groups[0].counterpartyCountry, "196");
+  // Only the February dividend went ex while the shares were held.
+  const [us] = report.dividends.rows;
+  assert.equal(us.countryCode, "840");
+  assert.equal(us.dividends, 1);
+  assert.ok(Math.abs(us.gross - 10 * 0.9) < 1e-9);
+  assert.ok(report.availableYears.includes(2026));
 });

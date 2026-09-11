@@ -19,8 +19,18 @@ import {
   scaleAmounts,
   sumAmounts,
 } from "./dividends";
+import { ClosedPosition, validateClosedPosition } from "./closed";
+import {
+  DEFAULT_IRS_SETTINGS,
+  IrsDividendEvent,
+  IrsReport,
+  RateOn,
+  buildIrsDividends,
+  buildIrsGains,
+} from "./irs";
 import { YahooMarketDataSource, YahooNewsSource } from "./yahooFinance";
 import {
+  DailyClose,
   FxRate,
   ListingCandidate,
   ListingSearchResult,
@@ -62,6 +72,8 @@ const DIVIDENDS_TTL_MS = 12 * 60 * 60 * 1000;
 const DIVIDENDS_RETRY_MS = 60 * 60 * 1000;
 /** Dividend history is read at least this far back, so the pattern behind the next-dividend estimate is there. */
 const DIVIDEND_WINDOW_DAYS = 400;
+/** Exchange-rate histories change only by appending a day. */
+const FX_HISTORY_TTL_MS = 12 * 60 * 60 * 1000;
 /** Used when settings carry no valid base currency. */
 const DEFAULT_BASE_CURRENCY = "EUR";
 
@@ -104,6 +116,7 @@ export class StockProvider implements ContextProvider<StockContext> {
     { items: StockNewsItem[]; fetchedAtMs: number; retrievedAt: string }
   >();
   private readonly newsFailures = new Map<string, number>();
+  private readonly fxHistory = new Map<string, { from: string; points: DailyClose[]; fetchedAtMs: number }>();
   private readonly listings = new Map<string, { result: ListingSearchResult; fetchedAtMs: number }>();
   private readonly dividendSeries = new Map<
     string,
@@ -211,12 +224,13 @@ export class StockProvider implements ContextProvider<StockContext> {
     }
 
     const positions = this.validPositions(settings);
+    const closed = this.validClosed(settings);
     const nowMs = this.now().getTime();
     const today = localCalendarDate(this.now().toISOString(), this.timeZone());
     const windowStart = new Date(Date.parse(`${today}T00:00:00Z`) - DIVIDEND_WINDOW_DAYS * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    const fromDate = positions.reduce(
+    const fromDate = [...positions, ...closed].reduce(
       (earliest, p) => (p.purchaseDate && p.purchaseDate < earliest ? p.purchaseDate : earliest),
       windowStart
     );
@@ -225,38 +239,7 @@ export class StockProvider implements ContextProvider<StockContext> {
     // Leveraged positions (CFDs) don't receive dividends the way shares do, so they are left out.
     const eligible = context.holdings.filter((h) => !h.leveraged);
     const sources = [...new Set(eligible.map((h) => h.priceSymbol))];
-    const due = sources.filter((symbol) => {
-      const entry = this.dividendSeries.get(symbol);
-      if (!entry) return true;
-      const wait = entry.failed ? DIVIDENDS_RETRY_MS : fromDate < entry.fromDate ? 0 : DIVIDENDS_TTL_MS;
-      return nowMs - entry.attemptedAtMs >= wait;
-    });
-    for (let i = 0; i < due.length; i += FETCH_CONCURRENCY) {
-      const batch = due.slice(i, i + FETCH_CONCURRENCY);
-      const results = await Promise.allSettled(
-        batch.map((s) => this.marketData.fetchDividends!(s, fromDate))
-      );
-      results.forEach((result, j) => {
-        const symbol = batch[j];
-        const previous = this.dividendSeries.get(symbol);
-        if (result.status === "fulfilled") {
-          this.dividendSeries.set(symbol, {
-            series: result.value,
-            fromDate,
-            attemptedAtMs: nowMs,
-            failed: false,
-          });
-          return;
-        }
-        logger.warn(`Dividends for ${symbol} failed`, { error: String(result.reason) });
-        this.dividendSeries.set(symbol, {
-          series: previous?.series ?? null,
-          fromDate: previous?.fromDate ?? fromDate,
-          attemptedAtMs: nowMs,
-          failed: true,
-        });
-      });
-    }
+    await this.ensureDividendSeries(sources, fromDate, nowMs);
 
     const holdings: HoldingDividends[] = [];
     const unavailableSymbols: string[] = [];
@@ -270,7 +253,10 @@ export class StockProvider implements ContextProvider<StockContext> {
         computeHoldingDividends({
           symbol: h.symbol,
           sourceSymbol: h.priceSymbol,
-          lots: positions.filter((p) => p.symbol === h.symbol),
+          lots: [
+            ...positions.filter((p) => p.symbol === h.symbol),
+            ...closed.filter((c) => c.symbol === h.symbol && !(c.leverage && c.leverage > 1)),
+          ],
           series: entry.series,
           stale: entry.failed,
           // The guess reads the listing that actually trades — a retired .L GDR says nothing true.
@@ -324,6 +310,192 @@ export class StockProvider implements ContextProvider<StockContext> {
       unconvertedCurrencies: [...unconverted].sort(),
       taxCountries: TAX_COUNTRIES,
     };
+  }
+
+  /** Fetches dividend histories that are missing, older than the TTL or too short, a few at a time. */
+  private async ensureDividendSeries(symbols: string[], fromDate: string, nowMs: number): Promise<void> {
+    if (!this.marketData.fetchDividends) return;
+    const due = symbols.filter((symbol) => {
+      const entry = this.dividendSeries.get(symbol);
+      if (!entry) return true;
+      const wait = entry.failed ? DIVIDENDS_RETRY_MS : fromDate < entry.fromDate ? 0 : DIVIDENDS_TTL_MS;
+      return nowMs - entry.attemptedAtMs >= wait;
+    });
+    for (let i = 0; i < due.length; i += FETCH_CONCURRENCY) {
+      const batch = due.slice(i, i + FETCH_CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map((s) => this.marketData.fetchDividends!(s, fromDate))
+      );
+      results.forEach((result, j) => {
+        const symbol = batch[j];
+        const previous = this.dividendSeries.get(symbol);
+        if (result.status === "fulfilled") {
+          this.dividendSeries.set(symbol, {
+            series: result.value,
+            fromDate,
+            attemptedAtMs: nowMs,
+            failed: false,
+          });
+          return;
+        }
+        logger.warn(`Dividends for ${symbol} failed`, { error: String(result.reason) });
+        this.dividendSeries.set(symbol, {
+          series: previous?.series ?? null,
+          fromDate: previous?.fromDate ?? fromDate,
+          attemptedAtMs: nowMs,
+          failed: true,
+        });
+      });
+    }
+  }
+
+  /**
+   * Figures for Anexo J of the Portuguese IRS return for one year: foreign
+   * dividends (Quadro 8A) — including those earned by lots sold since — and
+   * the positions closed that year (Quadro 9.2), in euros at each day's
+   * rate. A helper, not tax advice. Never throws.
+   */
+  async getIrsReport(year: number): Promise<IrsReport> {
+    const settings = this.getSettings();
+    const irs = { ...DEFAULT_IRS_SETTINGS, ...settings.irs };
+    const open = this.validPositions(settings);
+    const closed = this.validClosed(settings);
+    const nowMs = this.now().getTime();
+    const today = localCalendarDate(this.now().toISOString(), this.timeZone());
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+
+    // Dividends: every symbol held at some point, open or sold. CFDs aren't paid dividends.
+    const lotsBySymbol = new Map<string, Array<StockPosition | ClosedPosition>>();
+    for (const lot of [...open, ...closed]) {
+      if (lot.leverage && lot.leverage > 1) continue;
+      const lots = lotsBySymbol.get(lot.symbol);
+      if (lots) lots.push(lot);
+      else lotsBySymbol.set(lot.symbol, [lot]);
+    }
+    const sourceOf = new Map<string, string>();
+    for (const [symbol, lots] of lotsBySymbol) sourceOf.set(symbol, this.dividendSourceFor(lots[0], nowMs));
+    await this.ensureDividendSeries([...new Set(sourceOf.values())], yearStart, nowMs);
+
+    const events: IrsDividendEvent[] = [];
+    const unavailableSymbols: string[] = [];
+    for (const [symbol, lots] of lotsBySymbol) {
+      const source = sourceOf.get(symbol)!;
+      const series = this.dividendSeries.get(source)?.series;
+      if (!series) {
+        if (this.marketData.fetchDividends) unavailableSymbols.push(symbol);
+        continue;
+      }
+      const tax = resolveTax(source, settings.dividendTax?.[symbol]);
+      const computed = computeHoldingDividends({
+        symbol,
+        sourceSymbol: source,
+        lots,
+        series,
+        stale: false,
+        tax,
+        today,
+      });
+      for (const r of computed.received) {
+        if (r.exDate < yearStart || r.exDate > yearEnd) continue;
+        events.push({
+          symbol,
+          exDate: r.exDate,
+          currency: series.currency,
+          gross: r.gross,
+          foreignTax: r.foreignTax,
+          portugueseTax: r.portugueseTax,
+          country: tax.country,
+          known: tax.known,
+        });
+      }
+    }
+
+    const sold = closed.filter((c) => c.closeDate >= yearStart && c.closeDate <= yearEnd);
+    const rateOn = await this.historicalRates(
+      [
+        ...events.map((e) => ({ currency: e.currency, date: e.exDate })),
+        ...sold.flatMap((c) => [
+          { currency: c.currency, date: c.purchaseDate },
+          { currency: c.currency, date: c.closeDate },
+        ]),
+      ],
+      nowMs
+    );
+
+    const years = new Set<number>([Number(today.slice(0, 4)), Number(today.slice(0, 4)) - 1]);
+    for (const c of closed) years.add(Number(c.closeDate.slice(0, 4)));
+    return {
+      year,
+      settings: irs,
+      dividends: buildIrsDividends(events, rateOn),
+      gains: buildIrsGains(sold, irs, (c) => resolveTax(c.symbol, settings.dividendTax?.[c.symbol]), rateOn),
+      unavailableSymbols: unavailableSymbols.sort(),
+      availableYears: [...years].sort((a, b) => b - a),
+    };
+  }
+
+  /**
+   * Euros per unit of a currency on a given day, from each pair's daily
+   * closes (USDEUR=X…). A weekend or holiday takes the last close before
+   * it. Histories are cached for 12 hours; a pair that can't be fetched
+   * gives no rate, never a guessed one.
+   */
+  private async historicalRates(
+    needs: Array<{ currency: string | null; date: string }>,
+    nowMs: number
+  ): Promise<RateOn> {
+    const earliest = new Map<string, string>();
+    for (const need of needs) {
+      if (!need.currency) continue;
+      const major = majorCurrency(need.currency).currency;
+      if (major === "EUR") continue;
+      const known = earliest.get(major);
+      if (!known || need.date < known) earliest.set(major, need.date);
+    }
+    if (this.marketData.fetchDailyCloses) {
+      for (const [major, date] of earliest) {
+        const pair = `${major}EUR=X`;
+        // A few days' margin, so a date after a weekend still finds the Friday close.
+        const from = new Date(Date.parse(`${date}T00:00:00Z`) - 10 * 86_400_000).toISOString().slice(0, 10);
+        const entry = this.fxHistory.get(pair);
+        if (entry && from >= entry.from && nowMs - entry.fetchedAtMs < FX_HISTORY_TTL_MS) continue;
+        try {
+          const points = await this.marketData.fetchDailyCloses(pair, from);
+          this.fxHistory.set(pair, { from, points, fetchedAtMs: nowMs });
+        } catch (err) {
+          logger.warn(`Exchange rate history for ${pair} failed`, { error: String(err) });
+        }
+      }
+    }
+    return (currency, date) => {
+      if (!currency) return null;
+      const { currency: major, divisor } = majorCurrency(currency);
+      if (major === "EUR") return 1 / divisor;
+      const points = this.fxHistory.get(`${major}EUR=X`)?.points;
+      if (!points) return null;
+      let found: number | null = null;
+      for (const point of points) {
+        if (point.date > date) break;
+        found = point.close;
+      }
+      return found === null ? null : found / divisor;
+    };
+  }
+
+  /** Closed positions that pass validation, symbols normalized. */
+  private validClosed(settings: StockProviderConfig): ClosedPosition[] {
+    const list = Array.isArray(settings.closedPositions) ? settings.closedPositions : [];
+    return list
+      .filter((c) => validateClosedPosition(c, this.now()).valid)
+      .map((c) => ({ ...c, symbol: normalizeSymbol(c.symbol)! }));
+  }
+
+  /** Where a lot's dividends come from: its alternative (or known alias) when its own symbol has no current price. */
+  private dividendSourceFor(lot: { symbol: string; alternativeSymbol?: string }, nowMs: number): string {
+    const alternative = lot.alternativeSymbol ?? KNOWN_ALIASES[lot.symbol];
+    const own = this.quotes.get(lot.symbol)?.quote;
+    return alternative && (!own || this.isOutdated(own, nowMs)) ? alternative : lot.symbol;
   }
 
   /**

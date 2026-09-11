@@ -8,6 +8,8 @@ import {
   StockPreferences,
 } from "../settings/settingsManager";
 import type { DividendTaxSetting, StockDividendsResult } from "../context/providers/stocks/dividends";
+import type { ClosedPosition } from "../context/providers/stocks/closed";
+import type { IrsReport, IrsSettings } from "../context/providers/stocks/irs";
 import type { ListingSearchResult, StockNewsResult, StockPosition } from "../context/providers/stocks/types";
 import { Routine, RoutineEvaluation, RoutineHistoryEntry } from "../routines/types";
 import { SpotifyPlaylistSummary } from "../context/providers/spotify/types";
@@ -173,6 +175,8 @@ contextBridge.exposeInMainWorld("nimbus", {
     baseCurrency?: string;
     dividendsEnabled?: boolean;
     dividendTax?: Record<string, DividendTaxSetting>;
+    closedPositions?: ClosedPosition[];
+    irs?: IrsSettings;
     positions?: StockPosition[];
   }): Promise<StockPreferences> => ipcRenderer.invoke("nimbus:update-stock-settings", partial),
   /** Asks for fresh prices on the next read; resolves false when the last refresh was under 30 s ago. */
@@ -184,6 +188,20 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:find-stock-listings", symbol),
   /** Dividends received and expected per holding, with tax estimates. Read-only. */
   getStockDividends: (): Promise<StockDividendsResult> => ipcRenderer.invoke("nimbus:get-stock-dividends"),
+  /** Records a sale the user already made at their broker. NIMBUS never trades. */
+  closeStockPosition: (request: {
+    positionId: string;
+    shares: number;
+    closeDate: string;
+    closePrice: number;
+    currency: string;
+    fees?: number;
+    companyName?: string;
+    notes?: string;
+  }): Promise<StockPreferences> => ipcRenderer.invoke("nimbus:close-stock-position", request),
+  /** Anexo J figures for one year. A helper, not tax advice. */
+  getStockIrsReport: (year: number): Promise<IrsReport> =>
+    ipcRenderer.invoke("nimbus:get-stock-irs-report", year),
 
   getSpotifySettings: (): Promise<PublicSpotifySettings> => ipcRenderer.invoke("nimbus:get-spotify-settings"),
   updateSpotifySettings: (partial: {

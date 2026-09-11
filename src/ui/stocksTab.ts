@@ -111,6 +111,8 @@ interface StockPreferencesView {
   baseCurrency: string;
   dividendsEnabled: boolean;
   dividendTax: Record<string, DividendTaxSettingView>;
+  closedPositions: ClosedPositionInput[];
+  irs: { gainsCode: string; counterpartyCountry: string };
   positions: StockPositionInput[];
 }
 
@@ -223,6 +225,68 @@ interface StockDividendsView {
   taxCountries: { code: string; name: string; withholdingPercent: number; creditCapPercent: number }[];
 }
 
+interface ClosedPositionInput {
+  id: string;
+  symbol: string;
+  companyName?: string;
+  alternativeSymbol?: string;
+  leverage?: number;
+  shares: number;
+  averageCost: number;
+  purchaseDate: string;
+  closeDate: string;
+  closePrice: number;
+  fees?: number;
+  currency: string;
+  notes?: string;
+}
+
+interface IrsReportView {
+  year: number;
+  dividends: {
+    code: string;
+    rows: {
+      countryCode: string;
+      countryName: string;
+      gross: number;
+      taxAbroad: number;
+      taxPortugal: number;
+      dividends: number;
+      symbols: string[];
+    }[];
+    domestic: { gross: number; taxPortugal: number } | null;
+    unknownCountrySymbols: string[];
+    missingRates: string[];
+  };
+  gains: {
+    code: string;
+    counterpartyCountry: string;
+    rows: {
+      id: string;
+      symbol: string;
+      leverage: number;
+      acquisitionDate: string;
+      acquisitionValue: number;
+      realizationDate: string;
+      realizationValue: number;
+      fees: number;
+      gain: number;
+    }[];
+    groups: {
+      code: string;
+      sourceCountry: string | null;
+      sourceCountryName: string;
+      counterpartyCountry: string;
+      gain: number;
+      taxAbroad: number;
+    }[];
+    unknownCountrySymbols: string[];
+    missingRates: string[];
+  };
+  unavailableSymbols: string[];
+  availableYears: number[];
+}
+
 interface DividendTaxSettingView {
   country: string;
   withholdingPercent?: number;
@@ -230,6 +294,17 @@ interface DividendTaxSettingView {
 
 interface StocksBridge {
   getStockDividends(): Promise<StockDividendsView>;
+  closeStockPosition(request: {
+    positionId: string;
+    shares: number;
+    closeDate: string;
+    closePrice: number;
+    currency: string;
+    fees?: number;
+    companyName?: string;
+    notes?: string;
+  }): Promise<StockPreferencesView>;
+  getStockIrsReport(year: number): Promise<IrsReportView>;
   findStockListings(symbol: string): Promise<ListingSearchResultView>;
   getContext(): Promise<{ providers: Record<string, unknown> }>;
   getStockSettings(): Promise<StockPreferencesView>;
@@ -329,6 +404,13 @@ const SORTS: { id: string; label: string; descending: boolean }[] = [
 ];
 
 /** How the list is sorted and whether it is folded are per-device conveniences, so they live in localStorage. */
+/** Today's plain local date, "YYYY-MM-DD". */
+function localToday(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 function readView(key: string, fallback: string): string {
   try {
     return localStorage.getItem(`nimbus.stocks.${key}`) ?? fallback;
@@ -369,6 +451,27 @@ export function initStocksTab(): void {
   const sortControls = document.getElementById("stockSortControls") as HTMLElement;
   const sortSelect = document.getElementById("stockSort") as HTMLSelectElement;
   const sortDirBtn = document.getElementById("stockSortDir") as HTMLButtonElement;
+  const closeView = document.getElementById("stockCloseView") as HTMLElement;
+  const closeHeading = document.getElementById("stockCloseHeading") as HTMLElement;
+  const closeSharesInput = document.getElementById("stockCloseShares") as HTMLInputElement;
+  const closeDateInput = document.getElementById("stockCloseDate") as HTMLInputElement;
+  const closePriceInput = document.getElementById("stockClosePrice") as HTMLInputElement;
+  const closeCurrencyInput = document.getElementById("stockCloseCurrency") as HTMLInputElement;
+  const closeFeesInput = document.getElementById("stockCloseFees") as HTMLInputElement;
+  const closeNotesInput = document.getElementById("stockCloseNotes") as HTMLInputElement;
+  const closeError = document.getElementById("stockCloseError") as HTMLElement;
+  const saveCloseBtn = document.getElementById("saveCloseBtn") as HTMLButtonElement;
+  const closedSection = document.getElementById("stockClosedSection") as HTMLDetailsElement;
+  const closedCount = document.getElementById("stockClosedCount") as HTMLElement;
+  const closedYearSelect = document.getElementById("stockClosedYear") as HTMLSelectElement;
+  const closedTotals = document.getElementById("stockClosedTotals") as HTMLElement;
+  const closedList = document.getElementById("stockClosedList") as HTMLElement;
+  const irsSection = document.getElementById("stockIrsSection") as HTMLDetailsElement;
+  const irsYearSelect = document.getElementById("stockIrsYear") as HTMLSelectElement;
+  const irsGainsCode = document.getElementById("stockIrsGainsCode") as HTMLInputElement;
+  const irsCounterparty = document.getElementById("stockIrsCounterparty") as HTMLInputElement;
+  const irsCopyBtn = document.getElementById("stockIrsCopy") as HTMLButtonElement;
+  const irsBody = document.getElementById("stockIrsBody") as HTMLElement;
 
   const formHeading = document.getElementById("positionFormHeading") as HTMLElement;
   const symbolInput = document.getElementById("positionSymbol") as HTMLInputElement;
@@ -388,6 +491,8 @@ export function initStocksTab(): void {
     baseCurrency: "EUR",
     dividendsEnabled: true,
     dividendTax: {},
+    closedPositions: [],
+    irs: { gainsCode: "G30", counterpartyCountry: "196" },
     positions: [],
   };
   let result: StockProviderResultView | undefined;
@@ -402,12 +507,21 @@ export function initStocksTab(): void {
   let sortDesc =
     readView("sortDescending", String(SORTS.find((s) => s.id === sortKey)!.descending)) === "true";
   let listCollapsed = readView("collapsed", "false") === "true";
+  /** The closed position whose page is open. */
+  let selectedClosedId: string | null = null;
+  /** The open lot the close form is recording a sale of. */
+  let closingId: string | null = null;
+  let closingName: string | null = null;
+  let closedYear = "all";
+  let irsYear = new Date().getFullYear();
+  let irsTables: { title: string; rows: string[][] }[] = [];
   let editingId: string | null = null;
 
-  function show(view: "list" | "detail" | "edit"): void {
+  function show(view: "list" | "detail" | "edit" | "close"): void {
     listView.hidden = view !== "list";
     detailView.hidden = view !== "detail";
     editView.hidden = view !== "edit";
+    closeView.hidden = view !== "close";
   }
 
   // Not alert(): a native dialog in Electron takes keyboard focus away from the page.
@@ -439,6 +553,7 @@ export function initStocksTab(): void {
     }
     render();
     void loadDividends();
+    if (irsSection.open) void loadIrs();
   }
 
   function render(): void {
@@ -455,9 +570,11 @@ export function initStocksTab(): void {
     renderOverview();
     renderDividendOverview();
     renderList();
+    renderClosedList();
     if (!detailView.hidden) {
       if (selectedId) renderDetail(selectedId);
       else if (selectedSymbol) renderHolding(selectedSymbol);
+      else if (selectedClosedId) renderClosedDetail(selectedClosedId);
     }
   }
 
@@ -719,6 +836,7 @@ export function initStocksTab(): void {
   function openDetail(id: string, fromSymbol: string | null = null): void {
     selectedId = id;
     selectedSymbol = null;
+    selectedClosedId = null;
     returnToSymbol = fromSymbol;
     show("detail");
     renderDetail(id);
@@ -727,6 +845,7 @@ export function initStocksTab(): void {
   function openHolding(symbol: string): void {
     selectedId = null;
     selectedSymbol = symbol;
+    selectedClosedId = null;
     returnToSymbol = null;
     show("detail");
     renderHolding(symbol);
@@ -888,6 +1007,11 @@ export function initStocksTab(): void {
     editBtn.type = "button";
     editBtn.addEventListener("click", () => openForm(position));
     actions.appendChild(editBtn);
+    const closeBtn = el("button", "btn btn-secondary", "Close position");
+    closeBtn.type = "button";
+    closeBtn.title = "Record a sale you made at your broker";
+    closeBtn.addEventListener("click", () => openCloseForm(position, view));
+    actions.appendChild(closeBtn);
     actions.appendChild(deleteButton(position));
     detailEl.appendChild(actions);
 
@@ -974,6 +1098,460 @@ export function initStocksTab(): void {
 
     detailEl.appendChild(dividendSection(symbol));
     detailEl.appendChild(newsBlock(symbol, `holding:${symbol}`));
+  }
+
+  // --------------------------------------------------------------- closing
+
+  function openCloseForm(position: StockPositionInput, view: StockPositionView | null): void {
+    closingId = position.id;
+    closingName = view?.companyName && view.companyName !== position.symbol ? view.companyName : null;
+    closeHeading.textContent = `Close ${position.symbol}`;
+    closeSharesInput.value = String(position.shares);
+    closeSharesInput.max = String(position.shares);
+    closeDateInput.value = localToday();
+    closePriceInput.value = view?.quote ? String(view.quote.price) : "";
+    closeCurrencyInput.value = view?.currency ?? "";
+    closeFeesInput.value = "";
+    closeNotesInput.value = "";
+    closeError.hidden = true;
+    if (!position.purchaseDate) {
+      showError(
+        closeError,
+        "This position has no purchase date. Add it first (Edit) — the IRS asks for it with every sale."
+      );
+    }
+    show("close");
+    closePriceInput.focus();
+  }
+
+  function leaveCloseForm(): void {
+    const id = closingId;
+    closingId = null;
+    if (id && prefs.positions.some((p) => p.id === id)) openDetail(id);
+    else show("list");
+  }
+
+  async function saveClose(): Promise<void> {
+    if (!closingId) return;
+    const shares = Number(closeSharesInput.value);
+    const closePrice = Number(closePriceInput.value);
+    const fees = closeFeesInput.value ? Number(closeFeesInput.value) : undefined;
+    const typed = closeCurrencyInput.value.trim();
+    const currency = /^(GBp|ZAc|ILA)$/.test(typed) ? typed : typed.toUpperCase();
+    if (!closeSharesInput.value || !Number.isFinite(shares) || shares <= 0) {
+      return showError(closeError, "Enter how many shares or units you sold.");
+    }
+    if (!closeDateInput.value) return showError(closeError, "Enter the date you sold.");
+    if (!closePriceInput.value || !Number.isFinite(closePrice) || closePrice < 0) {
+      return showError(closeError, "Enter the price per share you sold at.");
+    }
+    if (!/^[A-Za-z]{3}$/.test(currency))
+      return showError(closeError, "Enter the currency as a code such as USD.");
+    if (fees !== undefined && (!Number.isFinite(fees) || fees < 0)) {
+      return showError(closeError, "Fees must be a number of 0 or more.");
+    }
+    closeError.hidden = true;
+    saveCloseBtn.disabled = true;
+    try {
+      prefs = await bridge().closeStockPosition({
+        positionId: closingId,
+        shares,
+        closeDate: closeDateInput.value,
+        closePrice,
+        currency,
+        ...(fees !== undefined ? { fees } : {}),
+        ...(closingName ? { companyName: closingName } : {}),
+        ...(closeNotesInput.value.trim() ? { notes: closeNotesInput.value.trim() } : {}),
+      });
+      closingId = null;
+      selectedId = null;
+      selectedSymbol = null;
+      returnToSymbol = null;
+      closedSection.open = true;
+      show("list");
+      await load();
+    } catch (err) {
+      showError(closeError, errorText(err));
+    } finally {
+      saveCloseBtn.disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------- closed list
+
+  function realized(c: ClosedPositionInput): { gain: number; invested: number; percent: number | null } {
+    const leverage = c.leverage && c.leverage > 1 ? c.leverage : 1;
+    const invested = (c.shares * c.averageCost) / leverage;
+    const gain = c.shares * (c.closePrice - c.averageCost) - (c.fees ?? 0);
+    return { gain, invested, percent: invested > 0 ? (gain / invested) * 100 : null };
+  }
+
+  function renderClosedList(): void {
+    const closed = prefs.closedPositions ?? [];
+    closedSection.hidden = closed.length === 0;
+    closedCount.textContent = `Closed positions · ${closed.length}`;
+    const years = [...new Set(closed.map((c) => c.closeDate.slice(0, 4)))].sort().reverse();
+    if (closedYear !== "all" && !years.includes(closedYear)) closedYear = "all";
+    closedYearSelect.innerHTML = "";
+    closedYearSelect.appendChild(new Option("All years", "all"));
+    for (const year of years) closedYearSelect.appendChild(new Option(year, year));
+    closedYearSelect.value = closedYear;
+
+    const shown = closed
+      .filter((c) => closedYear === "all" || c.closeDate.startsWith(closedYear))
+      .sort((a, b) => b.closeDate.localeCompare(a.closeDate));
+    const byCurrency = new Map<string, number>();
+    for (const c of shown) byCurrency.set(c.currency, (byCurrency.get(c.currency) ?? 0) + realized(c).gain);
+    closedTotals.textContent =
+      shown.length === 0
+        ? ""
+        : `Realized ${closedYear === "all" ? "in total" : `in ${closedYear}`}: ${[...byCurrency]
+            .map(([cur, value]) => money(value, cur, true))
+            .join(" · ")} — before tax, in each position's currency. The IRS helper converts to euros.`;
+
+    closedList.innerHTML = "";
+    for (const c of shown) {
+      const r = realized(c);
+      const row = el("button", "stock-row");
+      row.type = "button";
+      const who = el("span");
+      const line = el("span", "stock-row-symbol", c.symbol);
+      if (c.leverage && c.leverage > 1) line.appendChild(el("span", "tag tag-neutral", `CFD ×${c.leverage}`));
+      who.appendChild(line);
+      who.appendChild(el("div", "stock-row-name", c.companyName ?? ""));
+      row.appendChild(who);
+      row.appendChild(numberCell("Closed", plainDate(c.closeDate)));
+      row.appendChild(
+        numberCell(
+          c.leverage && c.leverage > 1 ? "Units" : "Shares",
+          new Intl.NumberFormat().format(c.shares)
+        )
+      );
+      row.appendChild(numberCell("Sold at", money(c.closePrice, c.currency)));
+      row.appendChild(
+        numberCell(
+          "Realized",
+          `${money(r.gain, c.currency, true)} (${percent(r.percent)})`,
+          trendClass(r.gain)
+        )
+      );
+      row.addEventListener("click", () => openClosed(c.id));
+      closedList.appendChild(row);
+    }
+  }
+
+  function openClosed(id: string): void {
+    selectedClosedId = id;
+    selectedId = null;
+    selectedSymbol = null;
+    returnToSymbol = null;
+    show("detail");
+    renderClosedDetail(id);
+  }
+
+  /** Two clicks instead of a confirm() dialog: the first arms it, the second acts. */
+  function twoClickButton(label: string, action: () => Promise<void>): HTMLButtonElement {
+    const button = el("button", "btn btn-ghost", label);
+    button.type = "button";
+    let armTimer: ReturnType<typeof setTimeout> | null = null;
+    button.addEventListener("click", async () => {
+      if (!armTimer) {
+        button.textContent = "Click again to confirm";
+        armTimer = setTimeout(() => {
+          armTimer = null;
+          button.textContent = label;
+        }, 4000);
+        return;
+      }
+      clearTimeout(armTimer);
+      armTimer = null;
+      await action();
+    });
+    return button;
+  }
+
+  function renderClosedDetail(id: string): void {
+    const c = (prefs.closedPositions ?? []).find((p) => p.id === id);
+    if (!c) {
+      selectedClosedId = null;
+      show("list");
+      return;
+    }
+    const r = realized(c);
+    const leverage = c.leverage && c.leverage > 1 ? c.leverage : 1;
+    const cur = c.currency;
+    detailEl.innerHTML = "";
+    detailEl.appendChild(
+      el("h3", undefined, `${c.companyName ? `${c.companyName} (${c.symbol})` : c.symbol} — closed`)
+    );
+
+    const grid = el("div", "stock-detail-grid");
+    const trade = el("div", "stock-detail-card");
+    trade.appendChild(el("div", "stock-stat-label", "The trade"));
+    if (leverage > 1) trade.appendChild(keyValue("Leverage", `×${leverage} (CFD)`));
+    trade.appendChild(keyValue(leverage > 1 ? "Units" : "Shares", new Intl.NumberFormat().format(c.shares)));
+    trade.appendChild(keyValue("Bought", plainDate(c.purchaseDate)));
+    trade.appendChild(keyValue(leverage > 1 ? "Open price" : "Average cost", money(c.averageCost, cur)));
+    trade.appendChild(keyValue("Sold", plainDate(c.closeDate)));
+    trade.appendChild(keyValue("Close price", money(c.closePrice, cur)));
+    trade.appendChild(keyValue("Fees", money(c.fees ?? 0, cur)));
+    const days = Math.round((Date.parse(c.closeDate) - Date.parse(c.purchaseDate)) / 86_400_000);
+    trade.appendChild(keyValue("Held", `${days} day${days === 1 ? "" : "s"}`));
+    if (c.notes) trade.appendChild(keyValue("Notes", c.notes));
+    grid.appendChild(trade);
+
+    const outcome = el("div", "stock-detail-card");
+    outcome.appendChild(el("div", "stock-stat-label", "Result"));
+    outcome.appendChild(keyValue(leverage > 1 ? "Invested (margin)" : "Invested", money(r.invested, cur)));
+    outcome.appendChild(keyValue("Bought for", money(c.shares * c.averageCost, cur)));
+    outcome.appendChild(keyValue("Sold for", money(c.shares * c.closePrice, cur)));
+    outcome.appendChild(keyValue("Realized gain/loss", money(r.gain, cur, true), trendClass(r.gain)));
+    outcome.appendChild(keyValue("Return", percent(r.percent), trendClass(r.percent)));
+    grid.appendChild(outcome);
+    detailEl.appendChild(grid);
+
+    const actions = el("div", "stock-detail-actions");
+    const reopen = el("button", "btn btn-secondary", "Reopen");
+    reopen.type = "button";
+    reopen.title = "Move these shares back to your open positions";
+    reopen.addEventListener("click", async () => {
+      const lot: StockPositionInput = {
+        id: `position-${Date.now()}`,
+        symbol: c.symbol,
+        shares: c.shares,
+        averageCost: c.averageCost,
+        purchaseDate: c.purchaseDate,
+        ...(c.companyName ? { companyName: c.companyName } : {}),
+        ...(c.alternativeSymbol ? { alternativeSymbol: c.alternativeSymbol } : {}),
+        ...(leverage > 1 ? { leverage } : {}),
+        ...(c.notes ? { notes: c.notes } : {}),
+      };
+      try {
+        prefs = await bridge().updateStockSettings({
+          positions: [...prefs.positions, lot],
+          closedPositions: prefs.closedPositions.filter((p) => p.id !== c.id),
+        });
+        selectedClosedId = null;
+        await load();
+        openDetail(lot.id);
+      } catch (err) {
+        showError(errorEl, errorText(err));
+      }
+    });
+    actions.appendChild(reopen);
+    actions.appendChild(
+      twoClickButton("Remove", async () => {
+        try {
+          prefs = await bridge().updateStockSettings({
+            closedPositions: prefs.closedPositions.filter((p) => p.id !== c.id),
+          });
+          selectedClosedId = null;
+          show("list");
+          await load();
+        } catch (err) {
+          showError(errorEl, errorText(err));
+        }
+      })
+    );
+    detailEl.appendChild(actions);
+    detailEl.appendChild(
+      el(
+        "p",
+        "setting-note",
+        "Reopen moves the shares back to your open positions. Remove deletes this record from NIMBUS only — nothing changes at your broker."
+      )
+    );
+  }
+
+  // ------------------------------------------------------------ IRS helper
+
+  function fillIrsYears(years: number[]): void {
+    const list = [...new Set([...years, irsYear])].sort((a, b) => b - a);
+    irsYearSelect.innerHTML = "";
+    for (const year of list) irsYearSelect.appendChild(new Option(String(year), String(year)));
+    irsYearSelect.value = String(irsYear);
+  }
+
+  async function loadIrs(): Promise<void> {
+    irsGainsCode.value = prefs.irs?.gainsCode ?? "G30";
+    irsCounterparty.value = prefs.irs?.counterpartyCountry ?? "196";
+    irsBody.innerHTML = "";
+    irsBody.appendChild(el("p", "feed-empty", "Preparing…"));
+    let report: IrsReportView;
+    try {
+      report = await bridge().getStockIrsReport(irsYear);
+    } catch (err) {
+      irsBody.innerHTML = "";
+      irsBody.appendChild(el("p", "feed-empty", `Couldn't prepare the figures: ${errorText(err)}`));
+      return;
+    }
+    fillIrsYears(report.availableYears);
+    renderIrs(report);
+  }
+
+  /** A table on screen, also kept as plain rows for "Copy tables". */
+  function irsTable(title: string, headers: string[], shown: string[][], copied: string[][]): HTMLElement {
+    irsTables.push({ title, rows: [headers, ...copied] });
+    const wrap = el("div", "stock-table-wrap");
+    const table = el("table", "stock-dividend-table");
+    const thead = el("thead");
+    const head = el("tr");
+    for (const label of headers) head.appendChild(el("th", undefined, label));
+    thead.appendChild(head);
+    table.appendChild(thead);
+    const tbody = el("tbody");
+    for (const row of shown) {
+      const tr = el("tr");
+      for (const value of row) tr.appendChild(el("td", undefined, value));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function renderIrs(r: IrsReportView): void {
+    const eur = (value: number) => money(value, "EUR");
+    const plain = (value: number) => value.toFixed(2);
+    irsTables = [];
+    irsBody.innerHTML = "";
+
+    const d = r.dividends;
+    irsBody.appendChild(el("h4", "stock-irs-heading", "Capital income · dividends (Quadro 8A)"));
+    if (d.rows.length > 0) {
+      irsBody.appendChild(
+        irsTable(
+          `Dividends ${r.year} (Anexo J, Quadro 8A)`,
+          ["Income code", "Source country", "Gross income", "Tax paid abroad", "Tax withheld in Portugal"],
+          d.rows.map((row) => [
+            d.code,
+            `${row.countryCode} · ${row.countryName}`,
+            eur(row.gross),
+            eur(row.taxAbroad),
+            eur(row.taxPortugal),
+          ]),
+          d.rows.map((row) => [
+            d.code,
+            row.countryCode,
+            plain(row.gross),
+            plain(row.taxAbroad),
+            plain(row.taxPortugal),
+          ])
+        )
+      );
+      irsBody.appendChild(
+        el(
+          "p",
+          "setting-note",
+          d.rows
+            .map(
+              (row) =>
+                `${row.countryCode}: ${row.symbols.join(", ")} (${row.dividends} dividend${row.dividends === 1 ? "" : "s"})`
+            )
+            .join(" · ")
+        )
+      );
+    } else {
+      irsBody.appendChild(el("p", "feed-empty", `No foreign dividends found for ${r.year}.`));
+    }
+    const dividendNotes: string[] = [];
+    if (d.domestic) {
+      dividendNotes.push(
+        `Portuguese dividends (${eur(d.domestic.gross)} gross, ${eur(d.domestic.taxPortugal)} withheld) aren't declared in Anexo J — the 28% withheld at source is final unless you opt to aggregate.`
+      );
+    }
+    if (d.unknownCountrySymbols.length > 0) {
+      dividendNotes.push(
+        `Left out until you choose the company's tax country on its page: ${d.unknownCountrySymbols.join(", ")}.`
+      );
+    }
+    if (r.unavailableSymbols.length > 0) {
+      dividendNotes.push(`Dividend history unavailable right now for ${r.unavailableSymbols.join(", ")}.`);
+    }
+    if (d.missingRates.length > 0) {
+      dividendNotes.push(`No exchange rate for ${d.missingRates.join(", ")} — those dividends are left out.`);
+    }
+    if (dividendNotes.length > 0) irsBody.appendChild(el("p", "setting-note", dividendNotes.join(" ")));
+
+    const g = r.gains;
+    irsBody.appendChild(el("h4", "stock-irs-heading", "Capital gains · closed positions (Quadro 9.2)"));
+    if (g.rows.length > 0) {
+      irsBody.appendChild(
+        irsTable(
+          `Capital gains ${r.year} (Anexo J, Quadro 9.2)`,
+          [
+            "Income code",
+            "Source country",
+            "Gross income (gain/loss)",
+            "Tax paid abroad",
+            "Counterparty country",
+          ],
+          g.groups.map((x) => [
+            x.code,
+            x.sourceCountry ? `${x.sourceCountry} · ${x.sourceCountryName}` : "Unknown",
+            eur(x.gain),
+            eur(x.taxAbroad),
+            x.counterpartyCountry,
+          ]),
+          g.groups.map((x) => [
+            x.code,
+            x.sourceCountry ?? "",
+            plain(x.gain),
+            plain(x.taxAbroad),
+            x.counterpartyCountry,
+          ])
+        )
+      );
+      irsBody.appendChild(
+        irsTable(
+          `Closed positions ${r.year}`,
+          ["Symbol", "Bought", "Acquisition value", "Sold", "Realization value", "Fees", "Gain/loss"],
+          g.rows.map((x) => [
+            x.leverage > 1 ? `${x.symbol} (CFD ×${x.leverage})` : x.symbol,
+            plainDate(x.acquisitionDate),
+            eur(x.acquisitionValue),
+            plainDate(x.realizationDate),
+            eur(x.realizationValue),
+            eur(x.fees),
+            eur(x.gain),
+          ]),
+          g.rows.map((x) => [
+            x.symbol,
+            x.acquisitionDate,
+            plain(x.acquisitionValue),
+            x.realizationDate,
+            plain(x.realizationValue),
+            plain(x.fees),
+            plain(x.gain),
+          ])
+        )
+      );
+    } else {
+      irsBody.appendChild(el("p", "feed-empty", `No positions closed in ${r.year}.`));
+    }
+    const gainNotes: string[] = [];
+    if (g.unknownCountrySymbols.length > 0) {
+      gainNotes.push(
+        `Source country unknown for ${g.unknownCountrySymbols.join(", ")} — choose it on the holding's page.`
+      );
+    }
+    if (g.missingRates.length > 0) {
+      gainNotes.push(`No exchange rate for ${g.missingRates.join(", ")} — those sales are left out.`);
+    }
+    if (g.rows.some((x) => x.leverage > 1)) {
+      gainNotes.push(
+        "For CFDs the acquisition and realization values are the full exposure (units × price)."
+      );
+    }
+    if (gainNotes.length > 0) irsBody.appendChild(el("p", "setting-note", gainNotes.join(" ")));
+
+    irsBody.appendChild(
+      el(
+        "p",
+        "setting-note",
+        "A helper for filling in Anexo J, not tax advice. Euro amounts use Yahoo Finance's exchange rate for each date (the last one before, on weekends); dividends use the ex-dividend date, since payment dates aren't available. The codes are the ones set above — compare everything with your broker's annual tax statement before submitting."
+      )
+    );
   }
 
   // ------------------------------------------------------------ dividends
@@ -1481,6 +2059,11 @@ export function initStocksTab(): void {
   document.getElementById("cancelPositionBtn")?.addEventListener("click", closeForm);
   document.getElementById("backFromPositionFormBtn")?.addEventListener("click", closeForm);
   document.getElementById("backFromStockDetailBtn")?.addEventListener("click", () => {
+    if (selectedClosedId) {
+      selectedClosedId = null;
+      show("list");
+      return;
+    }
     if (selectedId && returnToSymbol) {
       openHolding(returnToSymbol);
       return;
@@ -1518,6 +2101,52 @@ export function initStocksTab(): void {
     }
     await load();
   });
+  document.getElementById("saveCloseBtn")?.addEventListener("click", () => void saveClose());
+  document.getElementById("cancelCloseBtn")?.addEventListener("click", leaveCloseForm);
+  document.getElementById("backFromCloseFormBtn")?.addEventListener("click", leaveCloseForm);
+  closedYearSelect.addEventListener("change", () => {
+    closedYear = closedYearSelect.value;
+    renderClosedList();
+  });
+  irsSection.addEventListener("toggle", () => {
+    if (irsSection.open) void loadIrs();
+  });
+  irsYearSelect.addEventListener("change", () => {
+    irsYear = Number(irsYearSelect.value);
+    void loadIrs();
+  });
+  const saveIrsCodes = async (): Promise<void> => {
+    const gainsCode = irsGainsCode.value.trim().toUpperCase();
+    const counterpartyCountry = irsCounterparty.value.trim();
+    if (!/^[A-Z]\d{2}$/.test(gainsCode) || !/^\d{3}$/.test(counterpartyCountry)) {
+      showError(errorEl, "Use an income code like G30 and a three-digit country code like 196.");
+      return;
+    }
+    try {
+      prefs = await bridge().updateStockSettings({ irs: { gainsCode, counterpartyCountry } });
+      errorEl.hidden = true;
+      await loadIrs();
+    } catch (err) {
+      showError(errorEl, errorText(err));
+    }
+  };
+  irsGainsCode.addEventListener("change", () => void saveIrsCodes());
+  irsCounterparty.addEventListener("change", () => void saveIrsCodes());
+  irsCopyBtn.addEventListener("click", async () => {
+    const text = irsTables
+      .map((t) => [t.title, ...t.rows.map((row) => row.join("\t"))].join("\n"))
+      .join("\n\n");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      irsCopyBtn.textContent = "Copied";
+      setTimeout(() => (irsCopyBtn.textContent = "Copy tables"), 2000);
+    } catch {
+      showError(errorEl, "Couldn't copy to the clipboard.");
+    }
+  });
+  fillIrsYears([]);
+
   for (const option of SORTS) sortSelect.appendChild(new Option(option.label, option.id));
   sortSelect.addEventListener("change", () => {
     sortKey = sortSelect.value;

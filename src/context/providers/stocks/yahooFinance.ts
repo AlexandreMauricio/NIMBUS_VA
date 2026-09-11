@@ -1,6 +1,7 @@
 import { httpTimeoutSignal } from "../../../common/timeout";
 import { DividendEvent, DividendSeries } from "./dividends";
 import {
+  DailyClose,
   ListingMatch,
   MarketDataSource,
   NewsSource,
@@ -158,6 +159,43 @@ export class YahooMarketDataSource implements MarketDataSource {
       .filter((e): e is DividendEvent => e !== null)
       .sort((a, b) => a.exDate.localeCompare(b.exDate));
     return { currency: text(result.meta.currency), events };
+  }
+
+  /** Daily closes since `fromDate` — for an FX pair such as USDEUR=X, the day's rate. */
+  async fetchDailyCloses(symbol: string, fromDate: string): Promise<DailyClose[]> {
+    const period1 = Math.floor(Date.parse(`${fromDate}T00:00:00Z`) / 1000);
+    const period2 = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+    const url = `${CHART_URL}${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d`;
+    const response = await this.fetchFn(url, {
+      signal: httpTimeoutSignal(),
+      headers: { Accept: "application/json" },
+    });
+    if (response.status === 404) throw new Error(`No market data found for ${symbol}`);
+    if (!response.ok) throw new Error(`Price history request failed with status ${response.status}`);
+
+    const body = (await response.json()) as {
+      chart?: {
+        result?: Array<{
+          meta?: ChartMeta;
+          timestamp?: unknown;
+          indicators?: { quote?: Array<{ close?: unknown }> };
+        }> | null;
+      };
+    };
+    const result = body?.chart?.result?.[0];
+    if (!result?.meta) throw new Error(`No price history for ${symbol}`);
+    const timeZone = text(result.meta.exchangeTimezoneName) ?? "UTC";
+    const stamps = Array.isArray(result.timestamp) ? (result.timestamp as unknown[]) : [];
+    const rawCloses = result.indicators?.quote?.[0]?.close;
+    const closes = Array.isArray(rawCloses) ? (rawCloses as unknown[]) : [];
+    const byDate = new Map<string, number>();
+    stamps.forEach((stamp, i) => {
+      const seconds = finite(stamp);
+      const close = finite(closes[i]);
+      if (seconds === null || close === null || close <= 0) return;
+      byDate.set(localDate(seconds * 1000, timeZone), close);
+    });
+    return [...byDate].map(([date, close]) => ({ date, close })).sort((a, b) => a.date.localeCompare(b.date));
   }
 
   /** Equity and ETF listings Yahoo's search returns for a company name. Unpriced — the caller prices them. */

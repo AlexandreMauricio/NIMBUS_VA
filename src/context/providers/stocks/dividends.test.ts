@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   CUSTOM_TAX_COUNTRY,
   DividendSeries,
+  HoldingDividendsInput,
   computeHoldingDividends,
   guessTaxCountry,
   normalizeDividendTax,
@@ -97,7 +98,7 @@ const LOTS: StockPosition[] = [
   { id: "c", symbol: "TSM", shares: 2, averageCost: 300 },
 ];
 
-function tsm(today: string, lots: StockPosition[] = LOTS) {
+function tsm(today: string, lots: HoldingDividendsInput["lots"] = LOTS) {
   return computeHoldingDividends({
     symbol: "TSM",
     sourceSymbol: "TSM",
@@ -126,9 +127,7 @@ test("each ex-date counts the lots bought before it; undated lots are reported, 
 });
 
 test("a lot bought on the ex-date doesn't get that dividend", () => {
-  const d = tsm("2026-09-11", [
-    { id: "a", symbol: "TSM", shares: 1, averageCost: 1, purchaseDate: "2026-06-11" },
-  ]);
+  const d = tsm("2026-09-11", [{ shares: 1, purchaseDate: "2026-06-11" }]);
   assert.equal(d.received.length, 0);
 });
 
@@ -172,4 +171,17 @@ test("tax settings are checked and rebuilt", () => {
   assert.ok(normalizeDividendTax({ X: { country: CUSTOM_TAX_COUNTRY, withholdingPercent: 140 } }).error);
   assert.ok(normalizeDividendTax({ "not a symbol": { country: "US" } }).error);
   assert.ok(normalizeDividendTax([]).error);
+});
+
+test("a sold lot keeps the dividends that went ex while it was held, and adds nothing ahead", () => {
+  const d = tsm("2026-09-11", [{ shares: 10, purchaseDate: "2025-10-01", closeDate: "2026-06-11" }]);
+  assert.deepEqual(
+    d.received.map((r) => r.exDate),
+    ["2026-06-11", "2026-03-17", "2025-12-11"]
+  );
+  assert.equal(d.expected, null);
+  assert.equal(d.estimatedAnnual, null);
+
+  const soldBefore = tsm("2026-09-11", [{ shares: 10, purchaseDate: "2025-10-01", closeDate: "2026-06-10" }]);
+  assert.equal(soldBefore.received.length, 2);
 });

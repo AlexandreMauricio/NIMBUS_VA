@@ -241,6 +241,43 @@ priced through an alternative symbol use that symbol's history.
 - The overview adds three figures in the base currency: dividends this
   year after tax, the next estimated dividend, and the yearly estimate.
 
+## Closed positions
+
+"Close position" on a lot records a sale the user already made at the
+broker — NIMBUS still never trades. `closeLot` (`closed.ts`, IPC
+`nimbus:close-stock-position`) moves the sold shares to
+`closedPositions`; selling part of a lot leaves the rest open with the same
+cost and date. A closed position keeps the purchase date (required — the
+IRS asks for it), close date and price, fees, currency, leverage and
+alternative symbol. The closed list (filterable by year) shows each sale's
+realized gain or loss, `shares × (close − cost) − fees`, as a % of what was
+invested (the margin, for a CFD). A closed position can be reopened or
+removed. Sold lots still count for the dividends that went ex while they
+were held (a lot sold on the ex-date gets that dividend).
+
+## IRS helper (Anexo J)
+
+`irs.ts` (pure) and `StockProvider.getIrsReport(year)` (IPC
+`nimbus:get-stock-irs-report`). For one year:
+
+- **Quadro 8A — dividends**, income code E11, one line per source country
+  (the numeric code: 840 United States, 724 Spain…): gross income, tax
+  paid abroad, tax withheld in Portugal (0 for foreign dividends).
+  Portuguese dividends are reported apart — they aren't declared there.
+- **Quadro 9.2 — closed positions**, one line per income code, source
+  country and counterparty (broker) country, with the gain or loss as
+  gross income and 0 tax abroad; plus each sale's acquisition and
+  realization dates and values, fees and gain.
+
+Every amount is in euros at the rate of its own date: Yahoo's daily
+closes for the pair (`USDEUR=X`), the last close on or before the date,
+cached for 12 hours; dividends use the ex-date (payment dates aren't
+available). An amount with no rate, or a holding whose country is unknown,
+is left out and named — never estimated. The gains code (default G30) and
+counterparty country (default 196, Cyprus) are settings (`irs`). CFDs are
+valued at their full exposure. "Copy tables" puts the tables on the
+clipboard as tab-separated text. It is a helper, not tax advice.
+
 ## Limitations
 
 - The Yahoo endpoints are **unofficial**: undocumented, possibly

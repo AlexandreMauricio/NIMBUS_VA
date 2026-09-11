@@ -38,7 +38,12 @@ Dates are the day the work landed.
   total return, name, symbol or order added. Positions can be leveraged
   (CFDs): the margin counts as invested and the profit or loss is on the
   full exposure. eToro index names such as EUSTX50 find their market
-  symbol (^STOXX50E) automatically. Prices come from
+  symbol (^STOXX50E) automatically.
+- Stocks: record a sale with "Close position" (all or part of a lot) — the
+  shares move to a Closed positions list with the realized gain or loss.
+  An IRS helper prepares Anexo J figures for a year: foreign dividends
+  (Quadro 8A, E11) by source country and closed positions (Quadro 9.2) by
+  code, source and counterparty country, in euros at each day's rate. Prices come from
   Yahoo Finance's public endpoints (no key); stale and unavailable prices
   are marked, never guessed. The briefing gains a portfolio line ("Your
   portfolio is up 1.8% today."). Strictly read-only: no trading, no
