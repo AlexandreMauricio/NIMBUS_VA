@@ -13,6 +13,12 @@ import { WeatherProvider, LocationResolver } from "../context/providers/weather"
 import { CalendarProvider } from "../context/providers/calendar";
 import { EmailProvider } from "../context/providers/email";
 import { TaskProvider, TaskWriteRequest } from "../context/providers/tasks";
+import {
+  StockProvider,
+  StockPosition,
+  normalizeSymbol,
+  validateStockPositions,
+} from "../context/providers/stocks";
 import { SpotifyContextProvider, SpotifyApiClient, mapPlaylists } from "../context/providers/spotify";
 import { actionService } from "../actions";
 import {
@@ -54,6 +60,7 @@ let spotifyContextProvider: SpotifyContextProvider;
 const contextEventBus = new ContextEventBus();
 let routineService: RoutineService;
 let taskProvider: TaskProvider;
+let stockProvider: StockProvider;
 let activityMonitor: DesktopActivityMonitor | null = null;
 const timerService = new TimerService(contextEventBus);
 let activityService: ActivityService;
@@ -373,6 +380,59 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:complete-task", (_event, taskId: string) => taskProvider.completeTask(taskId));
   ipcMain.handle("nimbus:reopen-task", (_event, taskId: string) => taskProvider.reopenTask(taskId));
   ipcMain.handle("nimbus:delete-task", (_event, taskId: string) => taskProvider.deleteTask(taskId));
+
+  // Stocks (src/context/providers/stocks/) — read-only tracking of
+  // positions the user entered by hand. Nothing here trades or talks to a
+  // brokerage: these handlers save the user's own position notes and read
+  // market data, and that is all.
+  ipcMain.handle("nimbus:get-stock-settings", () => settings.userPreferences.stocks);
+  ipcMain.handle(
+    "nimbus:update-stock-settings",
+    (_event, partial: { enabled?: unknown; newsEnabled?: unknown; positions?: unknown }) => {
+      const current = settings.userPreferences.stocks;
+      let positions = current.positions;
+      if (partial?.positions !== undefined) {
+        const result = validateStockPositions(partial.positions);
+        if (!result.valid) throw new Error(`Invalid stock position: ${result.error}`);
+        // Rebuilt field by field, so nothing beyond the known shape is saved.
+        positions = (partial.positions as StockPosition[]).map((p) => ({
+          id: p.id,
+          symbol: normalizeSymbol(p.symbol)!,
+          companyName: p.companyName?.trim() || undefined,
+          shares: p.shares,
+          averageCost: p.averageCost,
+          purchaseDate: p.purchaseDate || undefined,
+          notes: p.notes?.trim() || undefined,
+        }));
+      }
+      settings.userPreferences.stocks = {
+        enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
+        newsEnabled: typeof partial?.newsEnabled === "boolean" ? partial.newsEnabled : current.newsEnabled,
+        positions,
+      };
+      saveSettings(settings);
+      logger.info("Stock settings updated", {
+        enabled: settings.userPreferences.stocks.enabled,
+        newsEnabled: settings.userPreferences.stocks.newsEnabled,
+        positionCount: positions.length,
+      });
+      return settings.userPreferences.stocks;
+    }
+  );
+  // Asks for fresh prices on the next read (at most every 30 s); the tab
+  // then re-reads the context snapshot as usual.
+  ipcMain.handle("nimbus:refresh-stocks", () => stockProvider.refresh());
+  // Headlines for a symbol the user actually tracks — never an arbitrary one.
+  ipcMain.handle("nimbus:get-stock-news", (_event, symbol: unknown) => {
+    const normalized = normalizeSymbol(symbol);
+    const tracked = settings.userPreferences.stocks.positions.some(
+      (p) => normalizeSymbol(p.symbol) === normalized
+    );
+    if (!normalized || !tracked) {
+      return { symbol: String(symbol), status: "unavailable", items: [], retrievedAt: null };
+    }
+    return stockProvider.getNews(normalized);
+  });
 
   // Spotify's connection state is derived from SpotifyAuthManager (has a
   // stored refresh token or not) rather than persisted as its own
@@ -715,6 +775,12 @@ export function startApp(): void {
   // needed.
   taskProvider = TaskProvider.withDefaults(() => settings.userPreferences.tasks, config.taskAccount);
   contextService.register(taskProvider);
+
+  // Stocks need no credentials — the market-data source is key-free — so
+  // only the live settings getter is passed in. Kept as a reference for
+  // the Stocks tab's refresh and news handlers.
+  stockProvider = new StockProvider(() => settings.userPreferences.stocks);
+  contextService.register(stockProvider);
 
   // Spotify is NIMBUS's first Action Provider alongside its Context
   // Provider — see src/actions/ and ARCHITECTURE.md's Context-vs-Action

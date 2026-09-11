@@ -20,6 +20,13 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- Stock Tracker: a Stocks tab for positions you enter by hand — current
+  price and day change, estimated value, gain/loss and today's change,
+  per-currency portfolio totals, and recent headlines. Prices come from
+  Yahoo Finance's public endpoints (no key); stale and unavailable prices
+  are marked, never guessed. The briefing gains a portfolio line ("Your
+  portfolio is up 1.8% today."). Strictly read-only: no trading, no
+  brokerage connection.
 - Windows desktop actions: launch an app (`.exe` or `.lnk`), bring it to
   the front, minimize, maximize or close it; open a file or folder;
   play/pause, next and previous media keys; set the system volume, mute

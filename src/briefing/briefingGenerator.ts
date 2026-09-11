@@ -3,9 +3,15 @@ import { ContextSnapshot } from "../context/types";
 import { DateTimeContext } from "../context/providers/dateTimeProvider";
 import { WeatherContext } from "../context/providers/weather/types";
 import { CalendarContext } from "../context/providers/calendar/types";
-import { localCalendarDate, localTime, relativeDayLabel } from "../context/providers/calendar/icsTimeUtils";
+import {
+  localCalendarDate,
+  localTime,
+  localTimeZone,
+  relativeDayLabel,
+} from "../context/providers/calendar/icsTimeUtils";
 import { EmailContext } from "../context/providers/email/types";
 import { TaskContext, TaskItem } from "../context/providers/tasks/types";
+import { StockContext } from "../context/providers/stocks/types";
 import { Briefing, BriefingItem } from "./types";
 import { resolveLocale } from "../common/locale";
 
@@ -46,6 +52,7 @@ export class BriefingGenerator {
     const calendar = readOkData<CalendarContext>(snapshot, "calendar");
     const email = readOkData<EmailContext>(snapshot, "email");
     const tasks = readOkData<TaskContext>(snapshot, "tasks");
+    const stocks = readOkData<StockContext>(snapshot, "stocks");
 
     const contentItems: BriefingItem[] = [
       buildDateTimeItem(dateTime, now, locale),
@@ -53,6 +60,7 @@ export class BriefingGenerator {
       buildCalendarItem(calendar, now),
       buildEmailItem(email, now),
       buildTasksItem(tasks, now),
+      buildStocksItem(stocks, now),
       // Future: buildMealsItem — reads its own provider from `snapshot`
       // and returns null when absent, exactly like the ones above.
     ].filter((item): item is BriefingItem => item !== null);
@@ -415,6 +423,65 @@ function buildTasksItem(tasks: TaskContext | null, now: Date): BriefingItem | nu
     importance: 55,
     relevance: 15, // "nothing pressing → low relevance"
     timestamp: now.toISOString(),
+  };
+}
+
+/** Portfolio moves smaller than this, in percent, read as "flat" — a 0.01% move isn't news. */
+const FLAT_MOVE_PERCENT = 0.05;
+
+function joinList(parts: string[]): string {
+  return parts.length <= 1
+    ? (parts[0] ?? "")
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * "Your portfolio is up 1.8% today." Built only from the stock context's
+ * per-currency totals — the briefing knows nothing about quotes or
+ * positions. Currencies are never mixed: with several, each is named.
+ *
+ * "Today" is claimed only when every price is from today's session; on a
+ * weekend, or before the market opens, the latest move belongs to the
+ * last close and is described that way. These are estimates from the
+ * user's own position data, and the wording never implies more.
+ */
+function buildStocksItem(stocks: StockContext | null, now: Date): BriefingItem | null {
+  if (!stocks) return null;
+  const totals = stocks.totals.filter((t) => t.dayChangePercent !== null);
+  if (totals.length === 0) return null;
+
+  const timeZone = localTimeZone();
+  const todayDate = localCalendarDate(now.toISOString(), timeZone);
+  const sessionIsToday = stocks.positions
+    .filter((p) => p.quote?.marketTime)
+    .every((p) => localCalendarDate(p.quote!.marketTime!, timeZone) === todayDate);
+
+  const describe = (percent: number) =>
+    Math.abs(percent) < FLAT_MOVE_PERCENT
+      ? "flat"
+      : `${percent > 0 ? "up" : "down"} ${Math.abs(percent).toFixed(1)}%`;
+  const moves =
+    totals.length === 1
+      ? describe(totals[0].dayChangePercent!)
+      : joinList(
+          totals.map((t) => `${describe(t.dayChangePercent!)} in ${t.currency || "an unknown currency"}`)
+        );
+
+  let message = sessionIsToday
+    ? `Your portfolio is ${moves} today.`
+    : `Your portfolio was ${moves} at the last close.`;
+  if (stocks.anyStale) message += " Some prices may be out of date.";
+
+  const biggestMove = Math.max(...totals.map((t) => Math.abs(t.dayChangePercent!)));
+  return {
+    id: randomUUID(),
+    category: "stocks",
+    message,
+    importance: 40,
+    // A bigger move is more worth mentioning; a quiet day barely is.
+    relevance: Math.min(85, 25 + Math.round(biggestMove * 15)),
+    timestamp: now.toISOString(),
+    action: { label: "View stocks", actionId: "view-stocks" },
   };
 }
 

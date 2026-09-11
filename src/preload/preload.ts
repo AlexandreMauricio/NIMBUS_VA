@@ -5,7 +5,9 @@ import {
   WeatherSettings,
   CalendarSettings,
   RoutineSettings,
+  StockPreferences,
 } from "../settings/settingsManager";
+import type { StockNewsResult, StockPosition } from "../context/providers/stocks/types";
 import { Routine, RoutineEvaluation, RoutineHistoryEntry } from "../routines/types";
 import { SpotifyPlaylistSummary } from "../context/providers/spotify/types";
 import {
@@ -161,6 +163,18 @@ contextBridge.exposeInMainWorld("nimbus", {
   completeTask: (taskId: string): Promise<void> => ipcRenderer.invoke("nimbus:complete-task", taskId),
   reopenTask: (taskId: string): Promise<void> => ipcRenderer.invoke("nimbus:reopen-task", taskId),
   deleteTask: (taskId: string): Promise<void> => ipcRenderer.invoke("nimbus:delete-task", taskId),
+
+  /** Stock tracking — read-only. Positions are the user's own notes; there is no trading call anywhere. */
+  getStockSettings: (): Promise<StockPreferences> => ipcRenderer.invoke("nimbus:get-stock-settings"),
+  updateStockSettings: (partial: {
+    enabled?: boolean;
+    newsEnabled?: boolean;
+    positions?: StockPosition[];
+  }): Promise<StockPreferences> => ipcRenderer.invoke("nimbus:update-stock-settings", partial),
+  /** Asks for fresh prices on the next read; resolves false when the last refresh was under 30 s ago. */
+  refreshStocks: (): Promise<boolean> => ipcRenderer.invoke("nimbus:refresh-stocks"),
+  getStockNews: (symbol: string): Promise<StockNewsResult> =>
+    ipcRenderer.invoke("nimbus:get-stock-news", symbol),
 
   getSpotifySettings: (): Promise<PublicSpotifySettings> => ipcRenderer.invoke("nimbus:get-spotify-settings"),
   updateSpotifySettings: (partial: {

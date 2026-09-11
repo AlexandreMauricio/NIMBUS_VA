@@ -1,6 +1,7 @@
 import { migrateRoutineActivities } from "./activityMigration";
 import { Routine } from "../routines/types";
 import { ActivityMapping, DEFAULT_ACTIVITY_GRACE_MINUTES } from "../activity/types";
+import { StockPosition } from "../context/providers/stocks/types";
 
 /**
  * Persisted NIMBUS state, split by who owns the data — not just grouped
@@ -153,6 +154,18 @@ export interface ActivityPreferences {
 }
 
 /**
+ * Stock tracking: positions the user entered by hand. Plain user data —
+ * no credential is involved (the market-data source needs no key), and
+ * nothing here connects to a brokerage.
+ */
+export interface StockPreferences {
+  enabled: boolean;
+  /** Whether headlines are fetched for a position when it is opened. */
+  newsEnabled: boolean;
+  positions: StockPosition[];
+}
+
+/**
  * User-owned preferences — conceptually part of NIMBUS Core's user data,
  * not tied to any one device. Not yet synced anywhere; see module doc.
  */
@@ -164,6 +177,7 @@ export interface UserPreferences {
   spotify: SpotifySettings;
   routines: RoutineSettings;
   activity: ActivityPreferences;
+  stocks: StockPreferences;
 }
 
 export interface NimbusSettings {
@@ -212,6 +226,11 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       enabled: false,
       mappings: [],
       graceMinutes: DEFAULT_ACTIVITY_GRACE_MINUTES,
+    },
+    stocks: {
+      enabled: true,
+      newsEnabled: true,
+      positions: [],
     },
   },
 };
@@ -310,6 +329,10 @@ export function applyDefaults(parsed: any): NimbusSettings {
       activity: {
         ...defaults.userPreferences.activity,
         ...parsed.userPreferences?.activity,
+      },
+      stocks: {
+        ...defaults.userPreferences.stocks,
+        ...parsed.userPreferences?.stocks,
       },
     },
   };

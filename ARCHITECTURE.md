@@ -19,7 +19,7 @@ unnecessarily painful later.
 |---|---|---|
 | **1. Core** | Platform-independent logic. Zero dependency on Electron or any OS API. | Context, Actions, Events, Routines, Activity, Timers, Briefing, the assistant-event contract, settings schema, generic utilities |
 | **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app." | Windows, tray, lifecycle, autostart, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups |
-| **3. External integrations** | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter. | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API |
+| **3. External integrations** | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter. | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance |
 | **4. User data/context** | The data itself: what NIMBUS knows and what the user has told it. A *slice* of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences` |
 | **5. UI/presentation** | Rendering and interaction for *this* client. A future client's UI would be a separate implementation talking to the same Core. | `src/ui/`, the preload bridges |
 
@@ -49,6 +49,10 @@ src/
       spotify/                    spotifyContextProvider, types [1];
                                    spotifyApiClient [3] — shared with the
                                    Spotify Action provider
+      stocks/                     stockProvider, positionMath, types [1];
+                                   yahooFinance [3] behind the
+                                   MarketDataSource / NewsSource interfaces
+                                   (read-only — no trading anywhere)
 
   actions/                  [1] Core — the Action system
     types.ts                     ActionProvider / ActionResult contract
@@ -180,6 +184,7 @@ renderer can only call what its preload exposes.
 | Email | `nimbus:get-email-settings`, `nimbus:update-email-settings` |
 | Tasks | `nimbus:get-task-settings`, `nimbus:update-task-settings`, `nimbus:list-tasks`, `nimbus:list-task-projects`, `nimbus:create-task`, `nimbus:update-task`, `nimbus:complete-task`, `nimbus:reopen-task`, `nimbus:delete-task` |
 | Spotify | `nimbus:get-spotify-settings`, `nimbus:update-spotify-settings`, `nimbus:spotify-connect`, `nimbus:spotify-disconnect`, `nimbus:spotify-list-playlists` |
+| Stocks | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news` (tracked symbols only) |
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
@@ -371,7 +376,7 @@ and hand the Core providers the same two functions.
 ## Settings split
 
 `UserPreferences` (weather, calendar, email, tasks, Spotify, routines,
-activity) is data that conceptually belongs to the user and would follow
+activity, stocks) is data that conceptually belongs to the user and would follow
 them to another device; `WindowsClientSettings` (window bounds, startup
 behaviour) only makes sense on this Windows install. Both live in one
 local `settings.json` — there is no sync backend — but the type boundary

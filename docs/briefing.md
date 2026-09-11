@@ -8,7 +8,7 @@ It is **template-based, not AI-generated**: no LLM is involved.
 - [src/briefing/types.ts](../src/briefing/types.ts) — the shape. A
   `Briefing` is `{ id, generatedAt, items: BriefingItem[] }`. Each
   `BriefingItem` has a `category` (`greeting` | `dateTime` | `weather` |
-  `calendar` | `email` | `tasks` | `meals` | `other`), a `message`, a
+  `calendar` | `email` | `tasks` | `stocks` | `meals` | `other`), a `message`, a
   `timestamp`, an `importance` and a `relevance` score (0–100 each), and
   an optional `action`. **`meals` has no producer**, and **`action` is
   never set or handled** — both are reserved for later.
@@ -18,7 +18,7 @@ It is **template-based, not AI-generated**: no LLM is involved.
   picks between deterministic phrasings; it returns `null` when that data
   isn't available, so **a missing or failed provider is simply omitted,
   never shown as an error**. Builders exist for greeting, date/time,
-  weather, calendar, email and tasks, plus a fixed closing line.
+  weather, calendar, email, tasks and stocks, plus a fixed closing line.
   - The **calendar** line covers nothing scheduled, one or several events,
     all-day events and an imminent-event countdown, and names the day of
     an upcoming event ("today", "tomorrow", "on Saturday", or a date
@@ -27,6 +27,9 @@ It is **template-based, not AI-generated**: no LLM is involved.
     a pile of newsletters reads the same as an empty inbox.
   - The **tasks** line spotlights an imminent task, otherwise combines
     overdue and due-today counts, naming a task where it helps.
+  - The **stocks** line reads only the portfolio's per-currency totals:
+    "Your portfolio is up 1.8% today.", or "…at the last close." when
+    the prices are from an earlier session (see [stocks.md](stocks.md)).
 - **Prioritization, not AI**: content items are sorted by
   `importance × relevance` and capped at 5, between the greeting (always
   first) and the closing "Anything I can help you with?" (always last).

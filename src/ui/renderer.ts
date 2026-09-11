@@ -8,6 +8,7 @@ import {
   triggerSummary,
   withSkipIfActiveCondition,
 } from "./uiFormat";
+import { initStocksTab } from "./stocksTab";
 
 /**
  * Renderer script for the placeholder UI. Talks to the main process
@@ -408,7 +409,7 @@ interface RoutineSettings {
 }
 
 type BriefingCategory =
-  "greeting" | "dateTime" | "weather" | "calendar" | "email" | "tasks" | "meals" | "other";
+  "greeting" | "dateTime" | "weather" | "calendar" | "email" | "tasks" | "stocks" | "meals" | "other";
 
 interface BriefingAction {
   label: string;
@@ -3359,6 +3360,8 @@ function handleBriefingAction(actionId: string): void {
     switchToTab("context");
   } else if (actionId === "view-calendar") {
     switchToTab("calendar");
+  } else if (actionId === "view-stocks") {
+    switchToTab("stocks");
   }
 }
 
@@ -3369,6 +3372,7 @@ const CATEGORY_LABELS: Record<BriefingCategory, string> = {
   calendar: "Calendar",
   email: "Email",
   tasks: "Tasks",
+  stocks: "Stocks",
   meals: "Meals",
   other: "Other",
 };
@@ -3724,6 +3728,7 @@ initMinimizeButton();
 initBriefing();
 initNowPlayingCard();
 initCalendarTab();
+initStocksTab();
 initContext();
 initAssistantFeed();
 

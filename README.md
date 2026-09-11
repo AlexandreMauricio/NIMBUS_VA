@@ -8,7 +8,7 @@ Electron app that lives in the system tray.
 
 **What it does today:** it gathers context about your day — date/time,
 system info, weather, calendar (ICS feeds), email (IMAP, read-only), tasks
-(Todoist) and Spotify playback — and turns it into a template-based morning
+(Todoist), Spotify playback and the stocks you track — and turns it into a template-based morning
 **briefing** on the Home tab. It can **manage your Todoist tasks** (create,
 edit, complete, delete) from its Tasks tab and shows your calendar in its
 Calendar tab. With the opt-in desktop activity monitor switched on, it
@@ -38,13 +38,13 @@ which modules are portable "Core" versus Windows-specific.
 
 - **Desktop presence** — tray icon, close-to-tray, launch with Windows,
   start minimized (see [Desktop presence](#desktop-presence)).
-- **Context system** with seven providers: date/time, system info,
+- **Context system** with eight providers: date/time, system info,
   weather (Open-Meteo), calendar (ICS feeds), email (IMAP, read-only),
-  tasks (Todoist) and Spotify playback. Each is failure-isolated and
+  tasks (Todoist), Spotify playback and stocks (Yahoo Finance). Each is failure-isolated and
   time-bounded.
 - **Briefing** — generated once at startup and on demand (Home →
-  Regenerate), from greeting, date/time, weather, calendar, email and
-  tasks items, ranked by a deterministic score.
+  Regenerate), from greeting, date/time, weather, calendar, email, tasks
+  and portfolio items, ranked by a deterministic score.
 - **Home tab** — the briefing, a Spotify now-playing card with playback
   controls and a playlist picker, the current activity (with the running
   timer and track), recent activity sessions, and an activity feed of
@@ -52,6 +52,10 @@ which modules are portable "Core" versus Windows-specific.
 - **Calendar tab** — today's and upcoming events from your feeds.
 - **Tasks tab** — the full active Todoist list (list/grid, sorting) with
   create, edit, complete and delete, written straight to Todoist.
+- **Stocks tab** — positions you enter by hand, with current prices and
+  estimated value, gain/loss and today's change, plus recent headlines.
+  Read-only: no trading and no brokerage connection. See
+  [docs/stocks.md](docs/stocks.md).
 - **Context tab** — the raw context snapshot, refreshed on demand.
 - **Routines** — triggers, conditions, cooldowns, once-per-session
   limits, an explainable **Test**, **Run now**, optional run-automatically,
@@ -93,6 +97,9 @@ which modules are portable "Core" versus Windows-specific.
   window only; Microsoft Store apps can't be launched by path; volume and
   mute act on the default output device. See
   [docs/action-system.md](docs/action-system.md#desktop-actions).
+- Stock prices come from Yahoo Finance's **unofficial** public endpoints
+  (no key needed, but undocumented and possibly delayed); portfolio
+  totals are per currency, with no conversion.
 - Spotify playback control needs **Spotify Premium**; the Client ID can
   only be supplied through `.env`.
 - `ActionService` reports each action's `requiresConfirmation` flag but
@@ -238,6 +245,7 @@ that subsystem.
 | [Email](docs/email.md) | IMAP setup, app passwords, and what NIMBUS does and does not read |
 | [Tasks](docs/tasks.md) | Todoist setup and the read/write Tasks tab |
 | [Spotify](docs/spotify.md) | Registering a Spotify app, the PKCE flow, and playback control |
+| [Stocks](docs/stocks.md) | Tracked positions, the estimates, market data and news, and their limits |
 
 Architecture-level decisions — what counts as portable Core versus
 Windows-specific, the IPC surface, and what is persisted where — live in
@@ -303,7 +311,7 @@ Everything is written under Electron's per-user data directory
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `settings.json` | Window/startup settings and all user preferences, including calendar feed addresses | Plain JSON, atomic write |
+| `settings.json` | Window/startup settings and all user preferences, including calendar feed addresses and stock positions | Plain JSON, atomic write |
 | `secrets.json` | IMAP passwords and Todoist API tokens, keyed by account | Encrypted (DPAPI via `safeStorage`), atomic write |
 | `spotify-tokens.json` | Spotify access/refresh tokens | Encrypted (DPAPI via `safeStorage`), atomic write |
 | `routine-state.json` | Routine cooldown timestamps and wind-downs still owed | Plain JSON, atomic write |

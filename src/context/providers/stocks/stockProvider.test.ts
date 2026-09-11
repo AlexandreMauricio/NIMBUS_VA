@@ -1,0 +1,274 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { StockProvider } from "./stockProvider";
+import {
+  MarketDataSource,
+  NewsSource,
+  RawQuote,
+  StockNewsItem,
+  StockPosition,
+  StockProviderConfig,
+} from "./types";
+
+class FakeMarket implements MarketDataSource {
+  readonly name = "Fake Market";
+  readonly calls: string[] = [];
+  prices = new Map<string, number>([
+    ["AAPL", 150],
+    ["MSFT", 400],
+  ]);
+  failing = new Set<string>();
+
+  async fetchQuote(symbol: string): Promise<RawQuote> {
+    this.calls.push(symbol);
+    const price = this.prices.get(symbol);
+    if (this.failing.has(symbol) || price === undefined) throw new Error(`no data for ${symbol}`);
+    return {
+      symbol,
+      price,
+      previousClose: price - 10,
+      currency: "USD",
+      exchange: "Test",
+      name: `${symbol} Inc.`,
+      marketTime: "2026-09-11T14:00:00.000Z",
+      instrumentType: "EQUITY",
+    };
+  }
+}
+
+class FakeNews implements NewsSource {
+  calls = 0;
+  fail = false;
+  async fetchNews(symbol: string): Promise<StockNewsItem[]> {
+    this.calls++;
+    if (this.fail) throw new Error("news down");
+    return [{ title: `${symbol} news`, publisher: "Wire", url: "https://news.test/1", publishedAt: null }];
+  }
+}
+
+function setup(
+  positions: StockPosition[] = [
+    { id: "p1", symbol: "AAPL", shares: 10, averageCost: 100 },
+    { id: "p2", symbol: "MSFT", shares: 2, averageCost: 300 },
+  ]
+) {
+  const settings: StockProviderConfig = { enabled: true, newsEnabled: true, positions };
+  const clock = { now: new Date("2026-09-11T15:00:00Z") };
+  const market = new FakeMarket();
+  const news = new FakeNews();
+  const provider = new StockProvider(
+    () => settings,
+    market,
+    news,
+    () => clock.now,
+    () => "UTC"
+  );
+  const advance = (ms: number) => {
+    clock.now = new Date(clock.now.getTime() + ms);
+  };
+  return { settings, market, news, provider, advance };
+}
+
+// ------------------------------------------------------------- availability
+
+test("unavailable when switched off or with no positions", () => {
+  const { settings, provider } = setup();
+  assert.equal(provider.isAvailable(), true);
+  settings.enabled = false;
+  assert.equal(provider.isAvailable(), false);
+  settings.enabled = true;
+  settings.positions = [];
+  assert.equal(provider.isAvailable(), false);
+});
+
+// ------------------------------------------------------------------ context
+
+test("the context carries every position's estimates and the portfolio totals", async () => {
+  const { provider } = setup();
+
+  const context = await provider.getContext();
+
+  assert.equal(context.source, "Fake Market");
+  assert.deepEqual(
+    context.positions.map((p) => [p.symbol, p.marketValue, p.status]),
+    [
+      ["AAPL", 1500, "live"],
+      ["MSFT", 800, "live"],
+    ]
+  );
+  assert.equal(context.totals[0].marketValue, 2300);
+  assert.equal(context.totals[0].dayChange, 10 * 10 + 2 * 10);
+  assert.equal(context.anyStale, false);
+  assert.equal(context.unpricedCount, 0);
+});
+
+test("quotes are cached: repeated reads within the TTL make no new requests", async () => {
+  const { provider, market, advance } = setup();
+
+  await provider.getContext();
+  await provider.getContext();
+  advance(60_000);
+  await provider.getContext();
+  assert.equal(market.calls.length, 2, "one request per symbol");
+
+  advance(2 * 60_000);
+  await provider.getContext();
+  assert.equal(market.calls.length, 4, "refetched after the TTL");
+});
+
+test("concurrent reads share one round of requests", async () => {
+  const { provider, market } = setup();
+
+  await Promise.all([provider.getContext(), provider.getContext(), provider.getContext()]);
+
+  assert.equal(market.calls.length, 2);
+});
+
+test("a symbol that fails after succeeding keeps its last price, marked stale", async () => {
+  const { provider, market, advance } = setup();
+  await provider.getContext();
+
+  market.failing.add("AAPL");
+  advance(3 * 60_000);
+  const context = await provider.getContext();
+
+  const aapl = context.positions.find((p) => p.symbol === "AAPL")!;
+  assert.equal(aapl.status, "stale");
+  assert.equal(aapl.marketValue, 1500);
+  assert.equal(context.anyStale, true);
+  assert.equal(context.positions.find((p) => p.symbol === "MSFT")!.status, "live");
+});
+
+test("a symbol never priced stays unavailable — no invented price — and the rest still work", async () => {
+  const { provider, settings } = setup();
+  settings.positions.push({ id: "p3", symbol: "NOPE", shares: 1, averageCost: 5 });
+
+  const context = await provider.getContext();
+
+  const nope = context.positions.find((p) => p.symbol === "NOPE")!;
+  assert.equal(nope.status, "unavailable");
+  assert.equal(nope.marketValue, null);
+  assert.equal(context.unpricedCount, 1);
+  assert.equal(context.totals[0].positions, 2, "left out of the totals");
+});
+
+test("with no price for any position, getContext rejects so ContextService can fall back", async () => {
+  const { provider, market } = setup();
+  market.failing = new Set(["AAPL", "MSFT"]);
+
+  await assert.rejects(provider.getContext(), /unavailable for every tracked symbol/);
+});
+
+test("a failing symbol isn't retried on every read", async () => {
+  const { provider, market } = setup([{ id: "p1", symbol: "NOPE", shares: 1, averageCost: 1 }]);
+
+  await assert.rejects(provider.getContext());
+  await assert.rejects(provider.getContext());
+
+  assert.equal(market.calls.length, 1);
+});
+
+test("refresh forces a refetch, but not more than once every 30 seconds", async () => {
+  const { provider, market, advance } = setup();
+  await provider.getContext();
+
+  assert.equal(provider.refresh(), true);
+  await provider.getContext();
+  assert.equal(market.calls.length, 4);
+
+  advance(10_000);
+  assert.equal(provider.refresh(), false, "too soon");
+  await provider.getContext();
+  assert.equal(market.calls.length, 4);
+});
+
+test("editing positions is reflected at once, fetching only the new symbol", async () => {
+  const { provider, settings, market } = setup();
+  await provider.getContext();
+  market.prices.set("NVDA", 900);
+
+  settings.positions = [
+    { id: "p1", symbol: "AAPL", shares: 20, averageCost: 100 },
+    { id: "p4", symbol: "nvda", shares: 1, averageCost: 500 },
+  ];
+  const context = await provider.getContext();
+
+  assert.deepEqual(
+    context.positions.map((p) => [p.symbol, p.marketValue]),
+    [
+      ["AAPL", 3000],
+      ["NVDA", 900],
+    ]
+  );
+  assert.deepEqual(market.calls, ["AAPL", "MSFT", "NVDA"]);
+});
+
+test("a malformed position in settings is skipped, not fatal", async () => {
+  const { provider, settings } = setup();
+  settings.positions.push({ id: "bad", symbol: "AAPL", shares: -5, averageCost: 1 });
+
+  const context = await provider.getContext();
+
+  assert.equal(context.positions.length, 2);
+});
+
+// --------------------------------------------------------------------- news
+
+test("news is fetched on demand and cached", async () => {
+  const { provider, news } = setup();
+
+  const first = await provider.getNews("AAPL");
+  const second = await provider.getNews("AAPL");
+
+  assert.equal(first.status, "ok");
+  assert.equal(first.items[0].title, "AAPL news");
+  assert.equal(second.status, "ok");
+  assert.equal(news.calls, 1);
+});
+
+test("a news failure is a status, and prices are untouched", async () => {
+  const { provider, news } = setup();
+  news.fail = true;
+
+  const result = await provider.getNews("AAPL");
+  const context = await provider.getContext();
+
+  assert.equal(result.status, "unavailable");
+  assert.deepEqual(result.items, []);
+  assert.equal(context.positions[0].status, "live");
+});
+
+test("a news failure after a success shows the earlier headlines as stale", async () => {
+  const { provider, news, advance } = setup();
+  await provider.getNews("AAPL");
+
+  news.fail = true;
+  advance(31 * 60_000);
+  const result = await provider.getNews("AAPL");
+
+  assert.equal(result.status, "stale");
+  assert.equal(result.items.length, 1);
+});
+
+test("a failed news request isn't retried for a minute", async () => {
+  const { provider, news, advance } = setup();
+  news.fail = true;
+
+  await provider.getNews("AAPL");
+  await provider.getNews("AAPL");
+  assert.equal(news.calls, 1);
+
+  advance(61_000);
+  await provider.getNews("AAPL");
+  assert.equal(news.calls, 2);
+});
+
+test("with news switched off, nothing is fetched", async () => {
+  const { provider, settings, news } = setup();
+  settings.newsEnabled = false;
+
+  const result = await provider.getNews("AAPL");
+
+  assert.equal(result.status, "disabled");
+  assert.equal(news.calls, 0);
+});
