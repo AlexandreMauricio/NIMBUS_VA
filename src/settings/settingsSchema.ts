@@ -155,6 +155,8 @@ export interface ActivityPreferences {
   enabled: boolean;
   mappings: ActivityMapping[];
   graceMinutes: number;
+  /** Opt-in "make it an activity?" suggestions for programs used often (see src/activity/appUsage.ts). */
+  suggestFrequentApps?: boolean;
 }
 
 /**
@@ -242,6 +244,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       enabled: false,
       mappings: [],
       graceMinutes: DEFAULT_ACTIVITY_GRACE_MINUTES,
+      suggestFrequentApps: false,
     },
     attention: { enabled: true, popups: true },
     stocks: {

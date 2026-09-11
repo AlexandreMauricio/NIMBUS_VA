@@ -30,6 +30,7 @@ interface ActivityPreferences {
   enabled: boolean;
   mappings: ActivityMapping[];
   graceMinutes: number;
+  suggestFrequentApps?: boolean;
 }
 
 interface CurrentActivity {
@@ -486,7 +487,9 @@ interface NimbusApi {
     enabled?: boolean;
     mappings?: ActivityMapping[];
     graceMinutes?: number;
+    suggestFrequentApps?: boolean;
   }) => Promise<ActivityPreferences>;
+  onOpenActivityEditor: (callback: (prefill: { application: string; name: string }) => void) => () => void;
   onActivityChanged: (callback: () => void) => () => void;
   getActivitySnapshot: () => Promise<RawActivitySnapshot | null>;
   getActiveSuggestions: () => Promise<AssistantEvent[]>;
@@ -4057,6 +4060,7 @@ initCurrentActivity();
  */
 async function initActivitySettings(): Promise<void> {
   const enabled = document.getElementById("activityEnabled") as HTMLInputElement;
+  const suggestApps = document.getElementById("activitySuggestApps") as HTMLInputElement;
   const list = document.getElementById("activityMappingList") as HTMLElement;
   const empty = document.getElementById("activityMappingEmpty") as HTMLElement;
   const nameInput = document.getElementById("activityMappingName") as HTMLInputElement;
@@ -4121,6 +4125,7 @@ async function initActivitySettings(): Promise<void> {
 
   function render(settings: ActivityPreferences): void {
     enabled.checked = settings.enabled;
+    suggestApps.checked = settings.suggestFrequentApps === true;
     graceInput.value = String(settings.graceMinutes);
     empty.hidden = settings.mappings.length > 0;
     list.innerHTML = "";
@@ -4192,6 +4197,23 @@ async function initActivitySettings(): Promise<void> {
 
     enabled.addEventListener("change", async () => {
       render(await window.nimbus.updateActivitySettings({ enabled: enabled.checked }));
+    });
+
+    suggestApps.addEventListener("change", async () => {
+      render(await window.nimbus.updateActivitySettings({ suggestFrequentApps: suggestApps.checked }));
+    });
+
+    // "Make it an activity?" answered yes: this form, with the program
+    // filled in. Nothing is saved until the user presses "Add activity".
+    window.nimbus.onOpenActivityEditor(({ application, name }) => {
+      switchToTab("routines");
+      document.getElementById("routinesTabActivitiesBtn")?.click();
+      resetForm();
+      nameInput.value = name;
+      sourceSelect.value = "application";
+      valueInput.value = application;
+      nameInput.focus();
+      nameInput.select();
     });
 
     graceInput.addEventListener("change", async () => {

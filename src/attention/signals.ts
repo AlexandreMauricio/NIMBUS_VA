@@ -6,7 +6,7 @@ import { EmailContext, EmailMessage } from "../context/providers/email/types";
 import { StockContext } from "../context/providers/stocks/types";
 import { TaskContext, TaskItem } from "../context/providers/tasks/types";
 import { WeatherContext } from "../context/providers/weather/types";
-import { AttentionActivity, AttentionSignal } from "./types";
+import { AttentionActivity, AttentionFrequentApp, AttentionSignal } from "./types";
 
 /**
  * Signal builders: pure functions from what NIMBUS already knows to
@@ -358,6 +358,40 @@ export function suggestionSignal(suggestion: AssistantSuggestion): AttentionSign
     expiresAt: suggestion.expiresAt,
     suggestionId: suggestion.id,
   };
+}
+
+// ------------------------------------------------------------ frequent apps
+
+/**
+ * "Make it an activity?" for a program used often that isn't one yet (see
+ * src/activity/appUsage.ts). Importance 45; relevance grows with how many
+ * days and hours it's used; urgency is 70 at the moment it was just opened
+ * — the natural time to ask — and 40 otherwise. So a well-used program
+ * you just opened can earn a popup; the rest of the time it's a feed line.
+ */
+export function frequentAppSignals(apps: AttentionFrequentApp[], now: Date): AttentionSignal[] {
+  return apps.map((app) => {
+    const hours = app.minutesUsed / 60;
+    const usage = app.minutesUsed < 60 ? "under an hour" : `about ${Math.round(hours)} h`;
+    return {
+      key: `frequentApp:${app.executable}`,
+      source: "activity" as const,
+      kind: "frequentApp",
+      title: `Make ${app.name} an activity?`,
+      description: `Used on ${app.daysUsed} of the last 7 days, ${usage} in all.`,
+      importance: 45,
+      urgency: app.justOpened ? 70 : 40,
+      relevance: Math.min(90, 30 + app.daysUsed * 10 + Math.min(20, Math.round(hours * 2))),
+      reasons: [
+        `Opened on ${plural(app.daysUsed, "day")} of the last 7`,
+        `${usage.charAt(0).toUpperCase()}${usage.slice(1)} in total`,
+        ...(app.justOpened ? ["You just opened it"] : []),
+      ],
+      expiresAt: new Date(now.getTime() + HOUR).toISOString(),
+      followUp: { type: "createActivity" as const, application: app.executable, name: app.name },
+      labels: { primary: "Make it an activity", secondary: "Not now" },
+    };
+  });
 }
 
 /** Every signal the current context and activity produce. */

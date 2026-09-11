@@ -187,6 +187,8 @@ export class AttentionEngine {
         expiresAt: signal.expiresAt,
         relatedActivity: signal.relatedActivity ?? null,
         suggestionId: signal.suggestionId ?? null,
+        followUp: signal.followUp ?? null,
+        labels: signal.labels ?? null,
         firstSeenAt: state.firstSeenAt,
         surfacedAt: state.surfacedAt,
         surfaceCount: state.surfaceCount,

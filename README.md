@@ -332,6 +332,7 @@ Everything is written under Electron's per-user data directory
 | `spotify-tokens.json` | Spotify access/refresh tokens | Encrypted (DPAPI via `safeStorage`), atomic write |
 | `routine-state.json` | Routine cooldown timestamps and wind-downs still owed | Plain JSON, atomic write |
 | `activity-history.json` | Up to 200 activity sessions | Plain JSON, atomic write |
+| `app-usage.json` | Opt-in: programs with a window, minutes per day for two weeks, and your "make it an activity?" answers | Plain JSON, atomic write |
 | `logs\nimbus.log` | The application log | Plain text; never contains credentials |
 
 If OS-level encryption is unavailable, credentials are not persisted at

@@ -47,7 +47,14 @@ import { AttentionService, explainItem } from "../attention";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
-import { ActivityService, ActivityMapping, validateActivityMapping, knownActivityNames } from "../activity";
+import { FileAppUsageStore } from "./appUsageStore";
+import {
+  ActivityService,
+  ActivityMapping,
+  AppUsageTracker,
+  validateActivityMapping,
+  knownActivityNames,
+} from "../activity";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
 import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
@@ -74,6 +81,7 @@ let stockProvider: StockProvider;
 let activityMonitor: DesktopActivityMonitor | null = null;
 const timerService = new TimerService(contextEventBus);
 let activityService: ActivityService;
+let appUsage: AppUsageTracker | null = null;
 
 function createMainWindow(show: boolean): void {
   mainWindow = new BrowserWindow({
@@ -694,7 +702,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
   ipcMain.handle(
     "nimbus:update-activity-settings",
-    (_event, partial: { enabled?: boolean; mappings?: ActivityMapping[]; graceMinutes?: number }) => {
+    (
+      _event,
+      partial: {
+        enabled?: boolean;
+        mappings?: ActivityMapping[];
+        graceMinutes?: number;
+        suggestFrequentApps?: boolean;
+      }
+    ) => {
       // Same discipline as routines: reject before saving, never trust
       // renderer-supplied configuration blindly.
       if (partial.mappings) {
@@ -710,6 +726,10 @@ function registerIpcHandlers(): void {
         enabled: partial.enabled ?? current.enabled,
         mappings: partial.mappings ?? current.mappings,
         graceMinutes: partial.graceMinutes ?? current.graceMinutes,
+        suggestFrequentApps:
+          typeof partial.suggestFrequentApps === "boolean"
+            ? partial.suggestFrequentApps
+            : current.suggestFrequentApps,
       };
       saveSettings(settings);
       syncActivityMonitor();
@@ -873,7 +893,14 @@ function syncActivityMonitor(): void {
   // for a feature the user has switched off.
   const shouldRun = settings.userPreferences.routines.enabled || settings.userPreferences.activity.enabled;
   if (shouldRun && !activityMonitor) {
-    activityMonitor = new DesktopActivityMonitor(contextEventBus);
+    activityMonitor = new DesktopActivityMonitor(
+      contextEventBus,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (snapshot) => appUsage?.observe(snapshot.windowedApps ?? [])
+    );
     activityMonitor.start();
     logger.info("Desktop activity monitor started");
   } else if (!shouldRun && activityMonitor) {
@@ -881,6 +908,14 @@ function syncActivityMonitor(): void {
     activityMonitor = null;
     logger.info("Desktop activity monitor stopped");
   }
+}
+
+/** Shows the main window on Routines → Activities with a new activity filled in, ready to save. */
+function openActivityEditor(application: string, name: string): void {
+  showMainWindow();
+  const send = () => mainWindow?.webContents.send("nimbus:open-activity-editor", { application, name });
+  if (mainWindow?.webContents.isLoading()) mainWindow.webContents.once("did-finish-load", send);
+  else send();
 }
 
 export function startApp(): void {
@@ -998,6 +1033,16 @@ export function startApp(): void {
     new FileActivityStateStore()
   );
   activityService.start();
+
+  // The opt-in app-usage tally behind "make it an activity?" — fed by the
+  // desktop monitor's polls (programs with a window only), read by
+  // Attention. Records nothing while the option is off.
+  appUsage = new AppUsageTracker(
+    () => settings.userPreferences.activity.suggestFrequentApps === true,
+    () => settings.userPreferences.activity.mappings,
+    () => new Date(),
+    new FileAppUsageStore()
+  );
   activityService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send("nimbus:activity-changed");
@@ -1076,6 +1121,7 @@ export function startApp(): void {
     getSnapshot: () => contextService.getSnapshot(),
     getActivity: () => activityService.getCurrentActivity(),
     isTimerRunning: () => timerService.getState()?.status === "running",
+    getFrequentApps: () => appUsage?.candidates() ?? [],
     presenter: {
       showSuggestion: (suggestion) => showSuggestionPopup(suggestion),
       postNotice: (item) =>
@@ -1092,6 +1138,21 @@ export function startApp(): void {
         return current ? { suggestionId: current.id, expiresAt: current.expiresAt } : null;
       },
     },
+  });
+
+  // Answers to Attention's questions that lead somewhere: "make it an
+  // activity?" opens the Activities editor with the program filled in
+  // (navigation only — nothing is saved until the user saves it), and
+  // "Not now" is remembered so NIMBUS stops asking.
+  attentionService.onAnswer((answer) => {
+    if (answer.followUp?.type !== "createActivity") return;
+    const { application, name } = answer.followUp;
+    if (answer.outcome === "dismissed") {
+      appUsage?.decline(application);
+      return;
+    }
+    appUsage?.accept(application);
+    openActivityEditor(application, name);
   });
 
   routineService.onSuggestion((suggestion) => {
@@ -1217,6 +1278,7 @@ export function startApp(): void {
     // open to be resumed with invented time on the next launch.
     activityService?.stop();
     attentionService?.stop();
+    appUsage?.flush();
     if (resizeSaveTimer) {
       clearTimeout(resizeSaveTimer);
       resizeSaveTimer = null;

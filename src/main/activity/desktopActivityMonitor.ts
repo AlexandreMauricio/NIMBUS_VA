@@ -38,6 +38,10 @@ $procs = Get-Process | Select-Object -ExpandProperty ProcessName -Unique
 $browsers = Get-Process -Name chrome,msedge,firefox,brave,opera -ErrorAction SilentlyContinue |
   Where-Object { $_.MainWindowTitle } |
   Select-Object ProcessName, MainWindowTitle
+# Programs with a visible window, and their description — kept only by the
+# opt-in app-usage tally.
+$windowed = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } |
+  Select-Object ProcessName, Description
 $folders = @()
 try {
   $shell = New-Object -ComObject Shell.Application
@@ -48,7 +52,7 @@ try {
     } catch {}
   }
 } catch {}
-@{ processes = @($procs); browsers = @($browsers); folders = @($folders) } | ConvertTo-Json -Compress -Depth 4
+@{ processes = @($procs); browsers = @($browsers); folders = @($folders); windowed = @($windowed) } | ConvertTo-Json -Compress -Depth 4
 `.trim();
 
 interface RawPollResult {
@@ -57,6 +61,9 @@ interface RawPollResult {
     | { ProcessName?: string; MainWindowTitle?: string }
     | Array<{ ProcessName?: string; MainWindowTitle?: string }>;
   folders?: string | string[];
+  windowed?:
+    | { ProcessName?: string; Description?: string | null }
+    | Array<{ ProcessName?: string; Description?: string | null }>;
 }
 
 /** PowerShell's ConvertTo-Json collapses a single-item array to a bare scalar — this undoes that so callers can always treat the field as an array. */
@@ -115,7 +122,14 @@ async function pollRealActivity(
       (p): p is string => typeof p === "string" && p.length > 0
     );
 
-    return { processNames, browserWindows, explorerFolders };
+    const windowedApps = asArray(parsed.windowed)
+      .filter((w) => w && typeof w.ProcessName === "string" && w.ProcessName.length > 0)
+      .map((w) => ({
+        executable: `${w.ProcessName!.toLowerCase()}.exe`,
+        description: typeof w.Description === "string" && w.Description.trim() ? w.Description.trim() : null,
+      }));
+
+    return { processNames, browserWindows, explorerFolders, windowedApps };
   } catch (err) {
     // Never let a poll failure take NIMBUS down — same discipline every
     // Context/Action provider already applies to its own external calls.
@@ -151,7 +165,9 @@ export class DesktopActivityMonitor {
     private readonly intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
     private readonly now: () => Date = () => new Date(),
     /** Injectable so tests can drive the session paths without a real PowerShell. */
-    private readonly createSession: () => PowerShellRunner = () => new PowerShellSession()
+    private readonly createSession: () => PowerShellRunner = () => new PowerShellSession(),
+    /** Every poll's snapshot — the opt-in app-usage tally reads windowed programs from it. */
+    private readonly onSnapshot?: (snapshot: RawActivitySnapshot) => void
   ) {}
 
   /**
@@ -227,6 +243,11 @@ export class DesktopActivityMonitor {
       const events = diffActivitySnapshot(this.previous, current, this.now());
       this.previous = current;
       for (const event of events) this.eventBus.publish(event);
+      try {
+        this.onSnapshot?.(current);
+      } catch (err) {
+        logger.warn("A snapshot listener threw", { error: String(err) });
+      }
     } catch (err) {
       logger.warn("Desktop activity monitor tick failed", { error: String(err) });
     } finally {

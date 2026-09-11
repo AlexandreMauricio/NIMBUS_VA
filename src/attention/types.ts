@@ -59,6 +59,10 @@ export interface AttentionSignal {
    * when it is shown.
    */
   suggestionId?: string;
+  /** For an item that asks a question: what "yes" leads to — carried out by the client, never an Action. */
+  followUp?: AttentionFollowUp;
+  /** For an item that asks a question: its button labels (default "Got it" / "Dismiss"). */
+  labels?: { primary: string; secondary: string };
 }
 
 /** One contribution to an item's score — together they answer "why is this important?". */
@@ -103,6 +107,8 @@ export interface AttentionItem {
   expiresAt: string;
   relatedActivity: string | null;
   suggestionId: string | null;
+  followUp: AttentionFollowUp | null;
+  labels: { primary: string; secondary: string } | null;
   firstSeenAt: string;
   surfacedAt: string | null;
   surfaceCount: number;
@@ -144,3 +150,29 @@ export interface AttentionSettings {
 }
 
 export const DEFAULT_ATTENTION_SETTINGS: AttentionSettings = { enabled: true, popups: true };
+
+/** Where answering "yes" to an item leads. The client carries it out; it is navigation, never an Action. */
+export interface AttentionFollowUp {
+  type: "createActivity";
+  /** The program to fill in, e.g. "haloinfinite.exe". */
+  application: string;
+  /** What to call it, e.g. "Halo Infinite". */
+  name: string;
+}
+
+/** A program used often that isn't an activity yet (see src/activity/appUsage.ts). */
+export interface AttentionFrequentApp {
+  executable: string;
+  name: string;
+  daysUsed: number;
+  minutesUsed: number;
+  justOpened: boolean;
+}
+
+/** The user answered one of Attention's own suggestions. */
+export interface AttentionAnswer {
+  itemId: string;
+  kind: string;
+  followUp: AttentionFollowUp | null;
+  outcome: "accepted" | "dismissed";
+}

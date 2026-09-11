@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { frequentAppSignals } from "./signals";
+import { scoreSignal } from "./scoring";
 import {
   activitySignals,
   calendarSignals,
@@ -363,4 +365,35 @@ test("only providers that answered ok contribute", () => {
     ["calendar"]
   );
   assert.deepEqual(collectSignals(null, null, NOW, TZ), []);
+});
+
+// ------------------------------------------------------------- frequent apps
+
+test("a program used a lot earns a popup when just opened, and a feed line otherwise", () => {
+  const heavy = {
+    executable: "haloinfinite.exe",
+    name: "Halo Infinite",
+    daysUsed: 5,
+    minutesUsed: 8 * 60,
+    justOpened: true,
+  };
+  const idle = { now: NOW, activity: null, timerRunning: false, popup: null };
+
+  const [signal] = frequentAppSignals([heavy], NOW);
+  assert.equal(signal.key, "frequentApp:haloinfinite.exe");
+  assert.equal(signal.title, "Make Halo Infinite an activity?");
+  assert.equal(signal.description, "Used on 5 of the last 7 days, about 8 h in all.");
+  assert.deepEqual(signal.followUp, {
+    type: "createActivity",
+    application: "haloinfinite.exe",
+    name: "Halo Infinite",
+  });
+  assert.deepEqual(signal.labels, { primary: "Make it an activity", secondary: "Not now" });
+  assert.equal(scoreSignal(signal, idle).score, 66);
+  assert.equal(scoreSignal(signal, idle).priority, "high");
+
+  const [later] = frequentAppSignals([{ ...heavy, justOpened: false }], NOW);
+  assert.equal(scoreSignal(later, idle).priority, "normal");
+  const [light] = frequentAppSignals([{ ...heavy, daysUsed: 3, minutesUsed: 120 }], NOW);
+  assert.equal(scoreSignal(light, idle).priority, "normal", "used less: never a popup");
 });

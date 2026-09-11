@@ -46,6 +46,7 @@ urgency and relevance (0–100), reasons in words, and an expiry.
 | Weather | Rain chance ≥ 50% today (before 21:00) | 35 | 30 (40 at ≥ 80%) | the rain chance, max 90 | per day; end of day |
 | Stocks | Portfolio moved ≥ 3% today | 35 | 35 | 40 + 5 × the move, max 90 | per day and direction; end of day |
 | Activity | One activity for ≥ 3 h | 40 | 40, +10 per extra hour, max 60 | 60, about that activity | per session; rolls forward while it lasts |
+| Activity | A program used often that isn't an activity yet (opt-in, see [activity.md](activity.md#suggested-activities)) | 45 | 70 when just opened, else 40 | 30 + 10 per day + 2 per hour, max 90 | per program; rolls forward while it qualifies |
 | Routines | A routine's suggestion | 50 | 80 | 70 | per suggestion; its own 60 s expiry |
 
 A provider that is off or failing contributes nothing.
@@ -121,6 +122,16 @@ in the Home feed immediately. What changed is the popup:
 The accept/dismiss channels route Attention's own suggestions to
 `AttentionService` (acknowledge/dismiss, nothing runs) and everything else
 to RoutineService, which then tells Attention the suggestion was resolved.
+
+## Questions
+
+Some items ask something rather than inform. Today that is "Make … an
+activity?": it carries its own button labels and a **follow-up** (which
+program to fill in). Attention reports the answer through `onAnswer`, and
+the app carries it out — opening the Activities editor on "yes",
+remembering "Not now" — so the navigation lives in the client, and
+nothing is created or run by Attention. A popup that runs out isn't an
+answer.
 
 ## Debug view
 

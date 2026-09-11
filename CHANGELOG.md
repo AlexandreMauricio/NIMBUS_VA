@@ -18,6 +18,18 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.5 — 2026-09-11
+
+- "Make it an activity?" (opt-in: *Suggest activities for apps I use a
+  lot*, in Routines → Activities). NIMBUS keeps a small local tally of
+  programs with a visible window — name, Windows description and minutes
+  per day, never window titles — and offers a program used on 3 of the
+  last 7 days (or 5 hours) that isn't an activity yet. The Attention
+  engine decides how: a popup when it's well used and you've just opened
+  it, a feed line otherwise. "Make it an activity" opens the Activities
+  editor with the program filled in; "Not now" rests it for a week, and a
+  second "Not now" stops it for good.
+
 ## 0.3.4 — 2026-09-11
 
 - Fix: Spotify needed reconnecting after every restart since 0.3.1. The

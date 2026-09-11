@@ -16,6 +16,13 @@ export interface RawActivitySnapshot {
   browserWindows: Array<{ executable: string; title: string }>;
   /** Currently-open Windows Explorer folder paths. */
   explorerFolders: string[];
+  /**
+   * Programs with a visible window, with the description Windows gives
+   * them ("Halo Infinite"). Only the opt-in app-usage tally keeps any of
+   * it (src/activity/appUsage.ts). Optional: older snapshots and tests
+   * don't carry it.
+   */
+  windowedApps?: Array<{ executable: string; description: string | null }>;
 }
 
 export const KNOWN_BROWSER_EXECUTABLES = [
@@ -27,7 +34,7 @@ export const KNOWN_BROWSER_EXECUTABLES = [
 ];
 
 export function emptySnapshot(): RawActivitySnapshot {
-  return { processNames: [], browserWindows: [], explorerFolders: [] };
+  return { processNames: [], browserWindows: [], explorerFolders: [], windowedApps: [] };
 }
 
 /**

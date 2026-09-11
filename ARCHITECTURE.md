@@ -88,6 +88,8 @@ src/
     activityDetector.ts          Pure event → activity, with precedence
     activityService.ts           Session lifecycle; publishes activityEnded
     knownActivities.ts           Activity names routines can refer to
+    appUsage.ts                  Opt-in tally of windowed programs →
+                                   "make it an activity?" candidates
 
   timers/                   [1] Core — the timer engine
     timerService.ts              One timer or phase plan at a time; publishes
@@ -152,6 +154,8 @@ src/
                                    (routine-state.json)
     activityStateStore.ts         Activity session history
                                    (activity-history.json)
+    appUsageStore.ts              The opt-in app-usage tally
+                                   (app-usage.json)
     spotify/
       spotifyAuthManager.ts        PKCE OAuth flow (system browser + loopback
                                    server), token refresh
@@ -245,6 +249,7 @@ written atomically (temp file, fsync, rename):
 | `spotify-tokens.json` | `spotifyTokenStore.ts` | Spotify tokens, DPAPI-encrypted |
 | `routine-state.json` | `routineStateStore.ts` | Cooldown timestamps; wind-downs still owed (dropped after 12 h) |
 | `activity-history.json` | `activityStateStore.ts` | Up to 200 activity sessions |
+| `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
 | `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
 
 **Credential lifecycle.** `loadSettings()` runs before Electron is ready

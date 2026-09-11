@@ -125,6 +125,11 @@ export interface ActivitySettings {
    * is next read, so it needs no timer of its own.
    */
   graceMinutes: number;
+  /**
+   * Opt-in: keep a small tally of programs with a window open and offer to
+   * make the frequent ones activities (see appUsage.ts). Absent means off.
+   */
+  suggestFrequentApps?: boolean;
 }
 
 export const DEFAULT_ACTIVITY_GRACE_MINUTES = 5;

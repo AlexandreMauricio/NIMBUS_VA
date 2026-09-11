@@ -133,6 +133,29 @@ music playing is simply the result of not adding that step.
 Both **fail closed** when NIMBUS has no idea what you are doing, unlike
 the Spotify checks, which fail open.
 
+## Suggested activities
+
+Optional — **Suggest activities for apps I use a lot**, off by default.
+While it's on (and the desktop monitor runs), NIMBUS keeps a small local
+tally of programs **with a visible window**: the program name, the
+description Windows gives it ("Halo Infinite"), minutes open per day for
+the last two weeks, and when it was last opened — in `app-usage.json`.
+Never window titles and nothing inside the program. Background processes,
+Windows' own shell windows, browsers (use a website activity for those)
+and NIMBUS itself aren't counted (`src/activity/appUsage.ts`).
+
+A program opened on 3 of the last 7 days, or open for 5 hours in them,
+that isn't already an activity is offered to the Attention engine, which
+decides how to ask: a **popup** when you've used it a lot and have just
+opened it, a **Home feed line** otherwise (see [attention.md](attention.md)).
+
+- **Make it an activity** opens this form with the program filled in;
+  nothing is saved until you save it. If you don't, it may ask again in a
+  week.
+- **Not now** rests that program for a week; a second **Not now** means it
+  is never suggested again.
+- A popup that runs out unanswered counts as neither.
+
 ## Privacy
 
 Activity detection adds **no new observation**. It reads the same event

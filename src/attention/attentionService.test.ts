@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AttentionPresenter, AttentionService } from "./attentionService";
-import { AttentionItem } from "./types";
+import { AttentionAnswer, AttentionFrequentApp, AttentionItem } from "./types";
 import { AssistantSuggestion } from "../common/assistantEvents";
 import { ContextSnapshot } from "../context/types";
 import { CalendarContext } from "../context/providers/calendar/types";
@@ -296,4 +296,67 @@ test("Attention runs nothing: only a routine suggestion accepted through Routine
   await accept(offered!.id);
   assert.deepEqual(executed, ["timer.start"]);
   routines.stop();
+});
+
+// ------------------------------------------------------------- questions
+
+function questionSetup() {
+  const clock = { now: new Date("2026-09-11T10:00:00Z") };
+  const presenter = new FakePresenter();
+  const apps: AttentionFrequentApp[] = [
+    {
+      executable: "haloinfinite.exe",
+      name: "Halo Infinite",
+      daysUsed: 5,
+      minutesUsed: 480,
+      justOpened: true,
+    },
+  ];
+  const service = new AttentionService({
+    getSettings: () => ({ enabled: true, popups: true }),
+    getSnapshot: async () => ({ generatedAt: clock.now.toISOString(), providers: {} }),
+    getActivity: () => null,
+    isTimerRunning: () => false,
+    presenter,
+    now: () => clock.now,
+    timeZone: () => "UTC",
+    getFrequentApps: () => apps,
+  });
+  const answers: AttentionAnswer[] = [];
+  service.onAnswer((answer) => answers.push(answer));
+  return { service, presenter, clock, answers };
+}
+
+test('"make it an activity?" asks with its own buttons, and "yes" comes back with the program', async () => {
+  const { service, presenter, answers } = questionSetup();
+  await service.tick();
+
+  const asked = presenter.shown[0];
+  assert.equal(asked.title, "Make Halo Infinite an activity?");
+  assert.equal(asked.primaryLabel, "Make it an activity");
+  assert.equal(asked.secondaryLabel, "Not now");
+
+  service.acknowledgeSuggestion(asked.id);
+  assert.deepEqual(answers, [
+    {
+      itemId: "frequentApp:haloinfinite.exe",
+      kind: "frequentApp",
+      followUp: { type: "createActivity", application: "haloinfinite.exe", name: "Halo Infinite" },
+      outcome: "accepted",
+    },
+  ]);
+});
+
+test('"Not now" comes back as a dismissal; a popup that just runs out isn\'t an answer', async () => {
+  const declined = questionSetup();
+  await declined.service.tick();
+  declined.service.dismissSuggestion(declined.presenter.shown[0].id);
+  assert.equal(declined.answers[0]?.outcome, "dismissed");
+
+  const ignored = questionSetup();
+  await ignored.service.tick();
+  const asked = ignored.presenter.shown[0];
+  ignored.clock.now = new Date(Date.parse(asked.expiresAt));
+  ignored.service.dismissSuggestion(asked.id);
+  assert.deepEqual(ignored.answers, []);
 });

@@ -205,7 +205,11 @@ long-lived PowerShell process:
 - the **main window title** of recognized browser processes only
   (Chrome, Edge, Firefox, Brave, Opera);
 - the **folder path** of open Explorer windows (via the
-  `Shell.Application` COM object).
+  `Shell.Application` COM object);
+- the **names and Windows descriptions of programs with a visible
+  window** — read on every poll, but only kept while the opt-in
+  *Suggest activities for apps I use a lot* is on (see
+  [activity.md](activity.md#suggested-activities)).
 
 It never captures screenshots, keystrokes, page content, clipboard or
 browsing history, and never sends anything to an external service —

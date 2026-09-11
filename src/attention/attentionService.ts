@@ -5,9 +5,12 @@ import { CurrentActivity } from "../activity/types";
 import { ContextSnapshot } from "../context/types";
 import { localTimeZone } from "../context/providers/calendar/icsTimeUtils";
 import { AttentionEngine } from "./attentionEngine";
-import { collectSignals, suggestionSignal } from "./signals";
+import { collectSignals, frequentAppSignals, suggestionSignal } from "./signals";
 import {
   AttentionActivity,
+  AttentionAnswer,
+  AttentionFollowUp,
+  AttentionFrequentApp,
   AttentionEvaluation,
   AttentionItem,
   AttentionSettings,
@@ -44,6 +47,8 @@ export interface AttentionServiceDeps {
   now?: () => Date;
   timeZone?: () => string;
   snapshotMaxAgeMs?: number;
+  /** Programs used often that aren't activities yet — optional (see src/activity/appUsage.ts). */
+  getFrequentApps?: () => AttentionFrequentApp[];
 }
 
 export interface AttentionDebugState {
@@ -76,7 +81,11 @@ export class AttentionService {
   /** Routine suggestions waiting for (or holding) the popup, by suggestion id. */
   private readonly offered = new Map<string, AssistantSuggestion>();
   /** Suggestions Attention made itself: suggestion id → item key and expiry. */
-  private readonly own = new Map<string, { key: string; expiresAtMs: number }>();
+  private readonly own = new Map<
+    string,
+    { key: string; expiresAtMs: number; kind: string; followUp: AttentionFollowUp | null }
+  >();
+  private readonly answerListeners = new Set<(answer: AttentionAnswer) => void>();
   private snapshot: ContextSnapshot | null = null;
   private snapshotAtMs = -Infinity;
   private refreshing: Promise<void> | null = null;
@@ -122,6 +131,16 @@ export class AttentionService {
     this.evaluateNow();
   }
 
+  /**
+   * Notified when the user answers one of Attention's own suggestions —
+   * the client carries out a follow-up (like opening the Activities
+   * editor). A popup that simply ran out is not an answer.
+   */
+  onAnswer(listener: (answer: AttentionAnswer) => void): () => void {
+    this.answerListeners.add(listener);
+    return () => this.answerListeners.delete(listener);
+  }
+
   /** Whether a suggestion id is one of Attention's own (informational) suggestions. */
   ownsSuggestion(suggestionId: string): boolean {
     return this.own.has(suggestionId);
@@ -133,6 +152,7 @@ export class AttentionService {
     if (!own) return false;
     this.own.delete(suggestionId);
     this.engine.acknowledge(own.key, this.now());
+    this.emitAnswer(own, "accepted");
     return true;
   }
 
@@ -145,7 +165,10 @@ export class AttentionService {
     const own = this.own.get(suggestionId);
     if (!own) return false;
     this.own.delete(suggestionId);
-    if (this.now().getTime() < own.expiresAtMs - 1000) this.engine.dismiss(own.key, this.now());
+    if (this.now().getTime() < own.expiresAtMs - 1000) {
+      this.engine.dismiss(own.key, this.now());
+      this.emitAnswer(own, "dismissed");
+    }
     return true;
   }
 
@@ -173,6 +196,28 @@ export class AttentionService {
       busyReason: last?.busyReason ?? null,
       items: settings.enabled ? (last?.items ?? []) : [],
     };
+  }
+
+  private emitAnswer(
+    own: { key: string; kind: string; followUp: AttentionFollowUp | null },
+    outcome: "accepted" | "dismissed"
+  ): void {
+    for (const listener of this.answerListeners) {
+      try {
+        listener({ itemId: own.key, kind: own.kind, followUp: own.followUp, outcome });
+      } catch (err) {
+        logger.warn("An attention answer listener threw", { error: String(err) });
+      }
+    }
+  }
+
+  private frequentApps(): AttentionFrequentApp[] {
+    try {
+      return this.deps.getFrequentApps?.() ?? [];
+    } catch (err) {
+      logger.warn("Attention could not read app usage", { error: String(err) });
+      return [];
+    }
   }
 
   private async refreshSnapshot(): Promise<void> {
@@ -224,6 +269,7 @@ export class AttentionService {
     const situation: AttentionSituation = { now, activity, timerRunning, popup: this.popupSituation(nowMs) };
     const signals = [
       ...collectSignals(this.snapshot, activity, now, this.timeZone()),
+      ...frequentAppSignals(this.frequentApps(), now),
       ...[...this.offered.values()].map(suggestionSignal),
     ];
     const evaluation = this.engine.evaluate(signals, situation, { popups: settings.popups });
@@ -266,14 +312,14 @@ export class AttentionService {
       attentionItemId: item.id,
       title: item.title,
       message: item.description,
-      primaryLabel: "Got it",
-      secondaryLabel: "Dismiss",
+      primaryLabel: item.labels?.primary ?? "Got it",
+      secondaryLabel: item.labels?.secondary ?? "Dismiss",
       expiresAt: new Date(expiresAtMs).toISOString(),
       // Informational: there is nothing to run, and the popup shows no steps.
       actionSummary: [],
       reason: explainItem(item),
     };
-    this.own.set(suggestion.id, { key: item.id, expiresAtMs });
+    this.own.set(suggestion.id, { key: item.id, expiresAtMs, kind: item.kind, followUp: item.followUp });
     this.safely(() => this.deps.presenter.showSuggestion(suggestion));
   }
 
