@@ -7,8 +7,9 @@ current market prices and estimates what those positions are worth.
 
 **There is no trading anywhere.** NIMBUS connects to no brokerage account,
 places no orders, and has no action — in the UI, over IPC or in the Action
-system — that could open, change or close a position. A position is a note
-you keep; every figure derived from it is an estimate.
+system — that could open, change or close a position at a broker. A
+position is a note you keep; every figure derived from it is an estimate.
+"Close position" only records, in NIMBUS, a sale you already made.
 
 ## Positions
 
@@ -21,7 +22,8 @@ data, with no credential involved:
 | `companyName` | Optional; the market data's name is used when blank. |
 | `shares` | Greater than 0; fractions allowed. |
 | `alternativeSymbol` | Optional. Another listing of the same company, used for the price only when `symbol` has none or only an outdated one. |
-| `averageCost` | Per share, in the currency the symbol trades in. |
+| `averageCost` | Per share (the open price, for a CFD), in the currency the symbol trades in. |
+| `leverage` | Optional, 1–100: 20 for a ×20 CFD. See [Leveraged positions](#leveraged-positions-cfds). |
 | `purchaseDate` | Optional plain date; can't be in the future. |
 | `notes` | Optional. |
 
@@ -29,8 +31,11 @@ Up to 50 positions; two lots of the same symbol are fine. Positions are
 validated before saving (`validateStockPositions`), and a hand-edited
 invalid entry is skipped when prices are computed rather than breaking
 the rest. The group also holds `enabled` ("Track prices", default on —
-nothing is fetched until a position exists) and `newsEnabled` (default
-on).
+nothing is fetched until a position exists), `newsEnabled` (default on),
+`baseCurrency` (default `EUR`), `dividendsEnabled` (default on),
+`dividendTax` (per-holding tax countries), `closedPositions` (see
+[Closed positions](#closed-positions)) and `irs` (the IRS helper's
+codes).
 
 ## Market data and news
 
@@ -125,10 +130,12 @@ per symbol per 2 minutes.
 
 ## The context and the briefing
 
-`StockContext` carries each position with its estimates, the per-currency
-totals, `baseCurrency`, `baseTotals`, the `fxRates` used,
-`unconvertedCurrencies`, `unpricedCount`, `anyStale` and the data
-`source`. News is not part
+`StockContext` carries each position with its estimates, the `holdings`
+they group into, the per-currency totals, `baseCurrency`, `baseTotals`,
+the `fxRates` used, `unconvertedCurrencies`, `unpricedCount`,
+`outdatedCount`, `anyStale` and the data `source`. Dividends are not part
+of it either (see [Dividends](#dividends)). The Attention engine reads the
+base total for a big daily move (see [attention.md](attention.md)). News is not part
 of it — it is fetched on demand, for tracked symbols only
 (`nimbus:get-stock-news`).
 
@@ -162,9 +169,11 @@ The briefing reads only the totals, through its usual builder pattern
   day change, exchange, price time, status), the estimates, and recent
   news. Headlines open in your default browser through the existing
   `system.openUrl` action — never inside NIMBUS.
-- **Add / edit / remove** (removing takes two clicks), **Refresh**, and the
-  **Track prices** and **Show recent news** switches, and the **Total in**
-  base-currency picker (`baseCurrency` in settings, default `EUR`).
+- **Add / edit / close / remove** (removing takes two clicks),
+  **Refresh**, the **Track prices**, **Show recent news** and **Show
+  dividends** switches, and the **Total in** base-currency picker.
+- **Holdings**, **dividends**, **closed positions** and the **IRS helper**
+  are described in their own sections below.
 
 ## Lots and holdings
 
@@ -285,8 +294,13 @@ clipboard as tab-separated text. It is a helper, not tax advice.
   depending on the exchange.
 - Average cost must be in the symbol's trading currency. London-listed
   prices are quoted in pence (`GBp`), so enter the cost in pence too.
-- Currency conversion uses today's rate only — no historical rates. No splits, fees, taxes, realized gains
-  or history. The purchase date only matters for a position bought today.
+- Open positions are converted at today's rate (no historical rates for
+  the running totals); the IRS helper does use each day's rate.
+- No splits, no fees on open positions, no short positions or CFD
+  overnight fees, and no price history. Realized gains exist only for
+  closed positions you record; tax is estimated for dividends only.
+- The purchase date matters for a position bought today, for dividends
+  and for closing (it is required there).
 - News links open Yahoo Finance's page for the article, which credits the
   publisher — the endpoint provides no direct publisher URL. Relevance
   relies on the source's own ticker tags.
@@ -303,9 +317,12 @@ prices, dropped links), `stockProvider.test.ts` (availability, caching,
 shared reads, stale and unpriced symbols, refresh throttling, edits,
 news caching and failure), `stockProvider.integration.test.ts` (a failing
 stock provider leaves other providers and the briefing intact),
-`stocksBriefing.test.ts` (every briefing phrasing) and
-`stockSettings.test.ts` (defaults, persistence, no secrets). No test
-reaches the real market.
+`stocksBriefing.test.ts` (every briefing phrasing),
+`stockSettings.test.ts` (defaults, persistence, no secrets),
+`dividends.test.ts` (tax countries, the Portuguese tax model, received
+and projected dividends, sold lots), `closed.test.ts` (closing all or
+part of a lot, validation) and `irs.test.ts` (Anexo J grouping, daily
+rates, CFDs, missing rates). No test reaches the real market.
 
 ---
 

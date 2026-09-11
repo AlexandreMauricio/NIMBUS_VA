@@ -48,6 +48,8 @@ provider can never throw past the service boundary:
 ## Who reads it
 
 - The **briefing** (see [briefing.md](briefing.md)).
+- The **Attention engine**, which reuses one snapshot for up to five
+  minutes (see [attention.md](attention.md)).
 - The **Context** tab, via `nimbus:get-context`, which renders whatever
   snapshot it is handed (status badges, a "stale" badge, the fields). It
   refreshes on load and on its Refresh button only.

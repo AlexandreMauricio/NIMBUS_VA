@@ -132,6 +132,14 @@ letting it expire; the cooldown already started either way.
 
 Active suggestions are held in memory only.
 
+The popup shows one suggestion at a time, and the Attention engine
+decides the order (see [attention.md](attention.md)): a lone suggestion
+appears at once, as it always did; if something more important is on
+screen, it waits and appears as soon as the popup frees, rather than
+overwriting it. One that expires while waiting isn't shown late. The Home
+feed line is published immediately either way. With Attention switched
+off, every suggestion goes straight to the popup.
+
 ## Why did this trigger?
 
 `RoutineService.evaluate` runs the gates in order — enabled, cooldown,
@@ -250,7 +258,9 @@ and a per-action list). Both are frameless, always-on-top and shown
 without taking focus, positioned in the primary display's work area
 (suggestions bottom-right, timer top-right) and repositioned each time
 they are shown. They render only what their data carries — no internal
-ids.
+ids. The suggestion popup also shows Attention's own informational
+suggestions ("Got it" / "Dismiss", nothing to run), with a one-line
+"Why".
 
 ## Tests
 

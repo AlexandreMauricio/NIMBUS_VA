@@ -17,7 +17,7 @@ unnecessarily painful later.
 
 | Layer | What it means | Owns |
 |---|---|---|
-| **1. Core** | Platform-independent logic. Zero dependency on Electron or any OS API. | Context, Actions, Events, Routines, Activity, Timers, Briefing, the assistant-event contract, settings schema, generic utilities |
+| **1. Core** | Platform-independent logic. Zero dependency on Electron or any OS API. | Context, Actions, Events, Routines, Activity, Timers, Attention, Briefing, the assistant-event contract, settings schema, generic utilities |
 | **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app." | Windows, tray, lifecycle, autostart, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups |
 | **3. External integrations** | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter. | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance |
 | **4. User data/context** | The data itself: what NIMBUS knows and what the user has told it. A *slice* of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences` |
@@ -49,7 +49,8 @@ src/
       spotify/                    spotifyContextProvider, types [1];
                                    spotifyApiClient [3] — shared with the
                                    Spotify Action provider
-      stocks/                     stockProvider, positionMath, types [1];
+      stocks/                     stockProvider, positionMath, dividends,
+                                   closed, irs, types [1];
                                    yahooFinance [3] behind the
                                    MarketDataSource / NewsSource interfaces
                                    (read-only — no trading anywhere)
@@ -459,6 +460,10 @@ Two early refactors established the boundary this document describes:
   `src/actions/providers/`, registered in `lifecycle.ts`. No IPC change is
   needed. Set `requiresConfirmation: true` for anything genuinely risky —
   it isn't enforced yet, but the metadata should be accurate.
+- **Something that should get the user's attention**: a signal builder
+  in `src/attention/signals.ts` reading its provider from the snapshot
+  (see [docs/attention.md](docs/attention.md)). The engine, scoring and
+  presentation need no change.
 - **Something new to react to**: a new `ContextEvent` shape published on
   the bus, plus a trigger type in `routines/types.ts` and a case in
   `triggerMatcher.ts`.

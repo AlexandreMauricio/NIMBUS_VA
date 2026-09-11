@@ -48,15 +48,20 @@ which modules are portable "Core" versus Windows-specific.
 - **Home tab** — the briefing, a Spotify now-playing card with playback
   controls and a playlist picker, the current activity (with the running
   timer and track), recent activity sessions, and an activity feed of
-  routine notifications.
+  routine suggestions, automatic runs and Attention notices.
 - **Calendar tab** — today's and upcoming events from your feeds.
 - **Tasks tab** — the full active Todoist list (list/grid, sorting) with
   create, edit, complete and delete, written straight to Todoist.
-- **Stocks tab** — positions you enter by hand, with current prices and
-  estimated value, gain/loss and today's change, plus recent headlines.
-  Read-only: no trading and no brokerage connection. See
+- **Stocks tab** — positions you enter by hand, grouped into holdings,
+  with current prices and estimated value, gain/loss and today's change,
+  one total in a base currency (default EUR), recent headlines,
+  alternative symbols for retired listings, leveraged CFDs, dividends with
+  Portuguese tax estimates, a list of closed positions, and an IRS
+  (Anexo J) helper. Read-only: no trading and no brokerage connection —
+  "closing" records a sale you already made. See
   [docs/stocks.md](docs/stocks.md).
-- **Context tab** — the raw context snapshot, refreshed on demand.
+- **Context tab** — the raw context snapshot, refreshed on demand, and the
+  Attention view: what NIMBUS thinks deserves attention, and why.
 - **Routines** — triggers, conditions, cooldowns, once-per-session
   limits, an explainable **Test**, **Run now**, optional run-automatically,
   and an end half ("when it ends") with its own trigger, conditions and
@@ -102,9 +107,10 @@ which modules are portable "Core" versus Windows-specific.
   window only; Microsoft Store apps can't be launched by path; volume and
   mute act on the default output device. See
   [docs/action-system.md](docs/action-system.md#desktop-actions).
-- Stock prices come from Yahoo Finance's **unofficial** public endpoints
-  (no key needed, but undocumented and possibly delayed); portfolio
-  totals are per currency, with no conversion.
+- Stock prices, exchange rates and dividends come from Yahoo Finance's
+  **unofficial** public endpoints (no key needed, but undocumented and
+  possibly delayed); there are no dividend payment dates, so upcoming
+  dividends are estimates. Tax figures are estimates, not advice.
 - Spotify playback control needs **Spotify Premium**; the Client ID can
   only be supplied through `.env`.
 - `ActionService` reports each action's `requiresConfirmation` flag but
@@ -163,6 +169,7 @@ src/
   activity/        Activity & Sessions — what the user is doing now
   actions/         The Action system — providers + executor
   routines/        Trigger → Suggestion → Action rules
+  attention/       Attention & Priority — what deserves attention now
   timers/          Generic timer engine (single countdowns and phase plans)
   events/          The in-process Context event bus
   briefing/        Turns a context snapshot into the Home briefing
@@ -185,7 +192,8 @@ subsystem.
   `.env`. `settings` is persisted, user-editable state — split into
   `WindowsClientSettings` (window bounds, startup behaviour; Windows-only)
   and `UserPreferences` (weather, calendar, email, tasks, Spotify,
-  routines, activities; conceptually cross-device data).
+  routines, activities, stocks, attention; conceptually cross-device
+  data).
 - **`logging/logger.ts` has no Electron dependency.** File output is
   opt-in via `configureFileLogging(...)`, called once from
   `src/main/main.ts`, so Core can depend on the logger without dragging
@@ -228,10 +236,11 @@ was produced — only that it received one:
 - `window.nimbus.onAssistantEvent(callback)` in the preload lets the
   renderer subscribe without any Electron/Node access.
 
-Today the Routine engine is the producer: every suggestion and every
-automatic run is published here and appears as a line in the Home
-activity feed. The interactive prompt itself is the separate suggestion
-popup window.
+Two producers use it today. The Routine engine publishes every
+suggestion and every automatic run; the Attention engine posts its
+normal-priority notices. Each appears as a line in the Home activity
+feed. The interactive prompt itself is the separate suggestion popup
+window, whose order Attention decides.
 
 ## Documentation
 
@@ -317,7 +326,7 @@ Everything is written under Electron's per-user data directory
 
 | File | Contents | Protection |
 | --- | --- | --- |
-| `settings.json` | Window/startup settings and all user preferences, including calendar feed addresses and stock positions | Plain JSON, atomic write |
+| `settings.json` | Window/startup settings and all user preferences, including calendar feed addresses, stock positions and closed positions | Plain JSON, atomic write |
 | `secrets.json` | IMAP passwords and Todoist API tokens, keyed by account | Encrypted (DPAPI via `safeStorage`), atomic write |
 | `spotify-tokens.json` | Spotify access/refresh tokens | Encrypted (DPAPI via `safeStorage`), atomic write |
 | `routine-state.json` | Routine cooldown timestamps and wind-downs still owed | Plain JSON, atomic write |

@@ -18,6 +18,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.2 — 2026-09-11
+
+- Documentation brought in line with 0.3.0–0.3.1: the README (Stocks and
+  Context tabs, feed producers, project structure, preferences, stock
+  limitations), ARCHITECTURE (Core layers, the stocks module, guidance for
+  new attention sources), and the routines, context and stocks guides
+  (popup queueing, who reads the snapshot, closing, leverage, dividends,
+  tests).
+
 ## 0.3.1 — 2026-09-11
 
 - Attention & Priority engine: a deterministic layer that decides what
