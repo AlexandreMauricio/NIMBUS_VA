@@ -3501,12 +3501,17 @@ function renderContextSnapshot(snapshot: ContextSnapshot): void {
 
   const container = document.getElementById("contextProviders")!;
   container.innerHTML = "";
+  const open = readOpenContextCards();
 
   for (const result of Object.values(snapshot.providers)) {
-    const card = document.createElement("div");
+    // A fold-away box per provider: the header (name and status) is always
+    // visible; how it works and its raw data are inside.
+    const card = document.createElement("details");
     card.className = "context-card";
+    card.open = open.has(result.providerId);
+    card.addEventListener("toggle", () => rememberContextCard(result.providerId, card.open));
 
-    const header = document.createElement("div");
+    const header = document.createElement("summary");
     header.className = "context-card-header";
 
     const title = document.createElement("span");
@@ -3527,6 +3532,14 @@ function renderContextSnapshot(snapshot: ContextSnapshot): void {
     }
     header.appendChild(badges);
     card.appendChild(header);
+
+    const explanation = CONTEXT_EXPLANATIONS[result.providerId];
+    if (explanation) {
+      const explainer = document.createElement("p");
+      explainer.className = "context-explainer";
+      explainer.textContent = explanation;
+      card.appendChild(explainer);
+    }
 
     if (result.error) {
       const errorEl = document.createElement("p");
@@ -3550,6 +3563,49 @@ function renderContextSnapshot(snapshot: ContextSnapshot): void {
     }
 
     container.appendChild(card);
+  }
+}
+
+/** How each Context provider works, in plain words — shown inside its box. */
+const CONTEXT_EXPLANATIONS: Record<string, string> = {
+  dateTime:
+    "Reads the date, time and time zone from this PC's own clock. Nothing is fetched or cached, so it is always current. The briefing uses it for the greeting and the date line.",
+  system:
+    "Reads basic facts about this PC from the operating system. Local only — nothing leaves the machine.",
+  weather:
+    "Current conditions and the coming days' forecast from Open-Meteo (free, no account), for the location you set in Settings or one estimated from your internet connection. Fetched at most every 10 minutes. Feeds the briefing and Attention's \"rain likely\" notice.",
+  calendar:
+    "Today's and upcoming events from the calendar feeds (.ics links or files) you added in Settings. Refreshed every 15 minutes, or every 2 when an event is close. Recurring events appear once, at their first occurrence. Feeds the Calendar tab, the briefing and Attention's \"meeting soon\" alerts.",
+  email:
+    'Recent messages from your email accounts over IMAP, strictly read-only — NIMBUS never sends, moves, deletes or marks anything. Each message gets an importance from simple signals: unread, flagged, automated senders, keywords. Refreshed every 5 minutes. Feeds the briefing and Attention\'s "important email" notices.',
+  tasks:
+    "Your active Todoist tasks, sorted into overdue, due today, upcoming and no deadline, each with an urgency worked out from its due time, priority and reminder. Refreshed every 5 minutes, or every minute when something is due soon. Feeds the Tasks tab, the briefing and Attention.",
+  spotify:
+    "What is playing on your Spotify account, read through Spotify's Web API once you connect it. Refreshed at most every 20 seconds. Used by the Home now-playing card and by routine conditions such as \"Spotify isn't already playing\".",
+  stocks:
+    "Prices for the positions in your Stocks tab from Yahoo Finance's public data (no account), turned into estimates of value and gain, with totals converted to your base currency. Quotes are reused for 2 minutes. Read-only — no trading. Feeds the Stocks tab, the briefing and Attention's \"big move\" notice.",
+};
+
+/** Which Context boxes are open is a per-device convenience, so it lives in localStorage. */
+const OPEN_CONTEXT_CARDS_KEY = "nimbus.context.openCards";
+
+function readOpenContextCards(): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(OPEN_CONTEXT_CARDS_KEY) ?? "[]");
+    return new Set(Array.isArray(saved) ? saved.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberContextCard(id: string, open: boolean): void {
+  try {
+    const cards = readOpenContextCards();
+    if (open) cards.add(id);
+    else cards.delete(id);
+    localStorage.setItem(OPEN_CONTEXT_CARDS_KEY, JSON.stringify([...cards]));
+  } catch {
+    // Storage unavailable — the choice just isn't remembered.
   }
 }
 
@@ -3588,6 +3644,9 @@ const ATTENTION_DECISIONS: Record<string, string> = {
 function renderAttention(state: AttentionDebugView): void {
   (document.getElementById("attentionEnabled") as HTMLInputElement).checked = state.enabled;
   (document.getElementById("attentionPopups") as HTMLInputElement).checked = state.popups;
+  document.getElementById("attentionBadge")!.textContent = !state.enabled
+    ? "off"
+    : `${state.items.length} item${state.items.length === 1 ? "" : "s"}`;
   const summary = document.getElementById("attentionSummary")!;
   summary.textContent = !state.enabled
     ? "Attention is off — routine suggestions pop up as they come, and nothing else is raised."
@@ -3674,6 +3733,9 @@ async function loadContext(): Promise<void> {
 function initContext(): void {
   loadContext();
   void loadAttention();
+  const attentionSection = document.getElementById("attentionSection") as HTMLDetailsElement;
+  attentionSection.open = readOpenContextCards().has("attention");
+  attentionSection.addEventListener("toggle", () => rememberContextCard("attention", attentionSection.open));
   document.getElementById("refreshContextBtn")?.addEventListener("click", loadContext);
   document.getElementById("refreshContextBtn")?.addEventListener("click", () => void loadAttention());
   for (const [id, key] of [

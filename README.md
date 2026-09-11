@@ -60,8 +60,9 @@ which modules are portable "Core" versus Windows-specific.
   (Anexo J) helper. Read-only: no trading and no brokerage connection —
   "closing" records a sale you already made. See
   [docs/stocks.md](docs/stocks.md).
-- **Context tab** — the raw context snapshot, refreshed on demand, and the
-  Attention view: what NIMBUS thinks deserves attention, and why.
+- **Context tab** — one fold-away box per source, each explaining how that
+  source works and showing what it returned, plus the Attention box: what
+  NIMBUS thinks deserves attention, and why.
 - **Routines** — triggers, conditions, cooldowns, once-per-session
   limits, an explainable **Test**, **Run now**, optional run-automatically,
   and an end half ("when it ends") with its own trigger, conditions and

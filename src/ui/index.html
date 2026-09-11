@@ -549,43 +549,55 @@
             <h6 class="kicker">Current context</h6>
             <button class="btn btn-secondary" id="refreshContextBtn">Refresh</button>
           </div>
+          <p class="setting-note">
+            Everything NIMBUS knows right now, one box per source. The sources are asked side by side, each
+            with a 30-second limit: if one fails, its last good answer is shown marked stale and the others
+            are unaffected. Open a box to see how that source works and what it returned.
+          </p>
           <p class="setting-note" id="contextGeneratedAt"></p>
           <div id="contextProviders" class="context-providers"></div>
 
-          <div class="panel-header attention-header">
-            <h6 class="kicker">Attention</h6>
-          </div>
-          <p class="setting-note">
-            What NIMBUS thinks deserves your attention right now, and why. Urgent and high items can pop up,
-            normal ones go to the Home feed, and low ones only appear here. Attention never runs anything.
-          </p>
-          <p class="setting-note" id="attentionSummary"></p>
-          <div id="attentionItems" class="attention-items"></div>
-          <label class="setting-row">
-            <span>
-              <span class="setting-title">Notice what matters</span>
-              <span class="setting-desc">
-                Watches your calendar, tasks, email, weather, stocks and activity, and queues routine
-                suggestions so they don't overwrite each other. Off: routine suggestions pop up as they come.
+          <details class="context-card attention-section" id="attentionSection">
+            <summary class="context-card-header">
+              <span class="context-card-title">Attention</span>
+              <span class="context-badge" id="attentionBadge"></span>
+            </summary>
+            <p class="context-explainer">
+              Every 30 seconds NIMBUS looks at your calendar, tasks, email, weather, stocks, activity and
+              routine suggestions, and scores each thing: 0.40 × urgency + 0.35 × importance + 0.25 ×
+              relevance, less when you're busy with something that can wait. Urgent and high items can pop up,
+              one at a time; normal ones go to the Home feed; low ones only appear here. The same thing is
+              never shown twice unless it becomes more pressing. Attention never runs anything.
+            </p>
+            <p class="setting-note" id="attentionSummary"></p>
+            <div id="attentionItems" class="attention-items"></div>
+            <label class="setting-row">
+              <span>
+                <span class="setting-title">Notice what matters</span>
+                <span class="setting-desc">
+                  Watches your calendar, tasks, email, weather, stocks and activity, and queues routine
+                  suggestions so they don't overwrite each other. Off: routine suggestions pop up as they
+                  come.
+                </span>
               </span>
-            </span>
-            <span class="toggle">
-              <input type="checkbox" id="attentionEnabled" />
-              <span class="track"></span>
-            </span>
-          </label>
-          <label class="setting-row">
-            <span>
-              <span class="setting-title">Pop up urgent items</span>
-              <span class="setting-desc">
-                Off: NIMBUS's own items only go to the Home feed. Routine suggestions still pop up.
+              <span class="toggle">
+                <input type="checkbox" id="attentionEnabled" />
+                <span class="track"></span>
               </span>
-            </span>
-            <span class="toggle">
-              <input type="checkbox" id="attentionPopups" />
-              <span class="track"></span>
-            </span>
-          </label>
+            </label>
+            <label class="setting-row">
+              <span>
+                <span class="setting-title">Pop up urgent items</span>
+                <span class="setting-desc">
+                  Off: NIMBUS's own items only go to the Home feed. Routine suggestions still pop up.
+                </span>
+              </span>
+              <span class="toggle">
+                <input type="checkbox" id="attentionPopups" />
+                <span class="track"></span>
+              </span>
+            </label>
+          </details>
         </section>
 
         <section id="tab-routines" class="panel">

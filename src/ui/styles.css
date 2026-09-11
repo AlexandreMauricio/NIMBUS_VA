@@ -2112,8 +2112,8 @@ button.btn {
 }
 
 /* Attention debug view (Context tab). */
-.attention-header {
-  margin-top: var(--space-6, 32px);
+.attention-section {
+  margin-top: 1rem;
 }
 
 .attention-items {
@@ -2166,4 +2166,43 @@ button.btn {
 .attention-why ul {
   margin: 4px 0 0;
   padding-left: 18px;
+}
+
+/* Context boxes fold away: the header stays, the body opens. */
+details.context-card > summary {
+  justify-content: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+details.context-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.context-card > summary::before {
+  content: "\25B8";
+  display: inline-block;
+  color: var(--color-neutral-400);
+  transition: transform 0.15s ease;
+}
+
+details.context-card[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+details.context-card[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+details.context-card > summary .context-card-title {
+  margin-right: auto;
+}
+
+.context-explainer {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-neutral-400);
 }

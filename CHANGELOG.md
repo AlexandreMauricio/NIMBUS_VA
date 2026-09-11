@@ -18,6 +18,13 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.3 — 2026-09-11
+
+- Context tab: every source is a fold-away box with a plain explanation of
+  how it works (where the data comes from, how often it refreshes, what
+  uses it); which boxes are open is remembered. The Attention section is a
+  box too, with an item count and an explanation of the scoring.
+
 ## 0.3.2 — 2026-09-11
 
 - Documentation brought in line with 0.3.0–0.3.1: the README (Stocks and

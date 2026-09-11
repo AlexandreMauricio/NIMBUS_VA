@@ -124,7 +124,7 @@ to RoutineService, which then tells Attention the suggestion was resolved.
 
 ## Debug view
 
-The **Context** tab has an *Attention* section: every current item with
+The **Context** tab has a fold-away *Attention* box: every current item with
 its priority, score, source, decision and reason, and a "Why" list of the
 score's factors and facts. It also has the two switches: **Notice what
 matters** (`attention.enabled`) and **Pop up urgent items**
