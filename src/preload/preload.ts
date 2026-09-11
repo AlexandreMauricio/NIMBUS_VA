@@ -1,3 +1,4 @@
+import type { NetworkState } from "../network/types";
 import type { AttentionDebugState, AttentionSettings } from "../attention";
 import { contextBridge, ipcRenderer } from "electron";
 import { AssistantEvent } from "../common/assistantEvents";
@@ -203,6 +204,24 @@ contextBridge.exposeInMainWorld("nimbus", {
   /** Anexo J figures for one year. A helper, not tax advice. */
   getStockIrsReport: (year: number): Promise<IrsReport> =>
     ipcRenderer.invoke("nimbus:get-stock-irs-report", year),
+  /** Network awareness — observation only. None of these takes an address. */
+  getNetworkState: (): Promise<NetworkState> => ipcRenderer.invoke("nimbus:get-network-state"),
+  refreshNetwork: (): Promise<NetworkState> => ipcRenderer.invoke("nimbus:refresh-network"),
+  scanNetwork: (): Promise<NetworkState> => ipcRenderer.invoke("nimbus:scan-network"),
+  cancelNetworkScan: (): Promise<boolean> => ipcRenderer.invoke("nimbus:cancel-network-scan"),
+  updateNetworkDevice: (
+    id: string,
+    changes: { nickname?: string | null; recognized?: boolean }
+  ): Promise<NetworkState> => ipcRenderer.invoke("nimbus:update-network-device", id, changes),
+  forgetNetworkDevice: (id: string): Promise<NetworkState> =>
+    ipcRenderer.invoke("nimbus:forget-network-device", id),
+  updateNetworkSettings: (partial: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
+    ipcRenderer.invoke("nimbus:update-network-settings", partial),
+  onNetworkChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:network-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:network-changed", listener);
+  },
 
   getSpotifySettings: (): Promise<PublicSpotifySettings> => ipcRenderer.invoke("nimbus:get-spotify-settings"),
   updateSpotifySettings: (partial: {

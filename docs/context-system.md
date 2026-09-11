@@ -26,6 +26,7 @@ AI/LLM is involved at this layer.
   | `TaskProvider` | Active tasks bucketed by deadline ([tasks.md](tasks.md)) | `src/main/lifecycle.ts` |
   | `SpotifyContextProvider` | What's playing ([spotify.md](spotify.md)) | `src/main/lifecycle.ts` |
   | `StockProvider` | Tracked positions, estimates, per-currency and base-currency totals ([stocks.md](stocks.md)) | `src/main/lifecycle.ts` |
+  | `NetworkProvider` | Devices on the local network: online, known, recognized and unknown counts ([network.md](network.md)) | `src/main/lifecycle.ts` |
 
   Providers that need no runtime settings are registered in
   `context/index.ts`; the ones that read live settings are registered in

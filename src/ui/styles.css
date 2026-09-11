@@ -2206,3 +2206,64 @@ details.context-card > summary .context-card-title {
   line-height: 1.45;
   color: var(--color-neutral-400);
 }
+
+/* Network tab. */
+.network-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  margin-bottom: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.network-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-neutral-400);
+  opacity: 0.5;
+}
+
+.network-dot.online {
+  background: var(--color-success);
+  opacity: 1;
+}
+
+.network-name {
+  display: block;
+  font-weight: 600;
+}
+
+.network-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--color-neutral-400);
+}
+
+.network-ip {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.network-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--space-2) 0;
+  font-size: 13px;
+}
+
+.network-check {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}

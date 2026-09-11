@@ -48,6 +48,9 @@ import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
 import { FileAppUsageStore } from "./appUsageStore";
+import { NetworkProvider, NetworkService, dnsHostnameResolver } from "../network";
+import { WindowsNetworkScanner } from "./network/windowsNetworkScanner";
+import { FileNetworkStore, loadVendorLookup } from "./network/networkFiles";
 import {
   ActivityService,
   ActivityMapping,
@@ -82,6 +85,7 @@ let activityMonitor: DesktopActivityMonitor | null = null;
 const timerService = new TimerService(contextEventBus);
 let activityService: ActivityService;
 let appUsage: AppUsageTracker | null = null;
+let networkService: NetworkService;
 
 function createMainWindow(show: boolean): void {
   mainWindow = new BrowserWindow({
@@ -510,6 +514,28 @@ function registerIpcHandlers(): void {
   });
   // Dividend history per holding, with tax estimated for a Portugal resident.
   ipcMain.handle("nimbus:get-stock-dividends", () => stockProvider.getDividends());
+
+  // Network (src/network/) — observation only. Each channel does one fixed
+  // thing: read the neighbor cache, run the bounded local scan, or edit
+  // NIMBUS's own label for a device. None takes an address from the UI.
+  ipcMain.handle("nimbus:get-network-state", () => networkService.getState());
+  ipcMain.handle("nimbus:refresh-network", () => networkService.refresh());
+  ipcMain.handle("nimbus:scan-network", () => networkService.scan());
+  ipcMain.handle("nimbus:cancel-network-scan", () => networkService.cancel());
+  ipcMain.handle("nimbus:update-network-device", (_event, id: unknown, changes: unknown) =>
+    networkService.updateDevice(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:forget-network-device", (_event, id: unknown) =>
+    networkService.forget(String(id ?? ""))
+  );
+  ipcMain.handle("nimbus:update-network-settings", (_event, partial: unknown) => {
+    settings.windowsClient.network = mergeKnown(settings.windowsClient.network, partial);
+    saveSettings(settings);
+    logger.info("Network settings updated", { ...settings.windowsClient.network });
+    if (settings.windowsClient.network.enabled) void networkService.refresh(true);
+    else networkService.cancel();
+    return settings.windowsClient.network;
+  });
   // Records a sale the user already made at their broker: shares move from
   // an open lot to the closed list. NIMBUS itself never trades.
   ipcMain.handle("nimbus:close-stock-position", (_event, request: unknown) => {
@@ -958,6 +984,24 @@ export function startApp(): void {
   stockProvider = new StockProvider(() => settings.userPreferences.stocks);
   contextService.register(stockProvider);
 
+  // Network awareness (src/network/) — observation only: Windows' neighbor
+  // cache every two minutes, and a bounded ping sweep of the local subnet
+  // when the user presses "Scan network". Deliberately not an Action
+  // provider: nothing a routine or the generic execute channel could call.
+  // See docs/network.md.
+  networkService = new NetworkService({
+    scanner: new WindowsNetworkScanner(),
+    resolver: dnsHostnameResolver(),
+    store: new FileNetworkStore(),
+    bus: contextEventBus,
+    vendorFor: loadVendorLookup(),
+    isEnabled: () => settings.windowsClient.network.enabled,
+    onChange: () => {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:network-changed");
+    },
+  });
+  contextService.register(new NetworkProvider(networkService));
+
   // Spotify is NIMBUS's first Action Provider alongside its Context
   // Provider — see src/actions/ and ARCHITECTURE.md's Context-vs-Action
   // split. Both share the same SpotifyApiClient/SpotifyAuthManager
@@ -1260,6 +1304,9 @@ export function startApp(): void {
     // asks every provider for context, and asking earlier made Spotify's
     // stored login look disconnected and email/tasks look unconfigured.
     attentionService.start();
+    // Network watching reads Windows' neighbor cache (sends nothing) every
+    // two minutes while it's on.
+    networkService.start();
   });
 
   // No window-all-closed -> quit here: NIMBUS keeps running via the tray
@@ -1279,6 +1326,7 @@ export function startApp(): void {
     activityService?.stop();
     attentionService?.stop();
     appUsage?.flush();
+    networkService?.stop();
     if (resizeSaveTimer) {
       clearTimeout(resizeSaveTimer);
       resizeSaveTimer = null;

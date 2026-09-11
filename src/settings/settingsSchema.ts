@@ -31,6 +31,13 @@ export interface WindowsClientSettings {
     height: number;
   };
   startup: StartupSettings;
+  /** Network awareness on this PC (see src/network/) — per PC, since a local network only means something here. */
+  network: NetworkClientSettings;
+}
+
+export interface NetworkClientSettings {
+  /** Read Windows' neighbor list every two minutes, and allow "Scan network". */
+  enabled: boolean;
 }
 
 export interface StartupSettings {
@@ -213,6 +220,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       launchWithWindows: false,
       startMinimized: false,
     },
+    network: { enabled: true },
   },
   userPreferences: {
     weather: {
@@ -322,6 +330,10 @@ export function applyDefaults(parsed: any): NimbusSettings {
       startup: {
         ...defaults.windowsClient.startup,
         ...parsed.windowsClient?.startup,
+      },
+      network: {
+        ...defaults.windowsClient.network,
+        ...parsed.windowsClient?.network,
       },
     },
     userPreferences: {

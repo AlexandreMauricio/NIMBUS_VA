@@ -164,7 +164,8 @@ its context from the snapshot and returns signals — nothing else changes:
 - **Stocks** already does: a big portfolio move. More could follow the
   same shape, e.g. an outdated listing (`stocks:outdated:<symbol>`,
   importance 30) or an estimated ex-dividend date tomorrow.
-- A future **Network** provider could emit "Internet connection lost"
+- The **Network** provider ([network.md](network.md)) doesn't feed
+  Attention yet; it could emit "Internet connection lost"
   (importance 60, urgency 80 while it lasts, key `network:offline:<since>`,
   expiring when the connection returns) — urgent enough to pop up, and
   gone as soon as the condition clears.

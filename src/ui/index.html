@@ -54,6 +54,23 @@
             </svg>
             Stocks
           </button>
+          <button class="side-link" data-tab="network">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 256 256"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="16"
+              stroke-linecap="round"
+            >
+              <circle cx="128" cy="196" r="12" fill="currentColor" stroke="none" />
+              <path d="M88 156a56 56 0 0 1 80 0" />
+              <path d="M52 120a108 108 0 0 1 152 0" />
+              <path d="M16 84a160 160 0 0 1 224 0" />
+            </svg>
+            Network
+          </button>
           <button class="side-link" data-tab="context">
             <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">
               <path
@@ -541,6 +558,46 @@
                 <button class="btn btn-ghost" id="cancelCloseBtn">Cancel</button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section id="tab-network" class="panel">
+          <div id="networkListView">
+            <div class="panel-header">
+              <h6 class="kicker">Network</h6>
+              <div class="routines-view-toggle">
+                <button class="btn btn-ghost" id="networkRefreshBtn">Refresh</button>
+                <button class="btn btn-secondary" id="networkScanBtn">Scan network</button>
+              </div>
+            </div>
+            <p class="setting-note">
+              Devices NIMBUS can see on your local network. It only observes: it never connects to a device,
+              opens a port or logs in. "Scan network" pings each address on your local network once, at most
+              once a minute.
+            </p>
+            <p class="setting-note" id="networkStatus" hidden></p>
+            <p class="form-error" id="networkError" role="alert" hidden></p>
+            <div id="networkDeviceList"></div>
+            <p class="feed-empty" id="networkEmpty" hidden>
+              No devices seen yet. Press "Scan network" to look.
+            </p>
+            <label class="setting-row">
+              <span>
+                <span class="setting-title">Watch my network</span>
+                <span class="setting-desc">
+                  Reads Windows' own list of nearby devices every two minutes — nothing is sent. Off keeps the
+                  devices and labels you have, but reads and scans nothing.
+                </span>
+              </span>
+              <span class="toggle">
+                <input type="checkbox" id="networkEnabled" />
+                <span class="track"></span>
+              </span>
+            </label>
+          </div>
+          <div id="networkDetailView" hidden>
+            <button class="btn btn-ghost" id="backFromNetworkDeviceBtn">&larr; Back to network</button>
+            <div id="networkDeviceDetail"></div>
           </div>
         </section>
 

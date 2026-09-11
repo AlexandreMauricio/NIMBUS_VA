@@ -19,7 +19,8 @@ actions in a small popup (or runs them automatically, if you opt a routine
 into that) — playing Spotify or other media, launching and arranging
 apps, setting the system volume, starting a timer or a Pomodoro
 study/break plan, opening a website, file or folder — and can wind them
-down again when the activity ends.
+down again when the activity ends. An **Attention** engine decides which of all this deserves a popup
+now, and the **Network** tab shows the devices on your local network.
 
 **What it does not do:** there is no AI/LLM, no natural-language
 understanding, no voice, no packaged installer, and no multi-device sync.
@@ -38,9 +39,10 @@ which modules are portable "Core" versus Windows-specific.
 
 - **Desktop presence** — tray icon, close-to-tray, launch with Windows,
   start minimized (see [Desktop presence](#desktop-presence)).
-- **Context system** with eight providers: date/time, system info,
+- **Context system** with nine providers: date/time, system info,
   weather (Open-Meteo), calendar (ICS feeds), email (IMAP, read-only),
-  tasks (Todoist), Spotify playback and stocks (Yahoo Finance). Each is failure-isolated and
+  tasks (Todoist), Spotify playback, stocks (Yahoo Finance) and the local
+  network. Each is failure-isolated and
   time-bounded.
 - **Briefing** — generated once at startup and on demand (Home →
   Regenerate), from greeting, date/time, weather, calendar, email, tasks
@@ -60,6 +62,11 @@ which modules are portable "Core" versus Windows-specific.
   (Anexo J) helper. Read-only: no trading and no brokerage connection —
   "closing" records a sale you already made. See
   [docs/stocks.md](docs/stocks.md).
+- **Network tab** — the devices on your local network (this PC, the
+  router, everything else) with name, IP, MAC, manufacturer (with the IEEE
+  list), online state and first/last seen; nickname them and mark the ones
+  you recognize. Observation only: it reads Windows' neighbor list and, on
+  request, pings the local subnet once. See [docs/network.md](docs/network.md).
 - **Context tab** — one fold-away box per source, each explaining how that
   source works and showing what it returned, plus the Attention box: what
   NIMBUS thinks deserves attention, and why.
@@ -171,6 +178,7 @@ src/
   actions/         The Action system — providers + executor
   routines/        Trigger → Suggestion → Action rules
   attention/       Attention & Priority — what deserves attention now
+  network/         Network awareness — local devices, observation only
   timers/          Generic timer engine (single countdowns and phase plans)
   events/          The in-process Context event bus
   briefing/        Turns a context snapshot into the Home briefing
@@ -261,6 +269,7 @@ that subsystem.
 | [Email](docs/email.md) | IMAP setup, app passwords, and what NIMBUS does and does not read |
 | [Tasks](docs/tasks.md) | Todoist setup and the read/write Tasks tab |
 | [Spotify](docs/spotify.md) | Registering a Spotify app, the PKCE flow, and playback control |
+| [Network](docs/network.md) | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
 | [Stocks](docs/stocks.md) | Tracked positions, the estimates, market data and news, and their limits |
 
 Architecture-level decisions — what counts as portable Core versus
@@ -332,6 +341,8 @@ Everything is written under Electron's per-user data directory
 | `spotify-tokens.json` | Spotify access/refresh tokens | Encrypted (DPAPI via `safeStorage`), atomic write |
 | `routine-state.json` | Routine cooldown timestamps and wind-downs still owed | Plain JSON, atomic write |
 | `activity-history.json` | Up to 200 activity sessions | Plain JSON, atomic write |
+| `network-devices.json` | Devices seen on your local network: MAC, nickname, recognized, names, first/last seen, recent IPs | Plain JSON, atomic write |
+| `oui.csv` | Optional: the IEEE manufacturer list, if you put it there — NIMBUS only reads it | Your file |
 | `app-usage.json` | Opt-in: programs with a window, minutes per day for two weeks, and your "make it an activity?" answers | Plain JSON, atomic write |
 | `logs\nimbus.log` | The application log | Plain text; never contains credentials |
 

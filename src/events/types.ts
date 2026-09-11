@@ -22,6 +22,7 @@ export type ContextEventType =
   | "folderOpened"
   | "timerCompleted"
   | "activityEnded"
+  | "networkDeviceAppeared"
   // Reserved for future producers — not emitted by anything yet, but
   // included so the trigger/routine types this task builds don't need to
   // change shape when they are. See "Context events" in docs/context-system.md.
@@ -121,10 +122,27 @@ export interface ActivityEndedEvent extends ContextEventBase {
   durationMs: number;
 }
 
+/**
+ * A device NIMBUS has never seen before appeared on the local network
+ * (see src/network/). Published by NetworkService. Devices already present
+ * when network watching first ran are the baseline and aren't announced.
+ * A statement of fact only — nothing reacts to it yet.
+ */
+export interface NetworkDeviceAppearedEvent extends ContextEventBase {
+  type: "networkDeviceAppeared";
+  /** "mac:" + the device's MAC address — stable across IP changes. */
+  deviceId: string;
+  ip: string;
+  mac: string;
+  hostname: string | null;
+  vendor: string | null;
+}
+
 export type ContextEvent =
   | ApplicationOpenedEvent
   | ApplicationClosedEvent
   | WebsiteOpenedEvent
   | FolderOpenedEvent
   | TimerCompletedEvent
-  | ActivityEndedEvent;
+  | ActivityEndedEvent
+  | NetworkDeviceAppearedEvent;

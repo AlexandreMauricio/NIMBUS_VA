@@ -17,7 +17,7 @@ unnecessarily painful later.
 
 | Layer | What it means | Owns |
 |---|---|---|
-| **1. Core** | Platform-independent logic. Zero dependency on Electron or any OS API. | Context, Actions, Events, Routines, Activity, Timers, Attention, Briefing, the assistant-event contract, settings schema, generic utilities |
+| **1. Core** | Platform-independent logic. Zero dependency on Electron or any OS API. | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Briefing, the assistant-event contract, settings schema, generic utilities |
 | **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app." | Windows, tray, lifecycle, autostart, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups |
 | **3. External integrations** | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter. | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance |
 | **4. User data/context** | The data itself: what NIMBUS knows and what the user has told it. A *slice* of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences` |
@@ -108,6 +108,18 @@ src/
                                    surfaces to an injected presenter; has no
                                    Action service
 
+  network/                  [1] Core — Network awareness (observation only)
+    types.ts                     Devices, discovery results, the narrow
+                                   NetworkScanner interface
+    mac.ts, oui.ts, subnet.ts    MAC normalisation, the IEEE list, address
+                                   maths and the bounded sweep targets
+    networkRegistry.ts           Devices by MAC: merge, IP history,
+                                   online state, labels — pure
+    networkService.ts            Reads, scans, persists, publishes
+                                   networkDeviceAppeared
+    networkProvider.ts           The `network` Context provider
+    hostnames.ts                 Reverse lookups for private addresses
+
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
                                    Pure functions/classes over ContextSnapshot
@@ -156,6 +168,13 @@ src/
                                    (activity-history.json)
     appUsageStore.ts              The opt-in app-usage tally
                                    (app-usage.json)
+    network/
+      windowsNetworkScanner.ts     Two fixed PowerShell scripts: read the
+                                   neighbor cache; ping validated private
+                                   addresses
+      neighborParsing.ts           [1]* Pure parsing of the read script
+      networkFiles.ts              network-devices.json, and the optional
+                                   oui.csv
     spotify/
       spotifyAuthManager.ts        PKCE OAuth flow (system browser + loopback
                                    server), token refresh
@@ -205,6 +224,7 @@ renderer can only call what its preload exposes.
 | Stocks | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news`, `nimbus:find-stock-listings` (tracked symbols only), `nimbus:get-stock-dividends`, `nimbus:close-stock-position`, `nimbus:get-stock-irs-report` |
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
+| Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:update-network-settings` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
 
 **Suggestion popup** (`suggestionPreload.ts`): `nimbus:get-popup-suggestion`,
@@ -217,7 +237,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:
@@ -249,6 +269,7 @@ written atomically (temp file, fsync, rename):
 | `spotify-tokens.json` | `spotifyTokenStore.ts` | Spotify tokens, DPAPI-encrypted |
 | `routine-state.json` | `routineStateStore.ts` | Cooldown timestamps; wind-downs still owed (dropped after 12 h) |
 | `activity-history.json` | `activityStateStore.ts` | Up to 200 activity sessions |
+| `network-devices.json` | `network/networkFiles.ts` | Devices seen on the local network: MAC, nickname, recognized, names, first/last seen, recent IPs |
 | `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
 | `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
 
@@ -308,6 +329,7 @@ Context/OS → Event → Event Bus → Trigger Matcher → Routine gates
   | `applicationOpened`, `applicationClosed`, `websiteOpened`, `folderOpened` | `DesktopActivityMonitor` |
   | `timerCompleted` | `TimerService` (every phase) |
   | `activityEnded` | `ActivityService` (not on shutdown) |
+  | `networkDeviceAppeared` | `NetworkService` (not for the first-run baseline); nothing subscribes yet |
 
   `playbackChanged`, `calendarEventApproaching` and `emailReceived` are
   reserved names in `ContextEventType`; nothing emits them.
@@ -422,7 +444,7 @@ and hand the Core providers the same two functions.
 `UserPreferences` (weather, calendar, email, tasks, Spotify, routines,
 activity, stocks, attention) is data that conceptually belongs to the user and would follow
 them to another device; `WindowsClientSettings` (window bounds, startup
-behaviour) only makes sense on this Windows install. Both live in one
+behaviour, network watching) only makes sense on this Windows install. Both live in one
 local `settings.json` — there is no sync backend — but the type boundary
 means adding sync later is a transport for `UserPreferences`, not a
 re-decision of what counts as shared data.

@@ -18,6 +18,29 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.7 — 2026-09-11
+
+- Documentation checked against the code after the Network feature: the
+  README's provider count and overview now include Attention and Network,
+  and the Attention guide no longer calls Network a future provider.
+  IPC channels, Context providers, event types, state files, settings
+  groups, action ids and every test file and source path named in the
+  docs were cross-checked with the code.
+
+## 0.3.6 — 2026-09-11
+
+- Network tab: the devices on the local network — this PC, the router and
+  the rest — with name, IP, MAC, manufacturer (from the IEEE list, if you
+  add it), online state and first/last seen, plus nicknames and a
+  "recognized" label (NIMBUS's own note, not a security check). Devices
+  are identified by MAC, so IP changes keep their history. Observation
+  only: Windows' neighbor cache is read every two minutes (nothing sent),
+  and "Scan network" pings the local subnet once — private addresses, at
+  most a /24, in cancellable batches, once a minute. A device never seen
+  before publishes `networkDeviceAppeared` on the event bus, and a new
+  `network` Context provider reports the counts. Nothing on the network
+  is reachable through the Action system.
+
 ## 0.3.5 — 2026-09-11
 
 - "Make it an activity?" (opt-in: *Suggest activities for apps I use a

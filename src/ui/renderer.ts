@@ -9,6 +9,7 @@ import {
   withSkipIfActiveCondition,
 } from "./uiFormat";
 import { initStocksTab } from "./stocksTab";
+import { initNetworkTab } from "./networkTab";
 
 /**
  * Renderer script for the placeholder UI. Talks to the main process
@@ -3571,6 +3572,8 @@ function renderContextSnapshot(snapshot: ContextSnapshot): void {
 
 /** How each Context provider works, in plain words — shown inside its box. */
 const CONTEXT_EXPLANATIONS: Record<string, string> = {
+  network:
+    "Devices on your local network, from Windows' own list of nearby devices (read every 2 minutes; nothing is sent) and the Network tab's scan (one ping to each local address, at most once a minute). Devices are told apart by hardware (MAC) address, not IP. \"Recognized\" is NIMBUS's own label, not a security check. A device never seen before is published as an event.",
   dateTime:
     "Reads the date, time and time zone from this PC's own clock. Nothing is fetched or cached, so it is always current. The briefing uses it for the greeting and the date line.",
   system:
@@ -3916,6 +3919,7 @@ initBriefing();
 initNowPlayingCard();
 initCalendarTab();
 initStocksTab();
+initNetworkTab();
 initContext();
 initAssistantFeed();
 
