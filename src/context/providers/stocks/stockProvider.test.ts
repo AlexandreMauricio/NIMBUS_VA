@@ -629,3 +629,39 @@ test("the context groups lots into holdings", async () => {
   assert.equal(context.holdings.length, 1);
   assert.equal(context.holdings[0].shares, 3);
 });
+
+// ----------------------------------------------------------- CFDs, aliases
+
+test("an eToro index name falls back to the market's own symbol", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "EUSTX50", shares: 1, averageCost: 6000, leverage: 20 },
+  ]);
+  market.prices.set("^STOXX50E", 6300);
+
+  const context = await provider.getContext();
+
+  assert.equal(context.positions[0].priceSymbol, "^STOXX50E");
+  assert.equal(context.positions[0].marketValue, 300 + 300);
+  assert.deepEqual(market.calls, ["EUSTX50", "^STOXX50E"]);
+});
+
+test("the user's own alternative symbol wins over a known alias", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "EUSTX50", alternativeSymbol: "MSFT", shares: 1, averageCost: 1 },
+  ]);
+  const context = await provider.getContext();
+  assert.equal(context.positions[0].priceSymbol, "MSFT");
+  assert.ok(!market.calls.includes("^STOXX50E"));
+});
+
+test("leveraged holdings get no dividend request", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "AAPL", shares: 1, averageCost: 100, leverage: 5, purchaseDate: "2026-01-10" },
+  ]);
+  const calls = withDividends(market, { AAPL: QUARTERLY });
+
+  const result = await provider.getDividends();
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(result.holdings, []);
+});

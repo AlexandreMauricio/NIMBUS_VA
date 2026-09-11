@@ -22,6 +22,12 @@ export interface StockPosition {
    * Stored uppercase.
    */
   alternativeSymbol?: string;
+  /**
+   * For a leveraged position such as a CFD: 20 means ×20. Absent (or 1) is a
+   * plain holding. With leverage, `shares` are the units and `averageCost`
+   * the open price; what was invested is the margin, units × open ÷ leverage.
+   */
+  leverage?: number;
   /** Optional display name; the market data's company name is used when absent. */
   companyName?: string;
   shares: number;
@@ -87,6 +93,10 @@ export interface PositionView {
   /** The symbol the price actually came from: `symbol`, or the alternative when that took over. */
   priceSymbol: string;
   usingAlternative: boolean;
+  /** 1 for a plain holding; e.g. 20 for a ×20 CFD. */
+  leverage: number;
+  /** shares × current price — the market exposure. For a leveraged position it is larger than the value. */
+  exposure: number | null;
   companyName: string;
   shares: number;
   averageCost: number;
@@ -132,6 +142,8 @@ export interface HoldingView {
   symbol: string;
   priceSymbol: string;
   usingAlternative: boolean;
+  /** True when any lot is leveraged (a CFD). */
+  leveraged: boolean;
   companyName: string;
   currency: string | null;
   quote: StockQuote | null;
@@ -139,7 +151,7 @@ export interface HoldingView {
   /** The lots, in the order they were entered. */
   lotIds: string[];
   shares: number;
-  /** Invested ÷ shares — the average cost weighted by each lot's shares. */
+  /** The average cost (or open price) weighted by each lot's shares. */
   averageCost: number;
   invested: number;
   marketValue: number | null;
@@ -278,6 +290,26 @@ export function normalizeSymbol(value: unknown): string | null {
   return /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/.test(symbol) ? symbol : null;
 }
 
+/**
+ * eToro's names for indices, mapped to the symbols the market-data source
+ * knows. Used only as the fallback price symbol when the entered symbol
+ * itself has no price — an alternative symbol the user didn't have to
+ * type. Commodities and crypto are left out on purpose: their eToro names
+ * (GOLD, BTC…) are also real tickers of unrelated shares.
+ */
+export const KNOWN_ALIASES: Readonly<Record<string, string>> = {
+  EUSTX50: "^STOXX50E",
+  SPX500: "^GSPC",
+  NSDQ100: "^NDX",
+  DJ30: "^DJI",
+  GER40: "^GDAXI",
+  UK100: "^FTSE",
+  FRA40: "^FCHI",
+  JPN225: "^N225",
+  ESP35: "^IBEX",
+  HKG50: "^HSI",
+};
+
 /** An ISO 4217-style three-letter code, uppercased, or null. */
 export function normalizeCurrencyCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -321,6 +353,12 @@ export function validateStockPosition(value: unknown, now: Date = new Date()): S
     if (alternative === normalizeSymbol(p.symbol)) {
       return { valid: false, error: "The alternative symbol must be different from the symbol." };
     }
+  }
+  if (
+    p.leverage !== undefined &&
+    (typeof p.leverage !== "number" || !Number.isFinite(p.leverage) || p.leverage < 1 || p.leverage > 100)
+  ) {
+    return { valid: false, error: "Leverage must be a number from 1 to 100." };
   }
   if (typeof p.shares !== "number" || !Number.isFinite(p.shares) || p.shares <= 0 || p.shares > 1e12) {
     return { valid: false, error: "Shares must be a number greater than 0." };

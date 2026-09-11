@@ -33,6 +33,8 @@ interface StockPositionView {
   symbol: string;
   priceSymbol?: string;
   usingAlternative?: boolean;
+  leverage?: number;
+  exposure?: number | null;
   companyName: string;
   shares: number;
   averageCost: number;
@@ -95,6 +97,7 @@ interface StockPositionInput {
   id: string;
   symbol: string;
   alternativeSymbol?: string;
+  leverage?: number;
   companyName?: string;
   shares: number;
   averageCost: number;
@@ -154,6 +157,8 @@ type Figures = Pick<
   | "dayChangePercent"
   | "priceSymbol"
   | "usingAlternative"
+  | "leverage"
+  | "exposure"
 >;
 
 interface HoldingViewUI extends Figures {
@@ -162,6 +167,7 @@ interface HoldingViewUI extends Figures {
   shares: number;
   averageCost: number;
   invested: number;
+  leveraged?: boolean;
 }
 
 interface DividendAmountsView {
@@ -310,6 +316,35 @@ function keyValue(label: string, value: string, valueClass = ""): HTMLElement {
   return row;
 }
 
+// ------------------------------------------------------------- list view
+
+const SORTS: { id: string; label: string; descending: boolean }[] = [
+  { id: "value", label: "Value", descending: true },
+  { id: "today", label: "Today's move", descending: true },
+  { id: "returnPct", label: "Total return %", descending: true },
+  { id: "return", label: "Total return", descending: true },
+  { id: "name", label: "Name", descending: false },
+  { id: "symbol", label: "Symbol", descending: false },
+  { id: "added", label: "Order added", descending: false },
+];
+
+/** How the list is sorted and whether it is folded are per-device conveniences, so they live in localStorage. */
+function readView(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(`nimbus.stocks.${key}`) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeView(key: string, value: string): void {
+  try {
+    localStorage.setItem(`nimbus.stocks.${key}`, value);
+  } catch {
+    // Storage unavailable — the choice just isn't remembered.
+  }
+}
+
 // ------------------------------------------------------------------ the tab
 
 export function initStocksTab(): void {
@@ -328,10 +363,17 @@ export function initStocksTab(): void {
   const baseSelect = document.getElementById("stocksBaseCurrency") as HTMLSelectElement;
   const dividendsInput = document.getElementById("stocksDividendsEnabled") as HTMLInputElement;
   const dividendOverviewEl = document.getElementById("stockDividendOverview") as HTMLElement;
+  const listHeader = document.getElementById("stockListHeader") as HTMLElement;
+  const listToggle = document.getElementById("stockListToggle") as HTMLButtonElement;
+  const listCount = document.getElementById("stockListCount") as HTMLElement;
+  const sortControls = document.getElementById("stockSortControls") as HTMLElement;
+  const sortSelect = document.getElementById("stockSort") as HTMLSelectElement;
+  const sortDirBtn = document.getElementById("stockSortDir") as HTMLButtonElement;
 
   const formHeading = document.getElementById("positionFormHeading") as HTMLElement;
   const symbolInput = document.getElementById("positionSymbol") as HTMLInputElement;
   const altInput = document.getElementById("positionAltSymbol") as HTMLInputElement;
+  const leverageInput = document.getElementById("positionLeverage") as HTMLInputElement;
   const nameInput = document.getElementById("positionName") as HTMLInputElement;
   const sharesInput = document.getElementById("positionShares") as HTMLInputElement;
   const costInput = document.getElementById("positionCost") as HTMLInputElement;
@@ -355,6 +397,11 @@ export function initStocksTab(): void {
   /** A lot opened from its holding page goes back there. */
   let returnToSymbol: string | null = null;
   let dividends: StockDividendsView | null = null;
+  const savedSort = readView("sort", "value");
+  let sortKey = SORTS.some((s) => s.id === savedSort) ? savedSort : "value";
+  let sortDesc =
+    readView("sortDescending", String(SORTS.find((s) => s.id === sortKey)!.descending)) === "true";
+  let listCollapsed = readView("collapsed", "false") === "true";
   let editingId: string | null = null;
 
   function show(view: "list" | "detail" | "edit"): void {
@@ -527,15 +574,23 @@ export function initStocksTab(): void {
   function renderList(): void {
     listEl.innerHTML = "";
     emptyEl.hidden = prefs.positions.length > 0;
-    for (const [symbol, lots] of groupedLots()) {
+    const entries = sortedEntries();
+    renderListHeader(entries.length);
+    if (listCollapsed) return;
+    for (const { symbol, lots, figures } of entries) {
       const single = lots.length === 1;
-      const figures: Figures | null = single ? viewFor(lots[0].id) : holdingFor(symbol);
       const row = el("button", "stock-row");
       row.type = "button";
 
       const who = el("span");
       const symbolLine = el("span", "stock-row-symbol", symbol);
       if (!single) symbolLine.appendChild(el("span", "tag tag-neutral", `${lots.length} lots`));
+      const leverages = [...new Set(lots.map((l) => (l.leverage && l.leverage > 1 ? l.leverage : 1)))];
+      if (leverages.some((l) => l > 1)) {
+        symbolLine.appendChild(
+          el("span", "tag tag-neutral", leverages.length === 1 ? `CFD ×${leverages[0]}` : "leveraged")
+        );
+      }
       if (figures?.status === "stale") symbolLine.appendChild(el("span", "tag tag-neutral", "stale"));
       if (figures?.status === "outdated") symbolLine.appendChild(el("span", "tag tag-neutral", "outdated"));
       if (figures?.usingAlternative && figures.priceSymbol) {
@@ -577,6 +632,66 @@ export function initStocksTab(): void {
       row.addEventListener("click", () => (single ? openDetail(lots[0].id) : openHolding(symbol)));
       listEl.appendChild(row);
     }
+  }
+
+  type ListEntry = { symbol: string; lots: StockPositionInput[]; figures: Figures | null; index: number };
+
+  /**
+   * The holdings in the chosen order. Amounts are compared in the base
+   * currency, so a dollar position and a euro one sort fairly. Anything
+   * without the figure (no price yet) always goes last.
+   */
+  function sortedEntries(): ListEntry[] {
+    const entries: ListEntry[] = [...groupedLots()].map(([symbol, lots], index) => ({
+      symbol,
+      lots,
+      index,
+      figures: lots.length === 1 ? viewFor(lots[0].id) : holdingFor(symbol),
+    }));
+    const inBase = (e: ListEntry, value: number | null | undefined): number | null =>
+      value === null || value === undefined ? null : value * (conversionFor(e.figures)?.rate ?? 1);
+    const key = (e: ListEntry): number | string | null => {
+      const f = e.figures;
+      switch (sortKey) {
+        case "today":
+          return f?.dayChangePercent ?? null;
+        case "returnPct":
+          return f?.unrealizedGainPercent ?? null;
+        case "return":
+          return inBase(e, f?.unrealizedGain);
+        case "name":
+          return (f?.companyName ?? e.lots[0].companyName ?? e.symbol).toLowerCase();
+        case "symbol":
+          return e.symbol;
+        case "added":
+          return e.index;
+        default:
+          return inBase(e, f?.marketValue);
+      }
+    };
+    return entries.sort((a, b) => {
+      const ka = key(a);
+      const kb = key(b);
+      if (ka === null || kb === null) return ka === kb ? a.index - b.index : ka === null ? 1 : -1;
+      const order =
+        typeof ka === "string" && typeof kb === "string" ? ka.localeCompare(kb) : Number(ka) - Number(kb);
+      return (sortDesc ? -order : order) || a.index - b.index;
+    });
+  }
+
+  function renderListHeader(holdingCount: number): void {
+    listHeader.hidden = prefs.positions.length === 0;
+    listEl.hidden = listCollapsed;
+    sortControls.hidden = listCollapsed;
+    listToggle.setAttribute("aria-expanded", String(!listCollapsed));
+    listToggle.title = listCollapsed ? "Show the positions" : "Hide the positions";
+    const lots = prefs.positions.length;
+    listCount.textContent = `${holdingCount} holding${holdingCount === 1 ? "" : "s"}${
+      lots > holdingCount ? ` · ${lots} lots` : ""
+    }`;
+    sortSelect.value = sortKey;
+    sortDirBtn.textContent = sortDesc ? "↓" : "↑";
+    sortDirBtn.title = "Reverse the order";
   }
 
   /** Lots grouped by symbol, in the order each symbol was first entered. */
@@ -683,6 +798,9 @@ export function initStocksTab(): void {
         trendClass(view?.dayChange)
       )
     );
+    if (view?.leverage && view.leverage > 1 && view.exposure != null) {
+      estimate.appendChild(keyValue("Exposure now", money(view.exposure, currency)));
+    }
     const fx = conversionFor(view);
     if (fx && view?.marketValue != null) {
       estimate.appendChild(keyValue(`Value in ${fx.base}`, money(view.marketValue * fx.rate, fx.base)));
@@ -739,10 +857,26 @@ export function initStocksTab(): void {
     yours.appendChild(el("div", "stock-stat-label", lotCount > 1 ? "This lot" : "Your position"));
     if (position.alternativeSymbol)
       yours.appendChild(keyValue("Alternative symbol", position.alternativeSymbol));
-    yours.appendChild(keyValue("Shares", new Intl.NumberFormat().format(position.shares)));
-    yours.appendChild(keyValue("Average cost", money(position.averageCost, currency)));
+    const leverage = position.leverage && position.leverage > 1 ? position.leverage : 1;
+    if (leverage > 1) yours.appendChild(keyValue("Leverage", `×${leverage} (CFD)`));
+    yours.appendChild(
+      keyValue(leverage > 1 ? "Units" : "Shares", new Intl.NumberFormat().format(position.shares))
+    );
+    yours.appendChild(
+      keyValue(leverage > 1 ? "Open price" : "Average cost", money(position.averageCost, currency))
+    );
     yours.appendChild(keyValue("Purchase date", plainDate(position.purchaseDate)));
-    yours.appendChild(keyValue("Invested", money(position.shares * position.averageCost, currency)));
+    yours.appendChild(
+      keyValue(
+        leverage > 1 ? "Invested (margin)" : "Invested",
+        money((position.shares * position.averageCost) / leverage, currency)
+      )
+    );
+    if (leverage > 1) {
+      yours.appendChild(
+        keyValue("Exposure at open", money(position.shares * position.averageCost, currency))
+      );
+    }
     if (position.notes) yours.appendChild(keyValue("Notes", position.notes));
     grid.appendChild(yours);
     grid.appendChild(marketCard(view, position.symbol));
@@ -785,7 +919,11 @@ export function initStocksTab(): void {
     const holding = holdingFor(symbol);
     const currency = holding?.currency ?? viewFor(lots[0].id)?.currency ?? null;
     const shares = lots.reduce((sum, p) => sum + p.shares, 0);
-    const invested = lots.reduce((sum, p) => sum + p.shares * p.averageCost, 0);
+    const invested = lots.reduce(
+      (sum, p) => sum + (p.shares * p.averageCost) / (p.leverage && p.leverage > 1 ? p.leverage : 1),
+      0
+    );
+    const costBasis = lots.reduce((sum, p) => sum + p.shares * p.averageCost, 0);
     detailEl.innerHTML = "";
 
     const title = holding?.companyName ?? lots[0].companyName ?? symbol;
@@ -796,7 +934,7 @@ export function initStocksTab(): void {
     yours.appendChild(el("div", "stock-stat-label", "Your holding"));
     yours.appendChild(keyValue("Lots", String(lots.length)));
     yours.appendChild(keyValue("Total shares", new Intl.NumberFormat().format(shares)));
-    yours.appendChild(keyValue("Average cost", money(shares > 0 ? invested / shares : 0, currency)));
+    yours.appendChild(keyValue("Average cost", money(shares > 0 ? costBasis / shares : 0, currency)));
     yours.appendChild(keyValue("Invested", money(invested, currency)));
     grid.appendChild(yours);
     grid.appendChild(marketCard(holding, symbol));
@@ -917,6 +1055,10 @@ export function initStocksTab(): void {
     section.appendChild(el("div", "stock-stat-label", "Dividends"));
     if (!prefs.dividendsEnabled) {
       section.appendChild(el("p", "feed-empty", "Dividends are switched off."));
+      return section;
+    }
+    if (prefs.positions.some((p) => p.symbol === symbol && p.leverage && p.leverage > 1)) {
+      section.appendChild(el("p", "feed-empty", "Dividends aren't tracked for leveraged (CFD) positions."));
       return section;
     }
     if (!dividends) {
@@ -1257,6 +1399,7 @@ export function initStocksTab(): void {
     formHeading.textContent = position ? `Edit ${position.symbol}` : "Add a position";
     symbolInput.value = position?.symbol ?? "";
     altInput.value = position?.alternativeSymbol ?? "";
+    leverageInput.value = position?.leverage ? String(position.leverage) : "";
     nameInput.value = position?.companyName ?? "";
     sharesInput.value = position ? String(position.shares) : "";
     costInput.value = position ? String(position.averageCost) : "";
@@ -1286,6 +1429,13 @@ export function initStocksTab(): void {
     if (alternativeSymbol && alternativeSymbol === symbol) {
       return showError(formError, "The alternative symbol must be different from the symbol.");
     }
+    const leverage = leverageInput.value ? Number(leverageInput.value) : 1;
+    if (!Number.isFinite(leverage) || leverage < 1 || leverage > 100) {
+      return showError(
+        formError,
+        "Leverage must be a number from 1 to 100 — leave it empty for shares you own."
+      );
+    }
     if (!sharesInput.value || !Number.isFinite(shares) || shares <= 0) {
       return showError(formError, "Shares must be a number greater than 0.");
     }
@@ -1300,6 +1450,7 @@ export function initStocksTab(): void {
       shares,
       averageCost,
       ...(alternativeSymbol ? { alternativeSymbol } : {}),
+      ...(leverage > 1 ? { leverage } : {}),
       ...(nameInput.value.trim() ? { companyName: nameInput.value.trim() } : {}),
       ...(dateInput.value ? { purchaseDate: dateInput.value } : {}),
       ...(notesInput.value.trim() ? { notes: notesInput.value.trim() } : {}),
@@ -1367,6 +1518,25 @@ export function initStocksTab(): void {
     }
     await load();
   });
+  for (const option of SORTS) sortSelect.appendChild(new Option(option.label, option.id));
+  sortSelect.addEventListener("change", () => {
+    sortKey = sortSelect.value;
+    sortDesc = SORTS.find((option) => option.id === sortKey)?.descending ?? true;
+    writeView("sort", sortKey);
+    writeView("sortDescending", String(sortDesc));
+    renderList();
+  });
+  sortDirBtn.addEventListener("click", () => {
+    sortDesc = !sortDesc;
+    writeView("sortDescending", String(sortDesc));
+    renderList();
+  });
+  listToggle.addEventListener("click", () => {
+    listCollapsed = !listCollapsed;
+    writeView("collapsed", String(listCollapsed));
+    renderList();
+  });
+
   dividendsInput.addEventListener("change", async () => {
     try {
       prefs = await bridge().updateStockSettings({ dividendsEnabled: dividendsInput.checked });

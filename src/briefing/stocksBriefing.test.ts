@@ -26,6 +26,8 @@ function positionAt(marketTime: string): PositionView {
     symbol: "AAPL",
     priceSymbol: "AAPL",
     usingAlternative: false,
+    leverage: 1,
+    exposure: 1018,
     companyName: "Apple",
     shares: 10,
     averageCost: 100,

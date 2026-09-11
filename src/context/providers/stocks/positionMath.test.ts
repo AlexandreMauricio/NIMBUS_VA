@@ -286,3 +286,48 @@ test("a holding with an unpriced lot shows no market figures rather than a parti
   assert.equal(holding.dayChange, null);
   assert.equal(holding.invested, 2000);
 });
+
+// ---------------------------------------------------------------- leverage
+
+const INDEX = quote({
+  symbol: "^STOXX50E",
+  price: 6300,
+  previousClose: 6200,
+  change: 100,
+  changePercent: (100 / 6200) * 100,
+});
+
+test("a ×20 CFD: invested is the margin, value is margin plus P/L, the return is on the margin", () => {
+  const view = computePosition(
+    position({ symbol: "^STOXX50E", shares: 2, averageCost: 6000, leverage: 20 }),
+    INDEX,
+    TODAY
+  );
+
+  assert.equal(view.leverage, 20);
+  assert.equal(view.invested, 600);
+  assert.equal(view.exposure, 12600);
+  assert.equal(view.unrealizedGain, 600);
+  assert.equal(view.marketValue, 1200);
+  assert.equal(view.unrealizedGainPercent, 100);
+  assert.equal(view.dayChange, 200);
+  close(view.dayChangePercent, (200 / 1000) * 100);
+});
+
+test("a plain holding is leverage 1 with its exposure equal to its value", () => {
+  const view = computePosition(position(), quote(), TODAY);
+  assert.equal(view.leverage, 1);
+  assert.equal(view.exposure, view.marketValue);
+});
+
+test("leveraged lots add their margins, and the holding's average is of the open prices", () => {
+  const a = computePosition(position({ id: "a", shares: 2, averageCost: 6000, leverage: 20 }), INDEX, TODAY);
+  const b = computePosition(position({ id: "b", shares: 1, averageCost: 6300, leverage: 20 }), INDEX, TODAY);
+
+  const [holding] = computeHoldings([a, b]);
+
+  assert.equal(holding.leveraged, true);
+  assert.equal(holding.invested, 600 + 315);
+  assert.equal(holding.averageCost, 6100);
+  assert.equal(holding.marketValue, 1200 + 315);
+});

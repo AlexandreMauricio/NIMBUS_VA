@@ -36,12 +36,15 @@ export function computePosition(
   /** The symbol `quote` belongs to — the position's alternative symbol when that supplied the price. */
   priceSymbol: string = position.symbol
 ): PositionView {
-  const invested = position.shares * position.averageCost;
+  const leverage = position.leverage && position.leverage > 1 ? position.leverage : 1;
+  // With leverage only the margin was paid: units × open price ÷ leverage.
+  const invested = (position.shares * position.averageCost) / leverage;
   const base = {
     id: position.id,
     symbol: position.symbol,
     priceSymbol,
     usingAlternative: priceSymbol !== position.symbol,
+    leverage,
     shares: position.shares,
     averageCost: position.averageCost,
     purchaseDate: position.purchaseDate ?? null,
@@ -55,6 +58,7 @@ export function computePosition(
       companyName: position.companyName?.trim() || position.symbol,
       currency: null,
       quote: null,
+      exposure: null,
       status: "unavailable",
       marketValue: null,
       unrealizedGain: null,
@@ -64,7 +68,10 @@ export function computePosition(
     };
   }
 
-  const marketValue = position.shares * quote.price;
+  const exposure = position.shares * quote.price;
+  // A leveraged position is worth its margin plus the profit or loss on the full exposure.
+  const marketValue =
+    leverage === 1 ? exposure : invested + position.shares * (quote.price - position.averageCost);
   const unrealizedGain = marketValue - invested;
   const unrealizedGainPercent = invested > 0 ? (unrealizedGain / invested) * 100 : null;
   const boughtToday = position.purchaseDate === today;
@@ -73,13 +80,21 @@ export function computePosition(
     : quote.previousClose !== null
       ? position.shares * (quote.price - quote.previousClose)
       : null;
-  const dayChangePercent = boughtToday ? unrealizedGainPercent : quote.changePercent;
+  // Leveraged, the day's move is measured on the position's value, not on the price.
+  const dayChangePercent = boughtToday
+    ? unrealizedGainPercent
+    : leverage === 1
+      ? quote.changePercent
+      : dayChange !== null && marketValue - dayChange > 0
+        ? (dayChange / (marketValue - dayChange)) * 100
+        : null;
 
   return {
     ...base,
     companyName: position.companyName?.trim() || quote.name || position.symbol,
     currency: quote.currency,
     quote,
+    exposure,
     status: quote.outdated ? "outdated" : quote.stale ? "stale" : "live",
     marketValue,
     unrealizedGain,
@@ -202,13 +217,14 @@ export function computeHoldings(positions: PositionView[]): HoldingView[] {
       symbol: first.symbol,
       priceSymbol: first.priceSymbol,
       usingAlternative: first.usingAlternative,
+      leveraged: lots.some((l) => l.leverage > 1),
       companyName: first.companyName,
       currency: first.currency,
       quote: first.quote,
       status: first.status,
       lotIds: lots.map((l) => l.id),
       shares,
-      averageCost: shares > 0 ? invested / shares : 0,
+      averageCost: shares > 0 ? lots.reduce((sum, l) => sum + l.shares * l.averageCost, 0) / shares : 0,
       invested,
       marketValue,
       unrealizedGain,

@@ -176,6 +176,42 @@ list shows one row per holding ("2 lots"); its page lists every lot, and
 each lot keeps its own page for editing. Market figures are left blank
 unless every lot is priced.
 
+## Leveraged positions (CFDs)
+
+A position can carry a `leverage` (1–100). With leverage, `shares` are the
+units and `averageCost` the open price:
+
+| Figure | Leveraged |
+| --- | --- |
+| Invested | the margin: units × open price ÷ leverage |
+| Exposure | units × current price |
+| Value | margin + units × (price − open price) |
+| Return % | profit or loss ÷ margin |
+| Today % | the day's change ÷ the value at the previous close |
+
+Totals add the value (margin plus profit or loss), never the exposure.
+Leveraged holdings get no dividends. Short positions, overnight fees and
+spreads aren't modelled — the figures are those of a long position at the
+index or share price.
+
+### eToro index names
+
+eToro names indices differently from the market (`EUSTX50` is the Euro
+Stoxx 50, `^STOXX50E`). `KNOWN_ALIASES` maps the common ones (EUSTX50,
+SPX500, NSDQ100, DJ30, GER40, UK100, FRA40, JPN225, ESP35, HKG50). An alias
+is used exactly like an alternative symbol: only when the entered symbol
+has no price, and a user-entered alternative wins. Commodity and crypto
+names are left out because they are also tickers of unrelated shares
+(GOLD is Barrick Gold) — for those, set an alternative symbol (`GC=F`,
+`BTC-USD`).
+
+## The list
+
+One row per holding, sorted by value (in the base currency), today's move,
+total return (% or amount), name, symbol or the order added, either way
+round; positions without the figure go last. The list folds away behind
+its header. Both choices are remembered per device (localStorage).
+
 ## Dividends
 
 `dividends.ts` (pure) and `StockProvider.getDividends()` (IPC

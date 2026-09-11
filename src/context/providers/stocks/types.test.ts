@@ -86,3 +86,10 @@ test("an alternative symbol must be a valid ticker different from the symbol", (
   assert.equal(validateStockPosition(valid({ alternativeSymbol: "not a symbol" }), NOW).valid, false);
   assert.equal(validateStockPosition(valid({ alternativeSymbol: "aapl" }), NOW).valid, false);
 });
+
+test("leverage is optional, from 1 to 100", () => {
+  assert.equal(validateStockPosition(valid({ leverage: 20 }), NOW).valid, true);
+  assert.equal(validateStockPosition(valid({ leverage: 0.5 }), NOW).valid, false);
+  assert.equal(validateStockPosition(valid({ leverage: 500 }), NOW).valid, false);
+  assert.equal(validateStockPosition(valid({ leverage: "20" }), NOW).valid, false);
+});

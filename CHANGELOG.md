@@ -33,7 +33,12 @@ Dates are the day the work landed.
   page listing each lot. Dividends per holding: received since purchase,
   the next one estimated from the recent pattern, and a yearly estimate,
   with tax estimated for a Portugal resident (source withholding plus
-  Portugal's 28%, crediting foreign tax up to the treaty rate). Prices come from
+  Portugal's 28%, crediting foreign tax up to the treaty rate).
+- Stocks: the list can be folded away and sorted by value, today's move,
+  total return, name, symbol or order added. Positions can be leveraged
+  (CFDs): the margin counts as invested and the profit or loss is on the
+  full exposure. eToro index names such as EUSTX50 find their market
+  symbol (^STOXX50E) automatically. Prices come from
   Yahoo Finance's public endpoints (no key); stale and unavailable prices
   are marked, never guessed. The briefing gains a portfolio line ("Your
   portfolio is up 1.8% today."). Strictly read-only: no trading, no

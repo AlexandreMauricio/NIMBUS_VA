@@ -33,6 +33,7 @@ import {
   StockNewsResult,
   StockPosition,
   StockProviderConfig,
+  KNOWN_ALIASES,
   StockQuote,
   companySearchName,
   normalizeCurrencyCode,
@@ -221,7 +222,9 @@ export class StockProvider implements ContextProvider<StockContext> {
     );
 
     // The price symbol: an alternative that supplies the price supplies the dividends too.
-    const sources = [...new Set(context.holdings.map((h) => h.priceSymbol))];
+    // Leveraged positions (CFDs) don't receive dividends the way shares do, so they are left out.
+    const eligible = context.holdings.filter((h) => !h.leveraged);
+    const sources = [...new Set(eligible.map((h) => h.priceSymbol))];
     const due = sources.filter((symbol) => {
       const entry = this.dividendSeries.get(symbol);
       if (!entry) return true;
@@ -257,7 +260,7 @@ export class StockProvider implements ContextProvider<StockContext> {
 
     const holdings: HoldingDividends[] = [];
     const unavailableSymbols: string[] = [];
-    for (const h of context.holdings) {
+    for (const h of eligible) {
       const entry = this.dividendSeries.get(h.priceSymbol);
       if (!entry?.series) {
         unavailableSymbols.push(h.symbol);
@@ -422,19 +425,21 @@ export class StockProvider implements ContextProvider<StockContext> {
 
     // A position whose own symbol has no current price takes it from its
     // alternative symbol, if it has one. Alternatives are only fetched then.
+    // The user's alternative symbol, or the market's own symbol for a known eToro index name.
+    const alternativeOf = (p: StockPosition): string | undefined =>
+      p.alternativeSymbol ?? KNOWN_ALIASES[p.symbol];
     const needsAlternative = (p: StockPosition): boolean => {
       const own = quoteFor(p.symbol);
-      return Boolean(p.alternativeSymbol) && (!own || own.outdated);
+      return Boolean(alternativeOf(p)) && (!own || own.outdated);
     };
     await this.fetchDue(
-      [...new Set(positions.filter(needsAlternative).map((p) => p.alternativeSymbol!))],
+      [...new Set(positions.filter(needsAlternative).map((p) => alternativeOf(p)!))],
       nowMs
     );
     const chosen = positions.map((p) => {
       if (needsAlternative(p)) {
-        const alternative = quoteFor(p.alternativeSymbol!);
-        if (alternative && !alternative.outdated)
-          return { p, symbol: p.alternativeSymbol!, quote: alternative };
+        const alternative = quoteFor(alternativeOf(p)!);
+        if (alternative && !alternative.outdated) return { p, symbol: alternativeOf(p)!, quote: alternative };
       }
       return { p, symbol: p.symbol, quote: quoteFor(p.symbol) };
     });

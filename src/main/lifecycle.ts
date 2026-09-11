@@ -411,6 +411,7 @@ function registerIpcHandlers(): void {
           id: p.id,
           symbol: normalizeSymbol(p.symbol)!,
           alternativeSymbol: p.alternativeSymbol ? normalizeSymbol(p.alternativeSymbol)! : undefined,
+          leverage: typeof p.leverage === "number" && p.leverage > 1 ? p.leverage : undefined,
           companyName: p.companyName?.trim() || undefined,
           shares: p.shares,
           averageCost: p.averageCost,

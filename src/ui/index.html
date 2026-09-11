@@ -310,6 +310,17 @@
 
             <div class="stock-overview" id="stockOverview"></div>
             <div class="stock-overview" id="stockDividendOverview" hidden></div>
+            <div class="stock-list-header" id="stockListHeader" hidden>
+              <button class="stock-list-toggle" id="stockListToggle" type="button" aria-expanded="true">
+                <span class="stock-list-chevron" aria-hidden="true">&#9662;</span>
+                <span id="stockListCount">Positions</span>
+              </button>
+              <div class="stock-sort" id="stockSortControls">
+                <label for="stockSort">Sort by</label>
+                <select id="stockSort" class="select"></select>
+                <button class="btn btn-ghost" id="stockSortDir" type="button">&darr;</button>
+              </div>
+            </div>
             <div class="stock-positions" id="stockPositionList"></div>
             <p class="feed-empty" id="stockEmpty" hidden>
               No positions yet. Click "+ Add position" to track a stock you own.
@@ -419,6 +430,21 @@
                   placeholder="In the currency the stock trades in"
                 />
               </label>
+              <label class="field-row">
+                <span class="setting-title">Leverage (optional, for CFDs)</span>
+                <input
+                  type="number"
+                  id="positionLeverage"
+                  min="1"
+                  max="100"
+                  step="any"
+                  placeholder="e.g. 20 for &times;20"
+                />
+              </label>
+              <p class="setting-note">
+                For a CFD, enter the units as shares and the open price as the average cost. NIMBUS then
+                counts the margin as invested and the profit or loss on the full exposure.
+              </p>
               <label class="field-row">
                 <span class="setting-title">Purchase date (optional)</span>
                 <input type="date" id="positionDate" />
