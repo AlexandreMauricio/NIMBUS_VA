@@ -36,6 +36,16 @@ function tokenFilePath(): string {
 }
 
 export class SpotifyTokenStore {
+  /**
+   * Whether stored tokens can be read right now. False only when a token
+   * file exists but OS encryption isn't available yet — which is the case
+   * before Electron's app is ready. That means "ask again later", never
+   * "disconnected".
+   */
+  isReadable(): boolean {
+    return !fs.existsSync(tokenFilePath()) || safeStorage.isEncryptionAvailable();
+  }
+
   read(): StoredSpotifyTokens | null {
     const filePath = tokenFilePath();
     if (!fs.existsSync(filePath)) return null;

@@ -18,6 +18,16 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.4 — 2026-09-11
+
+- Fix: Spotify needed reconnecting after every restart since 0.3.1. The
+  Attention engine's first look at the context ran before Electron was
+  ready, so Spotify's stored login was read before Windows encryption was
+  available and treated as "disconnected" for the whole session. Attention
+  now starts once the app is ready, and the Spotify login is re-read on
+  the next request instead of settling on "disconnected" when storage
+  isn't ready yet.
+
 ## 0.3.3 — 2026-09-11
 
 - Context tab: every source is a fold-away box with a plain explanation of

@@ -76,6 +76,12 @@ export class SpotifyAuthManager {
    */
   private ensureTokensLoaded(): void {
     if (this.tokensLoaded) return;
+    // Laziness alone isn't enough: anything that asks during startup (the
+    // Attention engine's first look at every provider did) would read too
+    // early, get nothing, and settle on "disconnected" for the whole
+    // session. Until storage is readable, report disconnected but keep
+    // trying on each call.
+    if (this.tokenStore.isReadable?.() === false) return;
     this.tokensLoaded = true;
     this.tokens = this.tokenStore.read();
   }

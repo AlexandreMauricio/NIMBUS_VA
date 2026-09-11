@@ -1093,7 +1093,6 @@ export function startApp(): void {
       },
     },
   });
-  attentionService.start();
 
   routineService.onSuggestion((suggestion) => {
     // Reuses the existing assistant-event seam (src/common/assistantEvents.ts,
@@ -1195,6 +1194,11 @@ export function startApp(): void {
     // nimbus:get-briefing once it's loaded (and again on the
     // nimbus:briefing-updated push if it loaded before this finished).
     generateBriefing();
+
+    // Attention starts only now, once credentials are loaded: its first look
+    // asks every provider for context, and asking earlier made Spotify's
+    // stored login look disconnected and email/tasks look unconfigured.
+    attentionService.start();
   });
 
   // No window-all-closed -> quit here: NIMBUS keeps running via the tray
