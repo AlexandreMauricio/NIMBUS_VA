@@ -16,9 +16,10 @@ notices configured applications, browser window titles and Explorer
 folders, recognises **activities** you have defined ("Study", "Gaming") and
 times them as sessions, and runs user-defined **routines**: it *suggests*
 actions in a small popup (or runs them automatically, if you opt a routine
-into that) — playing Spotify, starting a timer or a Pomodoro study/break
-plan, opening a website — and can wind them down again when the activity
-ends.
+into that) — playing Spotify or other media, launching and arranging
+apps, setting the system volume, starting a timer or a Pomodoro
+study/break plan, opening a website, file or folder — and can wind them
+down again when the activity ends.
 
 **What it does not do:** there is no AI/LLM, no natural-language
 understanding, no voice, no packaged installer, and no multi-device sync.
@@ -61,7 +62,10 @@ which modules are portable "Core" versus Windows-specific.
   See [docs/activity.md](docs/activity.md).
 - **Actions** — `spotify.*` (play, pause, next, previous, volume, search,
   playlist), `timer.start` (single countdown or Pomodoro plan),
-  `timer.stop`, `timer.addStudy`, and `system.openUrl` (http/https only).
+  `timer.stop`, `timer.addStudy`, `system.openUrl` (http/https only), and
+  Windows desktop actions: `app.*` (launch, focus, minimize, maximize,
+  close), `files.*` (open a file or folder), `media.*` (media keys, system
+  volume, mute) and `system.lock`.
 - **Timer popup** and **suggestion popup** — small always-on-top windows
   that never steal focus.
 - **Credential storage** — IMAP passwords, Todoist tokens and Spotify
@@ -85,6 +89,10 @@ which modules are portable "Core" versus Windows-specific.
 - The routine model accepts `timerCompleted` as a start trigger, but the
   editor only offers it for the end half.
 - Only **one timer** (or Pomodoro plan) runs at a time.
+- Desktop window actions find an app by process name and act on its main
+  window only; Microsoft Store apps can't be launched by path; volume and
+  mute act on the default output device. See
+  [docs/action-system.md](docs/action-system.md#desktop-actions).
 - Spotify playback control needs **Spotify Premium**; the Client ID can
   only be supplied through `.env`.
 - `ActionService` reports each action's `requiresConfirmation` flag but
@@ -129,8 +137,9 @@ marks anything.
 ```
 src/
   main/            Electron entry point + lifecycle (windows, tray, autostart,
-                   IPC handlers), the desktop activity monitor, the suggestion
-                   and timer popups, credential and state stores, Spotify auth
+                   IPC handlers), the desktop activity monitor, the Windows
+                   side of the desktop actions, the suggestion and timer
+                   popups, credential and state stores, Spotify auth
   preload/         The only bridges into the UI (main, suggestion and timer
                    windows)
   ui/              Renderer UI — HTML/CSS/TS for the main window and popups,

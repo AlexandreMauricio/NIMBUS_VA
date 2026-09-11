@@ -40,7 +40,66 @@ deliberately kept separate from Context rather than bolted onto it:
 | --- | --- |
 | `SpotifyActionProvider` | `spotify.play`, `spotify.pause`, `spotify.next`, `spotify.previous`, `spotify.setVolume`, `spotify.playSearch`, `spotify.playPlaylist` — see [spotify.md](spotify.md) |
 | `TimerActionProvider` | `timer.start` (a single countdown or a Pomodoro plan), `timer.stop` (stops the timer and the rest of its plan; succeeds quietly when nothing is running), `timer.addStudy` (adds studies to the running plan) — see [routines.md](routines.md#timers) |
-| `SystemActionProvider` | `system.openUrl` — opens an `http://`/`https://` URL in the default browser; any other scheme is rejected by `validate()` |
+| `SystemActionProvider` | `system.openUrl` — opens an `http://`/`https://` URL in the default browser (any other scheme is rejected); `system.lock` — locks Windows |
+| `AppActionProvider` | `app.launch` (a full path to an `.exe` or `.lnk`), and by process name: `app.focus`, `app.minimize`, `app.maximize`, `app.close` |
+| `FileActionProvider` | `files.openFile` (refuses programs, scripts and shortcuts), `files.openFolder` |
+| `MediaActionProvider` | `media.playPause`, `media.next`, `media.previous` (the media keys, any player), `media.setVolume` (0–100), `media.mute`, `media.unmute` |
+
+## Desktop actions
+
+`app.*`, `files.*`, `media.*` and `system.lock` are Core providers built on
+one narrow interface, `DesktopPlatform`
+([src/actions/providers/desktopPlatform.ts](../src/actions/providers/desktopPlatform.ts)):
+fixed operations with typed arguments, and no member that accepts a
+command line. The Windows implementation,
+[src/main/desktop/windowsDesktop.ts](../src/main/desktop/windowsDesktop.ts),
+is created in `lifecycle.ts` and injected into all four.
+
+| Operation | How it's done on Windows |
+| --- | --- |
+| Open a file or folder; launch a `.lnk` | Electron's `shell.openPath` — what double-clicking does |
+| Launch an `.exe` | `spawn(path, [], { shell: false })` — no shell, no arguments, started in its own folder |
+| Focus / minimize / maximize / close | A constant PowerShell script: `user32` `ShowWindow`/`SetForegroundWindow`, and `CloseMainWindow` for close |
+| Media keys | A constant PowerShell script sending the virtual media keys |
+| Volume and mute | A constant PowerShell script using the Core Audio API (`IAudioEndpointVolume`) on the default output device |
+| Lock | `rundll32.exe user32.dll,LockWorkStation`, fixed arguments |
+
+**Safety rules**
+
+- Values a step supplies (a process name, a volume) reach the PowerShell
+  scripts only as **environment variables**, never as part of the script
+  text, and each script re-checks them — a value cannot become code.
+- Paths must be full drive-letter paths, without characters Windows
+  forbids or a colon past the drive. `app.launch` accepts only `.exe` and
+  `.lnk`; `files.openFile` refuses anything whose default handler would
+  run it (executables, scripts, installers, shortcuts — a deliberately
+  broad denylist). Existence and kind (file vs. folder) are checked before
+  anything is opened.
+- Process names are plain names — letters, digits, spaces, `.`, `_`, `-`,
+  no wildcards — so one step addresses one app.
+- `app.close` asks the app to close, exactly like clicking X; it never
+  force-quits, and the app can still ask to save.
+- `app.launch` and `app.close` are marked `requiresConfirmation: true`.
+  Like every action's, that flag is **not enforced** by `ActionService`: in
+  a routine these steps run once its suggestion is accepted, or
+  automatically if the routine opts into that.
+- Every provider re-validates in `execute()`, so skipping `validate()`
+  still can't open a script or launch a non-`.exe`.
+
+**Limitations**
+
+- Window actions act on an app's **main** window(s), found by process
+  name. An app with no visible main window (running only in the tray)
+  can't be addressed, and Windows' focus rules can occasionally stop a
+  background app from being brought to the front.
+- Microsoft Store apps have no `.exe` path NIMBUS can launch.
+- The **Browse…** picker may resolve a shortcut to its target, losing the
+  shortcut's arguments (Discord's Start-menu shortcut depends on them);
+  paste the shortcut's own path instead.
+- Volume and mute act on the **default output device** only. Media keys go
+  to whichever app Windows treats as the active media session.
+- Each window, media-key or volume step starts a short-lived PowerShell
+  process, so it takes a moment rather than being instant.
 
 ## Who calls it
 
@@ -50,6 +109,12 @@ deliberately kept separate from Context rather than bolted onto it:
   automatically or on demand (**Run now**), or a wind-down runs.
 - The timer popup's **+ Study** button, through `nimbus:timer-add-study`,
   which runs `timer.addStudy`.
+
+The routine editor lists every registered action by service, and renders
+each parameter from its schema. A parameter with a `format` hint (`file`,
+`folder` or `application`) gets a **Browse…** button, backed by the
+`nimbus:pick-path` file dialog; a picked path is only ever put in the text
+field, and the action still validates it when it runs.
 
 After any action runs, `onActionExecuted` in `lifecycle.ts` refreshes the
 Spotify now-playing state for `spotify.*` actions and opens the timer

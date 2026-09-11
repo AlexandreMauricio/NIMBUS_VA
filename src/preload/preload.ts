@@ -72,6 +72,8 @@ export interface ActionParameterSchema {
   type: "string" | "number" | "boolean";
   required: boolean;
   description?: string;
+  /** A local-path parameter the editor can offer a picker for. */
+  format?: "file" | "folder" | "application";
 }
 
 /** Mirrors src/actions/types.ts's ActionDefinition — duplicated here (not imported) since preload.ts is the renderer-facing boundary and should not pull in Core's Action module wholesale. */
@@ -178,6 +180,9 @@ contextBridge.exposeInMainWorld("nimbus", {
   listActions: (): Promise<PublicActionDefinition[]> => ipcRenderer.invoke("nimbus:list-actions"),
   executeAction: (actionId: string, params?: Record<string, unknown>): Promise<PublicActionResult> =>
     ipcRenderer.invoke("nimbus:execute-action", actionId, params),
+  /** Opens a file/folder picker for a path parameter; resolves with the chosen path, or null if cancelled. */
+  pickPath: (format: "file" | "folder" | "application"): Promise<string | null> =>
+    ipcRenderer.invoke("nimbus:pick-path", format),
 
   /** Playlist metadata only — never track contents. */
   listSpotifyPlaylists: (): Promise<SpotifyPlaylistSummary[]> =>

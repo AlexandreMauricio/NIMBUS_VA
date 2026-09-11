@@ -90,7 +90,18 @@ failing never stops the rest; every step's result is returned.
   playlists and stores the exact playlist URI.
 - **Timer**: start a single countdown or a Pomodoro plan, stop the timer,
   add another study. See [Timers](#timers).
-- **System**: open a website — `http://`/`https://` only.
+- **System**: open a website (`http://`/`https://` only), lock Windows.
+- **Applications**: launch an app from its `.exe` or a `.lnk` shortcut;
+  bring an app to the front, minimize, maximize or close it by process
+  name (close asks politely — never a force-quit).
+- **Files**: open a file (programs, scripts and shortcuts are refused) or a
+  folder.
+- **Media**: play/pause, next and previous track (the media keys, whatever
+  is playing), set the system volume, mute, unmute.
+
+Path parameters have a **Browse…** button, and every text field shows what
+it expects as a hint. See [the Action system](action-system.md#desktop-actions)
+for how the desktop actions are implemented and what they refuse.
 
 ## Gates: cooldown and sessions
 

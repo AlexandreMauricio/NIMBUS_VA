@@ -20,6 +20,13 @@ Dates are the day the work landed.
 
 ## Unreleased
 
+- Windows desktop actions: launch an app (`.exe` or `.lnk`), bring it to
+  the front, minimize, maximize or close it; open a file or folder;
+  play/pause, next and previous media keys; set the system volume, mute
+  and unmute; and lock Windows. They are ordinary registered actions, so
+  the routine editor offers them automatically — with a Browse… picker for
+  paths. No shell is ever involved, and a step's values never become part
+  of a script.
 - Documentation accuracy pass: README, ARCHITECTURE and every guide in
   `docs/` now describe what the code does today — the full IPC surface,
   what is persisted where, current triggers/conditions/actions, and a

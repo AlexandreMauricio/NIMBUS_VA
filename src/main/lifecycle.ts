@@ -1,4 +1,5 @@
-import { BrowserWindow, Menu, app, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import type { OpenDialogOptions } from "electron";
 import { randomUUID } from "crypto";
 import * as path from "path";
 import { logger } from "../logging/logger";
@@ -14,7 +15,15 @@ import { EmailProvider } from "../context/providers/email";
 import { TaskProvider, TaskWriteRequest } from "../context/providers/tasks";
 import { SpotifyContextProvider, SpotifyApiClient, mapPlaylists } from "../context/providers/spotify";
 import { actionService } from "../actions";
-import { SpotifyActionProvider, TimerActionProvider, SystemActionProvider } from "../actions/providers";
+import {
+  SpotifyActionProvider,
+  TimerActionProvider,
+  SystemActionProvider,
+  AppActionProvider,
+  FileActionProvider,
+  MediaActionProvider,
+} from "../actions/providers";
+import { WindowsDesktop } from "./desktop/windowsDesktop";
 import { ActionResult } from "../actions/types";
 import { SpotifyAuthManager } from "./spotify";
 import { BriefingService } from "../briefing";
@@ -415,6 +424,33 @@ function registerIpcHandlers(): void {
   // and params itself; there is no way to reach arbitrary Node/API access
   // through this handler.
   ipcMain.handle("nimbus:list-actions", () => actionService.listActions());
+  // A file/folder picker for action parameters that are local paths (see
+  // ActionParameterSchema.format). It only ever returns a path for the
+  // renderer to put in a text field — the action still validates that
+  // path itself when it runs.
+  ipcMain.handle("nimbus:pick-path", async (_event, format: unknown) => {
+    if (format !== "file" && format !== "folder" && format !== "application") return null;
+    const options: OpenDialogOptions =
+      format === "folder"
+        ? { properties: ["openDirectory"] }
+        : format === "application"
+          ? {
+              properties: ["openFile"],
+              defaultPath: path.join(
+                process.env.ProgramData ?? "C:/ProgramData",
+                "Microsoft",
+                "Windows",
+                "Start Menu",
+                "Programs"
+              ),
+              filters: [{ name: "Applications and shortcuts", extensions: ["exe", "lnk"] }],
+            }
+          : { properties: ["openFile"] };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle(
     "nimbus:execute-action",
     async (_event, actionId: string, params?: Record<string, unknown>) => {
@@ -721,7 +757,20 @@ export function startApp(): void {
   // rather than the provider touching Electron itself) is safe — it's
   // the same as clicking a link, never arbitrary code/shell execution.
   actionService.register(new TimerActionProvider(timerService));
-  actionService.register(new SystemActionProvider((url) => shell.openExternal(url)));
+  // The desktop actions (apps, files, media/volume, locking) share one
+  // Windows implementation, built here at the device edge and handed to
+  // Core providers that never touch Electron or the OS themselves.
+  const desktop = new WindowsDesktop((p) => shell.openPath(p));
+  actionService.register(
+    new SystemActionProvider(
+      (url) => shell.openExternal(url),
+      undefined,
+      () => desktop.lockScreen()
+    )
+  );
+  actionService.register(new AppActionProvider(desktop));
+  actionService.register(new FileActionProvider(desktop));
+  actionService.register(new MediaActionProvider(desktop));
 
   // The Routine system (src/routines/) — reacts to Context Events
   // (src/events/) by suggesting, never by executing directly (see

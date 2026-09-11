@@ -57,7 +57,13 @@ src/
     providers/
       spotifyActionProvider.ts    spotify.* (the write half of Spotify)
       timerActionProvider.ts      timer.start / timer.stop / timer.addStudy
-      systemActionProvider.ts     system.openUrl (http/https only)
+      systemActionProvider.ts     system.openUrl (http/https only), system.lock
+      appActionProvider.ts        app.launch / focus / minimize / maximize / close
+      fileActionProvider.ts       files.openFile / files.openFolder
+      mediaActionProvider.ts      media.* — media keys, system volume, mute
+      desktopPlatform.ts          The narrow OS interface those four use (no
+                                   command-line member), plus pure path and
+                                   process-name validation
 
   events/                   [1] Core — Context events
     types.ts                     ContextEvent shapes (see "Context Events")
@@ -117,6 +123,11 @@ src/
     assistantBridge.ts            Pushes AssistantEvents to open windows
     suggestionWindow.ts           The suggestion popup window
     timerWindow.ts                The timer popup window
+    desktop/
+      windowsDesktop.ts            DesktopPlatform for Windows: shell.openPath,
+                                   shell-less spawn, and constant PowerShell
+                                   scripts (user32, Core Audio) that receive
+                                   values only as environment variables
     secretStore.ts                safeStorage-encrypted credentials
                                    (secrets.json)
     routineStateStore.ts          Cooldowns and owed wind-downs
@@ -169,7 +180,7 @@ renderer can only call what its preload exposes.
 | Email | `nimbus:get-email-settings`, `nimbus:update-email-settings` |
 | Tasks | `nimbus:get-task-settings`, `nimbus:update-task-settings`, `nimbus:list-tasks`, `nimbus:list-task-projects`, `nimbus:create-task`, `nimbus:update-task`, `nimbus:complete-task`, `nimbus:reopen-task`, `nimbus:delete-task` |
 | Spotify | `nimbus:get-spotify-settings`, `nimbus:update-spotify-settings`, `nimbus:spotify-connect`, `nimbus:spotify-disconnect`, `nimbus:spotify-list-playlists` |
-| Actions | `nimbus:list-actions`, `nimbus:execute-action` |
+| Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
 

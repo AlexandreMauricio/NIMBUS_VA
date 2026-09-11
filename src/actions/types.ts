@@ -54,6 +54,12 @@ export interface ActionParameterSchema {
   type: "string" | "number" | "boolean";
   required: boolean;
   description?: string;
+  /**
+   * Optional hint that a string parameter is a local path of a certain
+   * kind, so an editor can offer a file/folder picker beside the text
+   * field. Presentation only — validation is still the provider's job.
+   */
+  format?: "file" | "folder" | "application";
 }
 
 /**

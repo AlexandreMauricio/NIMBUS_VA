@@ -234,6 +234,7 @@ interface ActionParameterSchema {
   type: "string" | "number" | "boolean";
   required: boolean;
   description?: string;
+  format?: "file" | "folder" | "application";
 }
 
 interface ActionDefinition {
@@ -467,6 +468,7 @@ interface NimbusApi {
   disconnectSpotify: () => Promise<{ connected: boolean }>;
   listActions: () => Promise<ActionDefinition[]>;
   executeAction: (actionId: string, params?: Record<string, unknown>) => Promise<ActionResult>;
+  pickPath: (format: "file" | "folder" | "application") => Promise<string | null>;
   listSpotifyPlaylists: () => Promise<SpotifyPlaylistSummary[]>;
   getRoutineSettings: () => Promise<RoutineSettings>;
   updateRoutineSettings: (partial: { enabled?: boolean; routines?: Routine[] }) => Promise<RoutineSettings>;
@@ -1572,7 +1574,31 @@ async function initRoutinesSettings(): Promise<void> {
         const input = document.createElement("input");
         input.id = paramFieldId(param.name);
         input.type = param.type === "number" ? "number" : "text";
-        row.appendChild(input);
+        // The provider's own description doubles as the hint — which
+        // process name, what range — so the field isn't a blank guess.
+        if (param.description) input.placeholder = param.description;
+        if (param.format) {
+          // A path parameter gets a picker beside the text field. The text
+          // stays editable, so a path — say, a shortcut the picker would
+          // resolve to its target — can also be pasted in directly.
+          const pickerRow = document.createElement("div");
+          pickerRow.className = "action-picker-row";
+          pickerRow.appendChild(input);
+          const browse = document.createElement("button");
+          browse.type = "button";
+          browse.className = "btn btn-secondary";
+          browse.textContent = "Browse…";
+          const format = param.format;
+          browse.addEventListener("click", async (event) => {
+            event.preventDefault();
+            const picked = await window.nimbus.pickPath(format);
+            if (picked) input.value = picked;
+          });
+          pickerRow.appendChild(browse);
+          row.appendChild(pickerRow);
+        } else {
+          row.appendChild(input);
+        }
       }
 
       actionParamFieldsEl.appendChild(row);

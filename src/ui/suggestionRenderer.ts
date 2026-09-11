@@ -42,6 +42,9 @@ interface Window {
 const SERVICE_ICONS: Record<string, string> = {
   spotify: "🎵",
   timer: "⏱",
+  applications: "🖥",
+  files: "📁",
+  media: "🔊",
 };
 
 function iconFor(service: string): string {

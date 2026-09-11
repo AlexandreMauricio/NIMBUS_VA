@@ -1,6 +1,12 @@
-import { ActionDefinition, ActionProvider, ActionResult, ActionValidationResult } from "../types";
+import {
+  ActionDefinition,
+  ActionErrorCategory,
+  ActionProvider,
+  ActionResult,
+  ActionValidationResult,
+} from "../types";
 
-export const SYSTEM_ACTIONS = { OPEN_URL: "system.openUrl" } as const;
+export const SYSTEM_ACTIONS = { OPEN_URL: "system.openUrl", LOCK: "system.lock" } as const;
 
 /**
  * A third Action Provider, alongside Spotify and Timer — the "open a
@@ -19,6 +25,9 @@ export const SYSTEM_ACTIONS = { OPEN_URL: "system.openUrl" } as const;
  * be a `file:`/custom-protocol URI, which is what would make this a
  * meaningfully different, riskier capability than "open a normal
  * webpage."
+ *
+ * `system.lock` is listed only when a `lockScreen` implementation is
+ * supplied — a host that can't lock the machine simply doesn't offer it.
  */
 export class SystemActionProvider implements ActionProvider {
   readonly id = "system";
@@ -26,11 +35,12 @@ export class SystemActionProvider implements ActionProvider {
 
   constructor(
     private readonly openUrl: (url: string) => Promise<void>,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly lockScreen?: () => Promise<void>
   ) {}
 
   listActions(): ActionDefinition[] {
-    return [
+    const actions: ActionDefinition[] = [
       {
         id: SYSTEM_ACTIONS.OPEN_URL,
         name: "Open website",
@@ -44,6 +54,19 @@ export class SystemActionProvider implements ActionProvider {
         affectsService: "system",
       },
     ];
+    if (this.lockScreen) {
+      actions.push({
+        id: SYSTEM_ACTIONS.LOCK,
+        name: "Lock Windows",
+        description: "Locks the computer, like pressing Windows+L. Nothing is closed and no work is lost.",
+        parameters: [],
+        readOnly: false,
+        changesExternalState: true,
+        requiresConfirmation: false,
+        affectsService: "system",
+      });
+    }
+    return actions;
   }
 
   isAvailable(): boolean {
@@ -51,6 +74,7 @@ export class SystemActionProvider implements ActionProvider {
   }
 
   validate(actionId: string, params: Record<string, unknown>): ActionValidationResult {
+    if (actionId === SYSTEM_ACTIONS.LOCK) return { valid: true };
     if (actionId !== SYSTEM_ACTIONS.OPEN_URL) {
       return { valid: false, error: `Unknown system action "${actionId}".` };
     }
@@ -67,6 +91,7 @@ export class SystemActionProvider implements ActionProvider {
 
   async execute(actionId: string, params: Record<string, unknown>): Promise<ActionResult> {
     const startedAt = this.now();
+    if (actionId === SYSTEM_ACTIONS.LOCK) return this.lock(actionId, startedAt);
     if (actionId !== SYSTEM_ACTIONS.OPEN_URL) {
       return this.failure(actionId, startedAt, "That action isn't available.");
     }
@@ -94,12 +119,37 @@ export class SystemActionProvider implements ActionProvider {
     };
   }
 
-  private failure(actionId: string, startedAt: Date, message: string): ActionResult {
+  private async lock(actionId: string, startedAt: Date): Promise<ActionResult> {
+    if (!this.lockScreen) {
+      return this.failure(actionId, startedAt, "Locking isn't available here.", "not_available");
+    }
+    try {
+      await this.lockScreen();
+    } catch {
+      return this.failure(actionId, startedAt, "Couldn't lock Windows.", "unknown");
+    }
+    const finishedAt = this.now();
+    return {
+      actionId,
+      status: "success",
+      message: "Locked Windows.",
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+    };
+  }
+
+  private failure(
+    actionId: string,
+    startedAt: Date,
+    message: string,
+    category: ActionErrorCategory = "invalid_parameters"
+  ): ActionResult {
     const finishedAt = this.now();
     return {
       actionId,
       status: "failure",
-      error: { category: "invalid_parameters", message },
+      error: { category, message },
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),
