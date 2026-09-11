@@ -18,6 +18,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.1 — 2026-09-12
+
+- **Interface size**: Settings > Display scales the main window between 50%
+  and 200%, for large or high-resolution screens. **Ctrl+=** and **Ctrl+-**
+  step through the sizes and **Ctrl+0** returns to 100%; the picker follows
+  the shortcuts. Saved per PC (`windowsClient.zoomPercent`), clamped on
+  load, and applied to the main window only — the popups are sized to
+  their content.
+
 ## 0.4.0 — 2026-09-11
 
 The milestone since 0.3.0: NIMBUS now watches the local network, remembers

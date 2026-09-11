@@ -237,7 +237,7 @@ renderer can only call what its preload exposes.
 
 | Area | Channels |
 | --- | --- |
-| App & window | `nimbus:get-app-info`, `nimbus:get-settings`, `nimbus:update-settings`, `nimbus:hide-window` |
+| App & window | `nimbus:get-app-info`, `nimbus:get-settings`, `nimbus:update-settings`, `nimbus:get-zoom`, `nimbus:set-zoom`, `nimbus:hide-window` |
 | Context & briefing | `nimbus:get-context`, `nimbus:get-briefing`, `nimbus:regenerate-briefing` |
 | Weather / calendar | `nimbus:get-weather-settings`, `nimbus:update-weather-settings`, `nimbus:get-calendar-settings`, `nimbus:update-calendar-settings` |
 | Email | `nimbus:get-email-settings`, `nimbus:update-email-settings` |
@@ -260,7 +260,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:open-activity-editor` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:

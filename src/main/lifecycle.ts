@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import * as path from "path";
 import { logger } from "../logging/logger";
 import { loadSettings, hydrateCredentials, saveSettings, NimbusSettings } from "../settings/settingsManager";
+import { DEFAULT_ZOOM_PERCENT, normalizeZoomPercent, steppedZoom } from "../settings/settingsSchema";
 import { APP_NAME, APP_FULL_NAME, APP_VERSION } from "../common/appInfo";
 import { config } from "../config/config";
 import { createTray, destroyTray } from "./tray";
@@ -108,6 +109,24 @@ function rememberRoutineDecision(
   }
 }
 
+/**
+ * Draws the main window at `percent`, remembers it, and tells the
+ * Settings tab so its picker matches what the keyboard just did.
+ *
+ * Only the main window: the two popups are sized to their content, and
+ * scaling them would clip rather than enlarge.
+ */
+function applyZoom(percent: unknown, save = true): number {
+  const zoomPercent = normalizeZoomPercent(percent);
+  settings.windowsClient.zoomPercent = zoomPercent;
+  mainWindow?.webContents.setZoomFactor(zoomPercent / 100);
+  if (save) {
+    saveSettings(settings);
+    mainWindow?.webContents.send("nimbus:zoom-changed", zoomPercent);
+  }
+  return zoomPercent;
+}
+
 function createMainWindow(show: boolean): void {
   mainWindow = new BrowserWindow({
     width: settings.windowsClient.windowBounds.width,
@@ -123,6 +142,25 @@ function createMainWindow(show: boolean): void {
   });
 
   mainWindow.loadFile(path.join(__dirname, "..", "ui", "index.html"));
+
+  // Applied once the page exists - a zoom factor set before the first
+  // load doesn't stick to it.
+  mainWindow.webContents.once("did-finish-load", () => {
+    applyZoom(settings.windowsClient.zoomPercent, false);
+  });
+
+  // Ctrl+= / Ctrl+- / Ctrl+0, as a browser does. Handled in the main
+  // process because the shortcut belongs to the window and the value is
+  // saved per PC - the renderer only follows along.
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || !input.control || input.alt || input.meta) return;
+    const current = settings.windowsClient.zoomPercent;
+    if (input.key === "+" || input.key === "=") applyZoom(steppedZoom(current, 1));
+    else if (input.key === "-" || input.key === "_") applyZoom(steppedZoom(current, -1));
+    else if (input.key === "0") applyZoom(DEFAULT_ZOOM_PERCENT);
+    else return;
+    event.preventDefault();
+  });
 
   mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
     logger.debug("Renderer console", { level, message, line, sourceId });
@@ -213,6 +251,11 @@ function registerIpcHandlers(): void {
   }));
 
   ipcMain.handle("nimbus:get-settings", () => settings.windowsClient.startup);
+
+  // How large the UI is drawn on this PC. Clamped in Core, and the
+  // keyboard shortcuts go through the same one place.
+  ipcMain.handle("nimbus:get-zoom", () => settings.windowsClient.zoomPercent);
+  ipcMain.handle("nimbus:set-zoom", (_event, percent: unknown) => applyZoom(percent));
 
   ipcMain.handle(
     "nimbus:update-settings",

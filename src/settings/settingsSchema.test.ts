@@ -10,6 +10,8 @@ import {
   extractSecrets,
   hasInlineCredentials,
   isLegacyShape,
+  normalizeZoomPercent,
+  steppedZoom,
   migrateLegacyShape,
   restoreSecrets,
   taskApiTokenKey,
@@ -216,4 +218,29 @@ test("hasInlineCredentials detects a file that still needs migrating", () => {
   assert.equal(hasInlineCredentials(settingsWith([], [taskAccount()])), true);
   assert.equal(hasInlineCredentials(settingsWith([emailAccount({ password: "" })], [])), false);
   assert.equal(hasInlineCredentials(structuredClone(DEFAULT_SETTINGS)), false);
+});
+
+test("the interface size is clamped to a usable range, whatever is saved", () => {
+  assert.equal(normalizeZoomPercent(125), 125);
+  assert.equal(normalizeZoomPercent(1000), 200);
+  assert.equal(normalizeZoomPercent(10), 50);
+  assert.equal(normalizeZoomPercent(112.6), 113);
+  for (const junk of [undefined, null, "150", Number.NaN, {}]) {
+    assert.equal(normalizeZoomPercent(junk), 100, String(junk));
+  }
+});
+
+test("Ctrl+= / Ctrl+- move through the steps and stop at the ends", () => {
+  assert.equal(steppedZoom(100, 1), 110);
+  assert.equal(steppedZoom(100, -1), 90);
+  assert.equal(steppedZoom(200, 1), 200, "already at the largest");
+  assert.equal(steppedZoom(50, -1), 50, "already at the smallest");
+  assert.equal(steppedZoom(105, 1), 110, "a value between steps moves to the next one");
+  assert.equal(steppedZoom(105, -1), 100);
+});
+
+test("a settings file with no interface size, or a silly one, loads at a usable value", () => {
+  assert.equal(applyDefaults({}).windowsClient.zoomPercent, 100);
+  assert.equal(applyDefaults({ windowsClient: { zoomPercent: 9000 } }).windowsClient.zoomPercent, 200);
+  assert.equal(applyDefaults({ windowsClient: { zoomPercent: 125 } }).windowsClient.zoomPercent, 125);
 });

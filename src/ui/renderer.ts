@@ -440,6 +440,9 @@ interface NimbusApi {
   getAppInfo: () => Promise<AppInfo>;
   getSettings: () => Promise<StartupSettings>;
   updateSettings: (partial: Partial<StartupSettings>) => Promise<StartupSettings>;
+  getZoom: () => Promise<number>;
+  setZoom: (percent: number) => Promise<number>;
+  onZoomChanged: (callback: (percent: number) => void) => () => void;
   hideWindow: () => Promise<void>;
   getContext: () => Promise<ContextSnapshot>;
   getWeatherSettings: () => Promise<WeatherSettings>;
@@ -575,6 +578,20 @@ async function initSettings(): Promise<void> {
 
   minimizedCheckbox.addEventListener("change", () => {
     window.nimbus.updateSettings({ startMinimized: minimizedCheckbox.checked });
+  });
+
+  const zoomSelect = document.getElementById("uiZoom") as HTMLSelectElement;
+  try {
+    zoomSelect.value = String(await window.nimbus.getZoom());
+  } catch (err) {
+    console.error("Failed to load the interface size", err);
+  }
+  zoomSelect.addEventListener("change", () => {
+    void window.nimbus.setZoom(Number(zoomSelect.value));
+  });
+  // Ctrl+= / Ctrl+- / Ctrl+0 change it too - keep the picker in step.
+  window.nimbus.onZoomChanged((percent) => {
+    zoomSelect.value = String(percent);
   });
 }
 

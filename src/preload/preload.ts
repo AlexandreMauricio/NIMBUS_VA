@@ -129,6 +129,15 @@ contextBridge.exposeInMainWorld("nimbus", {
   updateSettings: (partial: Partial<StartupSettings>): Promise<StartupSettings> =>
     ipcRenderer.invoke("nimbus:update-settings", partial),
 
+  /** How large the UI is drawn on this PC, as a percentage. */
+  getZoom: (): Promise<number> => ipcRenderer.invoke("nimbus:get-zoom"),
+  setZoom: (percent: number): Promise<number> => ipcRenderer.invoke("nimbus:set-zoom", percent),
+  onZoomChanged: (callback: (percent: number) => void): (() => void) => {
+    const listener = (_event: unknown, percent: number) => callback(percent);
+    ipcRenderer.on("nimbus:zoom-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:zoom-changed", listener);
+  },
+
   hideWindow: () => ipcRenderer.invoke("nimbus:hide-window"),
 
   getContext: (): Promise<ContextSnapshot> => ipcRenderer.invoke("nimbus:get-context"),

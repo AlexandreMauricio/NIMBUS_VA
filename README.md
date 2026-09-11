@@ -242,6 +242,9 @@ NIMBUS behaves like a background assistant, not an ordinary window-based app:
 - **Launch with Windows** ([src/main/autostart.ts](src/main/autostart.ts))
   — wraps Electron's `app.setLoginItemSettings`. Toggle it in Settings.
 - **Start minimized** — start with only the tray icon visible.
+- **Interface size** (Settings > Display) — scales the window from 50% to
+  200% for a large or high-resolution screen; **Ctrl+=**, **Ctrl+-** and
+  **Ctrl+0** do the same. Saved per PC.
 
 ## The assistant-event seam
 

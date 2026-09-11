@@ -33,6 +33,11 @@ export interface WindowsClientSettings {
   startup: StartupSettings;
   /** Network awareness on this PC (see src/network/) — per PC, since a local network only means something here. */
   network: NetworkClientSettings;
+  /**
+   * How large the UI is drawn, as a percentage (100 = default). Per PC on
+   * purpose: an ultrawide and a laptop want different answers.
+   */
+  zoomPercent: number;
 }
 
 export interface NetworkClientSettings {
@@ -45,6 +50,26 @@ export interface StartupSettings {
   launchWithWindows: boolean;
   /** If true, the main window stays hidden on launch — NIMBUS starts in the tray only. */
   startMinimized: boolean;
+}
+
+/** The range the UI stays usable in, and the steps the shortcuts move through. */
+export const MIN_ZOOM_PERCENT = 50;
+export const MAX_ZOOM_PERCENT = 200;
+export const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+export const DEFAULT_ZOOM_PERCENT = 100;
+
+/** Whatever arrives - a saved file, an IPC call - as a usable whole percentage. */
+export function normalizeZoomPercent(value: unknown): number {
+  const rounded =
+    typeof value === "number" && Number.isFinite(value) ? Math.round(value) : DEFAULT_ZOOM_PERCENT;
+  return Math.min(MAX_ZOOM_PERCENT, Math.max(MIN_ZOOM_PERCENT, rounded));
+}
+
+/** The next step up (1) or down (-1) from `percent` - what Ctrl+= / Ctrl+- move to. */
+export function steppedZoom(percent: unknown, direction: 1 | -1): number {
+  const current = normalizeZoomPercent(percent);
+  const steps = direction === 1 ? ZOOM_STEPS : [...ZOOM_STEPS].reverse();
+  return steps.find((step) => (direction === 1 ? step > current : step < current)) ?? current;
 }
 
 export interface ManualLocation {
@@ -232,6 +257,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       startMinimized: false,
     },
     network: { enabled: true },
+    zoomPercent: DEFAULT_ZOOM_PERCENT,
   },
   userPreferences: {
     weather: {
@@ -347,6 +373,7 @@ export function applyDefaults(parsed: any): NimbusSettings {
         ...defaults.windowsClient.network,
         ...parsed.windowsClient?.network,
       },
+      zoomPercent: normalizeZoomPercent(parsed.windowsClient?.zoomPercent),
     },
     userPreferences: {
       ...defaults.userPreferences,
