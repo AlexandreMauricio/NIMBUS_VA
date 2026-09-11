@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { StockProvider } from "./stockProvider";
 import {
+  ListingMatch,
   MarketDataSource,
   NewsSource,
   RawQuote,
@@ -18,6 +19,7 @@ class FakeMarket implements MarketDataSource {
     ["MSFT", 400],
   ]);
   failing = new Set<string>();
+  searchListings?: (query: string, limit: number) => Promise<ListingMatch[]>;
 
   async fetchQuote(symbol: string): Promise<RawQuote> {
     this.calls.push(symbol);
@@ -368,4 +370,90 @@ test("an invalid base currency in settings falls back to EUR", async () => {
   settings.baseCurrency = "euros";
   market.prices.set("USDEUR=X", 0.9);
   assert.equal((await provider.getContext()).baseCurrency, "EUR");
+});
+
+// ---------------------------------------------------------------- outdated
+
+test("a price from a listing that stopped trading is outdated and left out of the totals", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "AAPL", shares: 10, averageCost: 100 },
+    { id: "p2", symbol: "SMSN.L", shares: 1, averageCost: 2742 },
+  ]);
+  market.prices.set("SMSN.L", 1179.5);
+  const original = market.fetchQuote.bind(market);
+  market.fetchQuote = async (symbol: string) => {
+    const quote = await original(symbol);
+    return symbol === "SMSN.L" ? { ...quote, marketTime: "2022-07-21T15:07:19.000Z" } : quote;
+  };
+
+  const context = await provider.getContext();
+
+  assert.equal(context.positions[1].status, "outdated");
+  assert.equal(context.outdatedCount, 1);
+  assert.equal(context.totals[0].marketValue, 1500);
+});
+
+test("an outdated symbol gets live listings of the same company, same currency first", async () => {
+  const { market, provider } = setup([{ id: "p1", symbol: "SMSN.L", shares: 1, averageCost: 2742 }]);
+  const times: Record<string, string> = { "SMSN.L": "2022-07-21T15:07:19.000Z" };
+  const currencies: Record<string, string> = { "005930.KS": "KRW" };
+  market.prices.set("SMSN.L", 1179.5);
+  market.prices.set("005930.KS", 259500);
+  market.prices.set("SMSN.IL", 4860);
+  const original = market.fetchQuote.bind(market);
+  market.fetchQuote = async (symbol: string) => {
+    const quote = await original(symbol);
+    return {
+      ...quote,
+      name: "Samsung Electronics Co., Ltd.",
+      marketTime: times[symbol] ?? quote.marketTime,
+      currency: currencies[symbol] ?? quote.currency,
+    };
+  };
+  const queries: string[] = [];
+  market.searchListings = async (query: string) => {
+    queries.push(query);
+    return [
+      { symbol: "005930.KS", name: "SamsungElec", exchange: "KSE" },
+      { symbol: "SMSN.L", name: "Samsung", exchange: "LSE" },
+      { symbol: "SMSN.IL", name: "Samsung", exchange: "IOB" },
+      { symbol: "NOPE.X", name: "Samsung", exchange: "?" },
+    ];
+  };
+
+  await provider.getContext();
+  const found = await provider.findListings("SMSN.L");
+
+  assert.deepEqual(queries, ["Samsung Electronics"]);
+  assert.equal(found.status, "ok");
+  assert.deepEqual(
+    found.candidates.map((c) => [c.symbol, c.currency]),
+    [
+      ["SMSN.IL", "USD"],
+      ["005930.KS", "KRW"],
+    ]
+  );
+  await provider.findListings("SMSN.L");
+  assert.equal(queries.length, 1, "cached");
+});
+
+test("a current symbol needs no listing search", async () => {
+  const { provider } = setup();
+  await provider.getContext();
+  assert.equal((await provider.findListings("AAPL")).status, "not-needed");
+});
+
+test("news is searched by the company's name once it is known", async () => {
+  const { provider } = setup();
+  const seen: Array<string | null | undefined> = [];
+  const news = {
+    async fetchNews(_symbol: string, _limit: number, companyName?: string | null) {
+      seen.push(companyName);
+      return [];
+    },
+  };
+  (provider as unknown as { newsSource: typeof news }).newsSource = news;
+  await provider.getContext();
+  await provider.getNews("AAPL");
+  assert.deepEqual(seen, ["AAPL Inc."]);
 });

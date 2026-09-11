@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_POSITIONS, normalizeSymbol, validateStockPosition, validateStockPositions } from "./types";
+import {
+  MAX_POSITIONS,
+  companySearchName,
+  normalizeSymbol,
+  validateStockPosition,
+  validateStockPositions,
+} from "./types";
 
 const NOW = new Date("2026-09-11T10:00:00Z");
 
@@ -64,4 +70,13 @@ test("a position list must be a list of unique, valid positions within the cap",
 
 test("two lots of the same symbol are allowed", () => {
   assert.equal(validateStockPositions([valid(), valid({ id: "p2" })], NOW).valid, true);
+});
+
+test("company names lose their legal form for searching", () => {
+  assert.equal(companySearchName("Repsol, S.A."), "Repsol");
+  assert.equal(companySearchName("Samsung Electronics Co., Ltd."), "Samsung Electronics");
+  assert.equal(companySearchName("Apple Inc."), "Apple");
+  assert.equal(companySearchName("ASML Holding N.V."), "ASML");
+  assert.equal(companySearchName("Bank of America Corporation"), "Bank of America");
+  assert.equal(companySearchName(null), null);
 });

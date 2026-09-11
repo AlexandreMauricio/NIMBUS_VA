@@ -25,6 +25,7 @@ interface StockQuoteView {
   changePercent: number | null;
   fetchedAt: string;
   stale: boolean;
+  outdated?: boolean;
 }
 
 interface StockPositionView {
@@ -37,7 +38,7 @@ interface StockPositionView {
   notes: string | null;
   currency: string | null;
   quote: StockQuoteView | null;
-  status: "live" | "stale" | "unavailable";
+  status: "live" | "stale" | "outdated" | "unavailable";
   invested: number;
   marketValue: number | null;
   unrealizedGain: number | null;
@@ -70,6 +71,7 @@ interface StockContextView {
   positions: StockPositionView[];
   totals: StockTotalsView[];
   unpricedCount: number;
+  outdatedCount?: number;
   anyStale: boolean;
   source: string;
   // Optional: a snapshot from before base-currency totals existed has none.
@@ -117,7 +119,23 @@ interface StockNewsResultView {
   retrievedAt: string | null;
 }
 
+interface ListingCandidateView {
+  symbol: string;
+  name: string | null;
+  exchange: string | null;
+  currency: string | null;
+  price: number;
+  marketTime: string | null;
+}
+
+interface ListingSearchResultView {
+  symbol: string;
+  status: "ok" | "not-needed" | "unavailable";
+  candidates: ListingCandidateView[];
+}
+
 interface StocksBridge {
+  findStockListings(symbol: string): Promise<ListingSearchResultView>;
   getContext(): Promise<{ providers: Record<string, unknown> }>;
   getStockSettings(): Promise<StockPreferencesView>;
   updateStockSettings(partial: Partial<StockPreferencesView>): Promise<StockPreferencesView>;
@@ -324,6 +342,12 @@ export function initStocksTab(): void {
           `No exchange rate for ${unconverted.map((c) => c || "an unknown currency").join(", ")} — those positions are shown separately, not in the ${data.baseCurrency} total.`
         );
       }
+      const outdated = data.outdatedCount ?? 0;
+      if (outdated > 0) {
+        notes.push(
+          `${outdated} position${outdated === 1 ? "'s" : "s'"} price hasn't changed in over a week — that listing has probably stopped trading, so it's left out of the totals. Open it to find the listing that still trades.`
+        );
+      }
       if (data.unpricedCount > 0) {
         notes.push(
           `${data.unpricedCount} position${data.unpricedCount === 1 ? " has" : "s have"} no price — check the symbol.`
@@ -401,6 +425,7 @@ export function initStocksTab(): void {
       const who = el("span");
       const symbolLine = el("span", "stock-row-symbol", position.symbol);
       if (view?.status === "stale") symbolLine.appendChild(el("span", "tag tag-neutral", "stale"));
+      if (view?.status === "outdated") symbolLine.appendChild(el("span", "tag tag-neutral", "outdated"));
       if (prefs.enabled && result?.data && (!view || view.status === "unavailable")) {
         symbolLine.appendChild(el("span", "tag tag-neutral", "no price"));
       }
@@ -487,7 +512,14 @@ export function initStocksTab(): void {
       market.appendChild(keyValue("Exchange", quote.exchange ?? "—"));
       market.appendChild(keyValue("Price time", dateTime(quote.marketTime)));
       market.appendChild(
-        keyValue("Status", quote.stale ? "From an earlier fetch — may be out of date" : "Latest retrieved")
+        keyValue(
+          "Status",
+          view?.status === "outdated"
+            ? "Not traded recently — listing looks inactive"
+            : quote.stale
+              ? "From an earlier fetch — may be out of date"
+              : "Latest retrieved"
+        )
       );
     } else {
       market.appendChild(
@@ -544,6 +576,16 @@ export function initStocksTab(): void {
     actions.appendChild(deleteButton(position));
     detailEl.appendChild(actions);
 
+    if (view?.status === "outdated") {
+      const listings = el("div", "stock-listings");
+      listings.appendChild(el("div", "stock-stat-label", "Listings that still trade"));
+      const body = el("div", "stock-news-list");
+      body.appendChild(el("p", "feed-empty", "Looking for this company's current listings…"));
+      listings.appendChild(body);
+      detailEl.appendChild(listings);
+      void loadListings(position, view, body);
+    }
+
     const newsSection = el("div");
     newsSection.appendChild(el("div", "stock-stat-label", "Recent news"));
     const newsBody = el("div", "stock-news-list");
@@ -584,6 +626,62 @@ export function initStocksTab(): void {
       }
     });
     return button;
+  }
+
+  async function loadListings(
+    position: StockPositionInput,
+    view: StockPositionView,
+    container: HTMLElement
+  ): Promise<void> {
+    let found: ListingSearchResultView;
+    try {
+      found = await bridge().findStockListings(position.symbol);
+    } catch {
+      found = { symbol: position.symbol, status: "unavailable", candidates: [] };
+    }
+    if (selectedId !== position.id || detailView.hidden) return;
+    container.innerHTML = "";
+    container.appendChild(
+      el(
+        "p",
+        "setting-note",
+        `${position.symbol} last traded ${dateTime(view.quote?.marketTime)}. The same company may trade under another symbol — your broker may show it with the old code.`
+      )
+    );
+    if (found.candidates.length === 0) {
+      container.appendChild(
+        el("p", "feed-empty", "No other listing found. You can edit the symbol by hand.")
+      );
+      return;
+    }
+    for (const c of found.candidates) {
+      const row = el("div", "stock-listing");
+      const info = el("div");
+      info.appendChild(el("div", "stock-news-title", `${c.symbol} · ${c.exchange ?? "unknown exchange"}`));
+      const meta = [money(c.price, c.currency), `updated ${dateTime(c.marketTime)}`];
+      if (view.currency && c.currency && c.currency !== view.currency) {
+        meta.push(`priced in ${c.currency} — update your average cost after switching`);
+      }
+      info.appendChild(el("div", "stock-news-meta", meta.join(" · ")));
+      row.appendChild(info);
+      const use = el("button", "btn btn-secondary", "Track this instead");
+      use.type = "button";
+      use.addEventListener("click", async () => {
+        use.disabled = true;
+        try {
+          prefs = await bridge().updateStockSettings({
+            positions: prefs.positions.map((p) => (p.id === position.id ? { ...p, symbol: c.symbol } : p)),
+          });
+          await load();
+          renderDetail(position.id);
+        } catch (err) {
+          showError(errorEl, errorText(err));
+          use.disabled = false;
+        }
+      });
+      row.appendChild(use);
+      container.appendChild(row);
+    }
   }
 
   async function loadNews(symbol: string, container: HTMLElement, forId: string): Promise<void> {

@@ -76,7 +76,7 @@ export function computePosition(
     companyName: position.companyName?.trim() || quote.name || position.symbol,
     currency: quote.currency,
     quote,
-    status: quote.stale ? "stale" : "live",
+    status: quote.outdated ? "outdated" : quote.stale ? "stale" : "live",
     marketValue,
     unrealizedGain,
     unrealizedGainPercent,
@@ -87,7 +87,7 @@ export function computePosition(
 
 /**
  * Portfolio totals, one entry per currency, largest first. Positions with
- * no price are left out rather than counted as zero. A position whose
+ * no price, or only an outdated one, are left out rather than counted. A position whose
  * day change is unknown still counts towards value and gain, just not
  * towards the day's move.
  */
@@ -95,7 +95,7 @@ export function computePortfolio(positions: PositionView[]): PortfolioTotals[] {
   const byCurrency = new Map<string, PortfolioTotals & { previousValue: number }>();
 
   for (const p of positions) {
-    if (p.marketValue === null) continue;
+    if (p.marketValue === null || p.status === "outdated") continue;
     const currency = p.currency ?? "";
     let totals = byCurrency.get(currency);
     if (!totals) {
@@ -154,7 +154,7 @@ export function computeBaseTotals(
   const converted: PositionView[] = [];
   const unconverted = new Set<string>();
   for (const p of positions) {
-    if (p.marketValue === null) continue;
+    if (p.marketValue === null || p.status === "outdated") continue;
     const rate = rateFor(p.currency);
     if (rate === null) {
       unconverted.add(p.currency ?? "");

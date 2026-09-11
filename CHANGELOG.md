@@ -24,7 +24,9 @@ Dates are the day the work landed.
   price and day change, estimated value, gain/loss and today's change,
   a portfolio total in one base currency (default EUR, converted at
   Yahoo's key-free exchange rates) alongside per-currency totals, and
-  recent headlines. Prices come from
+  recent headlines searched by company name and filtered to the company.
+  A symbol whose price hasn't changed in over a week is marked outdated,
+  left out of the totals, and offered the company's live listings. Prices come from
   Yahoo Finance's public endpoints (no key); stale and unavailable prices
   are marked, never guessed. The briefing gains a portfolio line ("Your
   portfolio is up 1.8% today."). Strictly read-only: no trading, no

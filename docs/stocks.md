@@ -72,6 +72,21 @@ since purchase.
 A position with no price is left out of the totals rather than counted as
 zero, and every market-based figure for it is blank.
 
+### Outdated listings
+
+A fetch can succeed and still return a price that is years old: the
+ticker belongs to a listing that stopped trading (e.g. `SMSN.L`, last
+traded July 2022, while Samsung's GDR now trades as `SMSN.IL`). A price
+older than `OUTDATED_AFTER_DAYS` (7) marks the position **outdated**: it is
+tagged in the list and left out of every total. Opening it searches Yahoo
+for the company's other listings (`findListings`, IPC
+`nimbus:find-stock-listings`, tracked symbols only), prices them, and offers
+up to three that still trade, same currency first. "Track this instead"
+is an ordinary position edit that changes only the symbol — nothing
+switches automatically, and the average cost is left as entered (a note
+warns when the new listing trades in another currency). Results are
+cached for 30 minutes.
+
 ## Caching and rate limiting
 
 - Quotes are cached **per symbol for 2 minutes**, failed attempts
@@ -107,6 +122,12 @@ totals, `baseCurrency`, `baseTotals`, the `fxRates` used,
 of it — it is fetched on demand, for tracked symbols only
 (`nimbus:get-stock-news`).
 
+News is searched by the company's name without its legal form
+(`companySearchName`: "Repsol, S.A." → "Repsol"), because a ticker string
+like `REP.MC` returns mostly unrelated headlines. An item is kept only when
+the source tags it with the symbol, or its headline names the company as a
+whole word; untagged general news is dropped.
+
 The briefing reads only the totals, through its usual builder pattern
 (`buildStocksItem` in `briefingGenerator.ts`):
 
@@ -125,7 +146,7 @@ The briefing reads only the totals, through its usual builder pattern
   base currency (plus a row for any currency with no rate), with the rates
   used and a reminder that these are estimates.
 - **Positions**: symbol and name, price, today's %, value and total return;
-  "stale" and "no price" markers; a converted value (≈ €…) under positions
+  "stale", "outdated" and "no price" markers; a converted value (≈ €…) under positions
   in another currency.
 - **A position**: your entries, the market data (price, previous close,
   day change, exchange, price time, status), the estimates, and recent

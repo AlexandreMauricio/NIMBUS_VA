@@ -445,6 +445,16 @@ function registerIpcHandlers(): void {
     }
     return stockProvider.getNews(normalized);
   });
+  // Live listings of the same company, for a tracked symbol whose price is
+  // outdated. A suggestion only — switching is an ordinary position edit.
+  ipcMain.handle("nimbus:find-stock-listings", (_event, symbol: unknown) => {
+    const normalized = normalizeSymbol(symbol);
+    const tracked = settings.userPreferences.stocks.positions.some(
+      (p) => normalizeSymbol(p.symbol) === normalized
+    );
+    if (!normalized || !tracked) return { symbol: String(symbol), status: "unavailable", candidates: [] };
+    return stockProvider.findListings(normalized);
+  });
 
   // Spotify's connection state is derived from SpotifyAuthManager (has a
   // stored refresh token or not) rather than persisted as its own

@@ -457,7 +457,7 @@ function buildStocksItem(stocks: StockContext | null, now: Date): BriefingItem |
   const timeZone = localTimeZone();
   const todayDate = localCalendarDate(now.toISOString(), timeZone);
   const sessionIsToday = stocks.positions
-    .filter((p) => p.quote?.marketTime)
+    .filter((p) => p.quote?.marketTime && p.status !== "outdated")
     .every((p) => localCalendarDate(p.quote!.marketTime!, timeZone) === todayDate);
 
   const describe = (percent: number) =>

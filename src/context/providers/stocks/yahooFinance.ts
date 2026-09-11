@@ -1,5 +1,13 @@
 import { httpTimeoutSignal } from "../../../common/timeout";
-import { MarketDataSource, NewsSource, RawQuote, StockNewsItem } from "./types";
+import {
+  ListingMatch,
+  MarketDataSource,
+  NewsSource,
+  RawQuote,
+  StockNewsItem,
+  companySearchName,
+  normalizeSymbol,
+} from "./types";
 
 /**
  * Yahoo Finance's public quote and news endpoints — the external-integration
@@ -29,6 +37,15 @@ interface ChartMeta {
   shortName?: unknown;
   regularMarketTime?: unknown;
   instrumentType?: unknown;
+}
+
+interface SearchQuoteItem {
+  symbol?: unknown;
+  quoteType?: unknown;
+  longname?: unknown;
+  shortname?: unknown;
+  exchDisp?: unknown;
+  exchange?: unknown;
 }
 
 interface SearchNewsItem {
@@ -87,19 +104,89 @@ export class YahooMarketDataSource implements MarketDataSource {
       instrumentType: text(meta.instrumentType),
     };
   }
+
+  /** Equity and ETF listings Yahoo's search returns for a company name. Unpriced — the caller prices them. */
+  async searchListings(query: string, limit: number): Promise<ListingMatch[]> {
+    const url = new URL(SEARCH_URL);
+    url.searchParams.set("q", query);
+    url.searchParams.set("quotesCount", String(limit));
+    url.searchParams.set("newsCount", "0");
+    const response = await this.fetchFn(url.toString(), {
+      signal: httpTimeoutSignal(),
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`Listing search failed with status ${response.status}`);
+
+    const body = (await response.json()) as { quotes?: unknown };
+    const raw = Array.isArray(body?.quotes) ? (body.quotes as SearchQuoteItem[]) : [];
+    return raw
+      .filter((q) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
+      .map((q): ListingMatch | null => {
+        const symbol = normalizeSymbol(q.symbol);
+        if (!symbol) return null;
+        return {
+          symbol,
+          name: text(q.longname) ?? text(q.shortname),
+          exchange: text(q.exchDisp) ?? text(q.exchange),
+        };
+      })
+      .filter((q): q is ListingMatch => q !== null)
+      .slice(0, limit);
+  }
+}
+
+/** Words too common to identify a company on their own in a headline. */
+const GENERIC_FIRST_WORDS = new Set([
+  "the",
+  "bank",
+  "first",
+  "general",
+  "american",
+  "united",
+  "national",
+  "international",
+  "china",
+  "royal",
+  "global",
+  "new",
+]);
+
+/** Does a headline name the company? By its full search name, or its first word when that is distinctive. */
+function mentionsCompany(title: string, searchName: string | null): boolean {
+  if (!searchName) return false;
+  const words = (value: string) =>
+    value
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter(Boolean);
+  const titleWords = words(title);
+  const nameWords = words(searchName);
+  if (nameWords.length === 0) return false;
+  // The whole name as consecutive words ("bank of america"), never as part of a longer word.
+  for (let i = 0; i + nameWords.length <= titleWords.length; i++) {
+    if (nameWords.every((w, k) => titleWords[i + k] === w)) return true;
+  }
+  const first = nameWords[0];
+  if (nameWords.length === 1 || first.length < 4 || GENERIC_FIRST_WORDS.has(first)) return false;
+  return titleWords.includes(first);
 }
 
 /**
  * Recent headlines for a symbol: title, publisher, time and a link — never
- * article text. Items tagged with other tickers only are dropped, so a
- * symbol's list is about that symbol where the source says so.
+ * article text.
+ *
+ * Searching by a ticker string ("REP.MC") returns mostly unrelated news,
+ * so the search uses the company name when it is known ("Repsol"). An
+ * item is kept only when the source tags it with this symbol, or its
+ * headline names the company — untagged general news is dropped.
  */
 export class YahooNewsSource implements NewsSource {
   constructor(private readonly fetchFn: typeof fetch = fetch) {}
 
-  async fetchNews(symbol: string, limit: number): Promise<StockNewsItem[]> {
+  async fetchNews(symbol: string, limit: number, companyName?: string | null): Promise<StockNewsItem[]> {
+    const searchName = companySearchName(companyName);
     const url = new URL(SEARCH_URL);
-    url.searchParams.set("q", symbol);
+    url.searchParams.set("q", searchName ?? symbol);
     url.searchParams.set("quotesCount", "0");
     url.searchParams.set("newsCount", String(Math.max(limit * 2, 8)));
 
@@ -114,10 +201,10 @@ export class YahooNewsSource implements NewsSource {
 
     return raw
       .filter((item) => {
-        if (!Array.isArray(item.relatedTickers)) return true;
-        return item.relatedTickers.some(
-          (t) => typeof t === "string" && t.toUpperCase() === symbol.toUpperCase()
-        );
+        const tagged =
+          Array.isArray(item.relatedTickers) &&
+          item.relatedTickers.some((t) => typeof t === "string" && t.toUpperCase() === symbol.toUpperCase());
+        return tagged || mentionsCompany(text(item.title) ?? "", searchName);
       })
       .map((item): StockNewsItem | null => {
         const title = text(item.title);

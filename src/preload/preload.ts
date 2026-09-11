@@ -7,7 +7,7 @@ import {
   RoutineSettings,
   StockPreferences,
 } from "../settings/settingsManager";
-import type { StockNewsResult, StockPosition } from "../context/providers/stocks/types";
+import type { ListingSearchResult, StockNewsResult, StockPosition } from "../context/providers/stocks/types";
 import { Routine, RoutineEvaluation, RoutineHistoryEntry } from "../routines/types";
 import { SpotifyPlaylistSummary } from "../context/providers/spotify/types";
 import {
@@ -176,6 +176,9 @@ contextBridge.exposeInMainWorld("nimbus", {
   refreshStocks: (): Promise<boolean> => ipcRenderer.invoke("nimbus:refresh-stocks"),
   getStockNews: (symbol: string): Promise<StockNewsResult> =>
     ipcRenderer.invoke("nimbus:get-stock-news", symbol),
+  /** Live listings of the same company for a symbol whose price is outdated. Suggestions only. */
+  findStockListings: (symbol: string): Promise<ListingSearchResult> =>
+    ipcRenderer.invoke("nimbus:find-stock-listings", symbol),
 
   getSpotifySettings: (): Promise<PublicSpotifySettings> => ipcRenderer.invoke("nimbus:get-spotify-settings"),
   updateSpotifySettings: (partial: {

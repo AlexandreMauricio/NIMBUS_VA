@@ -19,6 +19,7 @@ function quote(overrides: Partial<StockQuote> = {}): StockQuote {
     changePercent: (10 / 140) * 100,
     fetchedAt: "2026-09-11T08:00:00.000Z",
     stale: false,
+    outdated: false,
     ...overrides,
   };
 }
@@ -226,4 +227,13 @@ test("a base-currency minor unit converts without a rate", () => {
   );
   const { totals } = computeBaseTotals([pence], "GBP", new Map());
   close(totals!.marketValue, 50);
+});
+
+test("a position whose price is outdated is left out of every total", () => {
+  const live = computePosition(position(), quote(), TODAY);
+  const old = computePosition(position({ id: "p2" }), quote({ outdated: true }), TODAY);
+
+  assert.equal(old.status, "outdated");
+  assert.equal(computePortfolio([live, old])[0].positions, 1);
+  assert.equal(computeBaseTotals([live, old], "USD", new Map()).totals?.positions, 1);
 });

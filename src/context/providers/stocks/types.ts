@@ -55,9 +55,18 @@ export interface StockQuote extends RawQuote {
   fetchedAt: string;
   /** True when the latest fetch failed and this is the last quote that succeeded. */
   stale: boolean;
+  /**
+   * True when the price itself is more than OUTDATED_AFTER_DAYS old even
+   * though the fetch worked — the listing has most likely stopped trading
+   * (a retired ticker), so the price says nothing about today.
+   */
+  outdated: boolean;
 }
 
-export type QuoteStatus = "live" | "stale" | "unavailable";
+/** A price older than this is treated as a listing that no longer trades. Long enough to cover market holidays. */
+export const OUTDATED_AFTER_DAYS = 7;
+
+export type QuoteStatus = "live" | "stale" | "outdated" | "unavailable";
 
 /** A position with the estimates derived from it. Every market-based figure is null when there is no price. */
 export interface PositionView {
@@ -106,6 +115,8 @@ export interface StockContext {
   totals: PortfolioTotals[];
   /** Positions with no price at all (never retrieved successfully). They are excluded from totals. */
   unpricedCount: number;
+  /** Positions whose only price is outdated (a listing that stopped trading). Also excluded from totals. */
+  outdatedCount: number;
   /** True when any figure is based on a quote from an earlier, successful fetch. */
   anyStale: boolean;
   /** Where the prices came from, for attribution in the UI. */
@@ -153,16 +164,59 @@ export interface StockNewsResult {
   retrievedAt: string | null;
 }
 
+/** A listing a search found for a company, before it is priced. */
+export interface ListingMatch {
+  symbol: string;
+  name: string | null;
+  exchange: string | null;
+}
+
+/** A listing that still trades, offered in place of an outdated symbol. */
+export interface ListingCandidate extends ListingMatch {
+  currency: string | null;
+  price: number;
+  marketTime: string | null;
+}
+
+export interface ListingSearchResult {
+  symbol: string;
+  /** "not-needed" when the symbol's price is current; "unavailable" when nothing could be searched or priced. */
+  status: "ok" | "not-needed" | "unavailable";
+  candidates: ListingCandidate[];
+}
+
 /** The narrow interface a market-data vendor implements. Nothing above it knows which vendor that is. */
 export interface MarketDataSource {
   /** Human-readable source name, shown as attribution. */
   readonly name: string;
   /** Rejects when the symbol is unknown or the source is unreachable — never returns an invented price. */
   fetchQuote(symbol: string): Promise<RawQuote>;
+  /** Other listings for a company name. Optional — without it, outdated symbols get no suggestions. */
+  searchListings?(query: string, limit: number): Promise<ListingMatch[]>;
 }
 
 export interface NewsSource {
-  fetchNews(symbol: string, limit: number): Promise<StockNewsItem[]>;
+  /** `companyName`, when known, focuses the search on the company rather than the ticker string. */
+  fetchNews(symbol: string, limit: number, companyName?: string | null): Promise<StockNewsItem[]>;
+}
+
+const CORPORATE_SUFFIX =
+  /[\s,]+(inc|incorporated|corp|corporation|co|company|ltd|limited|plc|s\.?a|s\.?p\.?a|n\.?v|b\.?v|ag|se|ab|asa|oyj|kgaa|llc|lp|holdings?|group)\.?$/i;
+
+/**
+ * A company name without its legal form, for searching and matching:
+ * "Repsol, S.A." → "Repsol", "Samsung Electronics Co., Ltd." → "Samsung
+ * Electronics", "Apple Inc." → "Apple". Null when nothing usable is left.
+ */
+export function companySearchName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  let text = name.trim();
+  for (;;) {
+    const next = text.replace(CORPORATE_SUFFIX, "").replace(/[\s,.]+$/, "");
+    if (next === text || next.length === 0) break;
+    text = next;
+  }
+  return text.length >= 2 ? text : null;
 }
 
 export const MAX_POSITIONS = 50;

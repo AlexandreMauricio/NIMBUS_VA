@@ -5,7 +5,10 @@ import { computeBaseTotals, computePortfolio, computePosition, majorCurrency } f
 import { YahooMarketDataSource, YahooNewsSource } from "./yahooFinance";
 import {
   FxRate,
+  ListingCandidate,
+  ListingSearchResult,
   MarketDataSource,
+  OUTDATED_AFTER_DAYS,
   NewsSource,
   RawQuote,
   StockContext,
@@ -14,6 +17,7 @@ import {
   StockPosition,
   StockProviderConfig,
   StockQuote,
+  companySearchName,
   normalizeCurrencyCode,
   normalizeSymbol,
   validateStockPosition,
@@ -30,6 +34,10 @@ const MIN_REFRESH_INTERVAL_MS = 30 * 1000;
 const MAX_NEWS_ITEMS = 5;
 /** Symbols fetched at once, so a long list doesn't burst the source. */
 const FETCH_CONCURRENCY = 4;
+/** Listing suggestions for an outdated symbol change rarely; each search costs several requests. */
+const LISTINGS_TTL_MS = 30 * 60 * 1000;
+const MAX_LISTING_CANDIDATES = 3;
+const OUTDATED_AFTER_MS = OUTDATED_AFTER_DAYS * 24 * 60 * 60 * 1000;
 /** Used when settings carry no valid base currency. */
 const DEFAULT_BASE_CURRENCY = "EUR";
 
@@ -72,6 +80,7 @@ export class StockProvider implements ContextProvider<StockContext> {
     { items: StockNewsItem[]; fetchedAtMs: number; retrievedAt: string }
   >();
   private readonly newsFailures = new Map<string, number>();
+  private readonly listings = new Map<string, { result: ListingSearchResult; fetchedAtMs: number }>();
   private inFlight: Promise<StockContext> | null = null;
   private lastForcedRefreshMs = -Infinity;
 
@@ -126,8 +135,12 @@ export class StockProvider implements ContextProvider<StockContext> {
       return this.newsFallback(symbol, cached);
     }
 
+    const companyName =
+      this.quotes.get(symbol)?.quote?.name ??
+      settings.positions.find((p) => p.symbol === symbol)?.companyName ??
+      null;
     try {
-      const items = await this.newsSource.fetchNews(symbol, MAX_NEWS_ITEMS);
+      const items = await this.newsSource.fetchNews(symbol, MAX_NEWS_ITEMS, companyName);
       const retrievedAt = this.now().toISOString();
       this.news.set(symbol, { items, fetchedAtMs: nowMs, retrievedAt });
       this.newsFailures.delete(symbol);
@@ -137,6 +150,66 @@ export class StockProvider implements ContextProvider<StockContext> {
       this.newsFailures.set(symbol, nowMs);
       return this.newsFallback(symbol, cached);
     }
+  }
+
+  /**
+   * Listings of the same company that still trade, for a tracked symbol
+   * whose price is outdated (e.g. SMSN.L, retired, → SMSN.IL). Only ever a
+   * suggestion: the user decides whether to switch. Never throws.
+   */
+  async findListings(symbol: string): Promise<ListingSearchResult> {
+    const nowMs = this.now().getTime();
+    const quote = this.quotes.get(symbol)?.quote ?? null;
+    if (quote && !this.isOutdated(quote, nowMs)) return { symbol, status: "not-needed", candidates: [] };
+
+    const cached = this.listings.get(symbol);
+    if (cached && nowMs - cached.fetchedAtMs < LISTINGS_TTL_MS) return cached.result;
+
+    const settingsName = this.getSettings().positions.find((p) => p.symbol === symbol)?.companyName;
+    const query = companySearchName(quote?.name ?? settingsName);
+    if (!query || !this.marketData.searchListings) return { symbol, status: "unavailable", candidates: [] };
+
+    let result: ListingSearchResult;
+    try {
+      const matches = (await this.marketData.searchListings(query, 8))
+        .filter((m) => m.symbol !== symbol)
+        .slice(0, MAX_LISTING_CANDIDATES + 2);
+      await this.fetchDue(
+        matches.map((m) => m.symbol),
+        nowMs
+      );
+      const candidates: ListingCandidate[] = [];
+      for (const match of matches) {
+        const q = this.quotes.get(match.symbol)?.quote;
+        if (!q || q.stale || this.isOutdated(q, nowMs)) continue;
+        candidates.push({
+          ...match,
+          name: match.name ?? q.name,
+          exchange: q.exchange ?? match.exchange,
+          currency: q.currency,
+          price: q.price,
+          marketTime: q.marketTime,
+        });
+      }
+      // The same currency first: the user's average cost is in it.
+      const sameCurrency = (c: ListingCandidate) => (quote && c.currency === quote.currency ? 0 : 1);
+      candidates.sort((a, b) => sameCurrency(a) - sameCurrency(b));
+      result = {
+        symbol,
+        status: candidates.length > 0 ? "ok" : "unavailable",
+        candidates: candidates.slice(0, MAX_LISTING_CANDIDATES),
+      };
+    } catch (err) {
+      logger.warn(`Listing search for ${symbol} failed`, { error: String(err) });
+      return { symbol, status: "unavailable", candidates: [] };
+    }
+    this.listings.set(symbol, { result, fetchedAtMs: nowMs });
+    return result;
+  }
+
+  private isOutdated(quote: StockQuote, nowMs: number): boolean {
+    if (!quote.marketTime) return false;
+    return nowMs - Date.parse(quote.marketTime) > OUTDATED_AFTER_MS;
   }
 
   private newsFallback(
@@ -166,7 +239,11 @@ export class StockProvider implements ContextProvider<StockContext> {
     const nowMs = this.now().getTime();
     await this.fetchDue(symbols, nowMs);
 
-    const quoteFor = (symbol: string) => this.quotes.get(symbol)?.quote ?? null;
+    // Age is judged at read time: a quote cached as current becomes outdated once the listing stops trading.
+    const quoteFor = (symbol: string): StockQuote | null => {
+      const quote = this.quotes.get(symbol)?.quote ?? null;
+      return quote ? { ...quote, outdated: this.isOutdated(quote, nowMs) } : null;
+    };
     if (symbols.every((s) => quoteFor(s) === null)) {
       throw new Error("Market data is unavailable for every tracked symbol");
     }
@@ -187,7 +264,7 @@ export class StockProvider implements ContextProvider<StockContext> {
     const fxRates: FxRate[] = [];
     for (const [currency, { pair, divisor }] of pairs) {
       const quote = quoteFor(pair);
-      if (!quote || !(quote.price > 0)) continue;
+      if (!quote || !(quote.price > 0) || quote.outdated) continue;
       fxRates.push({
         currency,
         rate: quote.price / divisor,
@@ -203,6 +280,7 @@ export class StockProvider implements ContextProvider<StockContext> {
       positions: views,
       totals: computePortfolio(views),
       unpricedCount: views.filter((v) => v.status === "unavailable").length,
+      outdatedCount: views.filter((v) => v.status === "outdated").length,
       anyStale: views.some((v) => v.status === "stale"),
       source: this.marketData.name,
       baseCurrency: base,
@@ -241,6 +319,7 @@ export class StockProvider implements ContextProvider<StockContext> {
               : null,
           fetchedAt: new Date(nowMs).toISOString(),
           stale: false,
+          outdated: false,
         },
         attemptedAtMs: nowMs,
       });

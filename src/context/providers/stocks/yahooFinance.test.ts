@@ -125,12 +125,32 @@ test("headlines keep title, publisher, time and link — and nothing else", asyn
   });
 });
 
-test("news about other tickers, non-web links and untitled items are dropped", async () => {
+test("news about other tickers, untagged general news, non-web links and untitled items are dropped", async () => {
   const items = await new YahooNewsSource(fakeFetch(200, NEWS).fn).fetchNews("aapl", 5);
 
   assert.deepEqual(
     items.map((i) => i.title),
-    ["Apple unveils something", "No tickers listed"]
+    ["Apple unveils something"]
+  );
+});
+
+test("with a company name, the search uses it and headlines naming the company are kept", async () => {
+  const fetch = fakeFetch(200, {
+    news: [
+      { title: "Repsol raises its dividend", link: "https://x.test/1" },
+      { title: "Repsolar is a different firm", link: "https://x.test/2" },
+      { title: "Unrelated contact lens news", link: "https://x.test/3" },
+      { title: "Oil roundup", link: "https://x.test/4", relatedTickers: ["REP.MC"] },
+      { title: "Chevron in Venezuela", link: "https://x.test/5", relatedTickers: ["CVX", "REPYY"] },
+    ],
+  });
+
+  const items = await new YahooNewsSource(fetch.fn).fetchNews("REP.MC", 5, "Repsol, S.A.");
+
+  assert.match(fetch.calls[0].url, /[?&]q=Repsol&/);
+  assert.deepEqual(
+    items.map((i) => i.title),
+    ["Repsol raises its dividend", "Oil roundup"]
   );
 });
 
@@ -145,4 +165,25 @@ test("a failed news request is a rejection", async () => {
 
 test("a response with no news is an empty list", async () => {
   assert.deepEqual(await new YahooNewsSource(fakeFetch(200, {}).fn).fetchNews("AAPL", 5), []);
+});
+
+// ----------------------------------------------------------------- listings
+
+test("a listing search returns equity and ETF listings only, symbols validated", async () => {
+  const fetch = fakeFetch(200, {
+    quotes: [
+      { symbol: "005930.KS", quoteType: "EQUITY", shortname: "SamsungElec", exchDisp: "KSE" },
+      { symbol: "SMSN.IL", quoteType: "EQUITY", longname: "Samsung Electronics", exchange: "IOB" },
+      { symbol: "SAMSUNG-FUT", quoteType: "FUTURE" },
+      { symbol: "bad symbol", quoteType: "EQUITY" },
+    ],
+  });
+
+  const found = await new YahooMarketDataSource(fetch.fn).searchListings("Samsung Electronics", 8);
+
+  assert.match(fetch.calls[0].url, /q=Samsung\+Electronics/);
+  assert.deepEqual(found, [
+    { symbol: "005930.KS", name: "SamsungElec", exchange: "KSE" },
+    { symbol: "SMSN.IL", name: "Samsung Electronics", exchange: "IOB" },
+  ]);
 });
