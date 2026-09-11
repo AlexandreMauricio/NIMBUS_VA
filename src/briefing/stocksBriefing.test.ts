@@ -62,6 +62,7 @@ function snapshotWith(stocks: Partial<StockContext>, status: "ok" | "error" = "o
     retrievedAt: NOW.toISOString(),
     positions: [positionAt(new Date(NOW.getTime() - 30 * 60_000).toISOString())],
     totals: [totals()],
+    holdings: [],
     unpricedCount: 0,
     outdatedCount: 0,
     anyStale: false,

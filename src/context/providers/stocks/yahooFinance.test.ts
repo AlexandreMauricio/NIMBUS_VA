@@ -187,3 +187,50 @@ test("a listing search returns equity and ETF listings only, symbols validated",
     { symbol: "SMSN.IL", name: "Samsung Electronics", exchange: "IOB" },
   ]);
 });
+
+// ---------------------------------------------------------------- dividends
+
+test("dividends come back as ex-dates on the exchange's calendar, oldest first", async () => {
+  const fetch = fakeFetch(200, {
+    chart: {
+      result: [
+        {
+          meta: { currency: "USD", exchangeTimezoneName: "America/New_York" },
+          events: {
+            dividends: {
+              "1781184600": { amount: 0.955, date: 1781184600 },
+              "1773754200": { amount: 0.956, date: 1773754200 },
+              junk: { amount: "x", date: 1 },
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const series = await new YahooMarketDataSource(fetch.fn).fetchDividends("TSM", "2025-01-01");
+
+  assert.match(fetch.calls[0].url, /\/chart\/TSM\?period1=1735689600&period2=\d+&interval=1d&events=div$/);
+  assert.deepEqual(series, {
+    currency: "USD",
+    events: [
+      { exDate: "2026-03-17", amount: 0.956 },
+      { exDate: "2026-06-11", amount: 0.955 },
+    ],
+  });
+});
+
+test("a listing with no dividends is an empty list; a failure is a rejection", async () => {
+  const none = { chart: { result: [{ meta: { currency: "USD" } }] } };
+  assert.deepEqual(
+    await new YahooMarketDataSource(fakeFetch(200, none).fn).fetchDividends("TSEM", "2025-01-01"),
+    {
+      currency: "USD",
+      events: [],
+    }
+  );
+  await assert.rejects(
+    new YahooMarketDataSource(fakeFetch(500, {}).fn).fetchDividends("TSM", "2025-01-01"),
+    /status 500/
+  );
+});

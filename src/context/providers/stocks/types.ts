@@ -1,3 +1,5 @@
+import type { DividendSeries, DividendTaxSetting } from "./dividends";
+
 /**
  * Stock tracking — read-only market information for positions the user
  * enters by hand.
@@ -36,6 +38,10 @@ export interface StockProviderConfig {
   newsEnabled: boolean;
   /** ISO 4217 code every position is converted into for the single portfolio total, e.g. "EUR". */
   baseCurrency: string;
+  /** Dividends are fetched unless this is false. */
+  dividendsEnabled?: boolean;
+  /** Per-symbol tax country choices; a symbol not listed uses the country guessed from its listing. */
+  dividendTax?: Record<string, DividendTaxSetting>;
   positions: StockPosition[];
 }
 
@@ -118,9 +124,36 @@ export interface PortfolioTotals {
   dayChangePercent: number | null;
 }
 
+/**
+ * Every lot of one symbol added together — what the list shows as one
+ * row. Market figures are null unless every lot is priced.
+ */
+export interface HoldingView {
+  symbol: string;
+  priceSymbol: string;
+  usingAlternative: boolean;
+  companyName: string;
+  currency: string | null;
+  quote: StockQuote | null;
+  status: QuoteStatus;
+  /** The lots, in the order they were entered. */
+  lotIds: string[];
+  shares: number;
+  /** Invested ÷ shares — the average cost weighted by each lot's shares. */
+  averageCost: number;
+  invested: number;
+  marketValue: number | null;
+  unrealizedGain: number | null;
+  unrealizedGainPercent: number | null;
+  dayChange: number | null;
+  dayChangePercent: number | null;
+}
+
 export interface StockContext {
   retrievedAt: string;
   positions: PositionView[];
+  /** The positions grouped by symbol. */
+  holdings: HoldingView[];
   totals: PortfolioTotals[];
   /** Positions with no price at all (never retrieved successfully). They are excluded from totals. */
   unpricedCount: number;
@@ -202,6 +235,8 @@ export interface MarketDataSource {
   fetchQuote(symbol: string): Promise<RawQuote>;
   /** Other listings for a company name. Optional — without it, outdated symbols get no suggestions. */
   searchListings?(query: string, limit: number): Promise<ListingMatch[]>;
+  /** Ex-dividend dates and amounts from `fromDate` ("YYYY-MM-DD"). Optional — without it, no dividends are shown. */
+  fetchDividends?(symbol: string, fromDate: string): Promise<DividendSeries>;
 }
 
 export interface NewsSource {

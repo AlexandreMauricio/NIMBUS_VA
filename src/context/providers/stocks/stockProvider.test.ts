@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { StockProvider } from "./stockProvider";
+import { DividendSeries } from "./dividends";
 import {
   ListingMatch,
   MarketDataSource,
@@ -20,6 +21,7 @@ class FakeMarket implements MarketDataSource {
   ]);
   failing = new Set<string>();
   searchListings?: (query: string, limit: number) => Promise<ListingMatch[]>;
+  fetchDividends?: (symbol: string, fromDate: string) => Promise<DividendSeries>;
 
   async fetchQuote(symbol: string): Promise<RawQuote> {
     this.calls.push(symbol);
@@ -527,4 +529,103 @@ test("with the alternative outdated too, the position stays outdated", async () 
 
   assert.equal(context.positions[1].status, "outdated");
   assert.equal(context.positions[1].priceSymbol, "SMSN.L");
+});
+
+// ---------------------------------------------------------------- dividends
+
+function withDividends(market: FakeMarket, series: Record<string, DividendSeries>): string[] {
+  const calls: string[] = [];
+  market.fetchDividends = async (symbol: string) => {
+    calls.push(symbol);
+    const found = series[symbol];
+    if (!found) throw new Error(`no dividends for ${symbol}`);
+    return found;
+  };
+  return calls;
+}
+
+const QUARTERLY: DividendSeries = {
+  currency: "USD",
+  events: [
+    { exDate: "2026-02-10", amount: 1 },
+    { exDate: "2026-05-12", amount: 1 },
+    { exDate: "2026-08-11", amount: 1 },
+  ],
+};
+
+test("dividends per holding, taxed for Portugal and summed in the base currency", async () => {
+  const { settings, market, provider } = setup([
+    { id: "a", symbol: "AAPL", shares: 10, averageCost: 100, purchaseDate: "2026-01-10" },
+    { id: "b", symbol: "AAPL", shares: 5, averageCost: 100, purchaseDate: "2026-05-01" },
+  ]);
+  settings.baseCurrency = "EUR";
+  market.prices.set("USDEUR=X", 0.5);
+  const calls = withDividends(market, { AAPL: QUARTERLY });
+
+  const result = await provider.getDividends();
+
+  assert.equal(result.status, "ok");
+  const [aapl] = result.holdings;
+  assert.equal(aapl.tax.country, "US");
+  assert.deepEqual(
+    aapl.received.map((r) => [r.exDate, r.shares]),
+    [
+      ["2026-08-11", 15],
+      ["2026-05-12", 15],
+      ["2026-02-10", 10],
+    ]
+  );
+  assert.equal(aapl.thisYear.gross, 40);
+  assert.ok(Math.abs(result.base!.thisYear.net - 40 * 0.72 * 0.5) < 1e-9);
+  assert.equal(result.base!.next?.symbol, "AAPL");
+  assert.equal(result.base!.next?.exDate, "2026-11-10");
+
+  await provider.getDividends();
+  assert.deepEqual(calls, ["AAPL"], "cached");
+});
+
+test("a saved tax country replaces the guess", async () => {
+  const { settings, market, provider } = setup([
+    { id: "a", symbol: "AAPL", shares: 10, averageCost: 100, purchaseDate: "2026-01-10" },
+  ]);
+  settings.dividendTax = { AAPL: { country: "TW" } };
+  withDividends(market, { AAPL: QUARTERLY });
+
+  const [aapl] = (await provider.getDividends()).holdings;
+
+  assert.equal(aapl.tax.country, "TW");
+  assert.equal(aapl.tax.guessed, false);
+  assert.ok(Math.abs(aapl.thisYear.foreignTax - 30 * 0.21) < 1e-9);
+});
+
+test("with dividends switched off, nothing is fetched", async () => {
+  const { settings, market, provider } = setup();
+  settings.dividendsEnabled = false;
+  const calls = withDividends(market, {});
+
+  assert.equal((await provider.getDividends()).status, "disabled");
+  assert.deepEqual(calls, []);
+});
+
+test("a holding whose history fails is listed as unavailable; the others still come", async () => {
+  const { market, provider } = setup();
+  withDividends(market, { AAPL: QUARTERLY });
+
+  const result = await provider.getDividends();
+
+  assert.deepEqual(
+    result.holdings.map((h) => h.symbol),
+    ["AAPL"]
+  );
+  assert.deepEqual(result.unavailableSymbols, ["MSFT"]);
+});
+
+test("the context groups lots into holdings", async () => {
+  const { provider } = setup([
+    { id: "a", symbol: "AAPL", shares: 1, averageCost: 1 },
+    { id: "b", symbol: "AAPL", shares: 2, averageCost: 1 },
+  ]);
+  const context = await provider.getContext();
+  assert.equal(context.holdings.length, 1);
+  assert.equal(context.holdings[0].shares, 3);
 });

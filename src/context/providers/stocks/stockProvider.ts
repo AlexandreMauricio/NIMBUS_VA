@@ -1,7 +1,24 @@
 import { ContextProvider } from "../../types";
 import { logger } from "../../../logging/logger";
 import { localCalendarDate, localTimeZone } from "../calendar/icsTimeUtils";
-import { computeBaseTotals, computePortfolio, computePosition, majorCurrency } from "./positionMath";
+import {
+  computeBaseTotals,
+  computeHoldings,
+  computePortfolio,
+  computePosition,
+  majorCurrency,
+} from "./positionMath";
+import {
+  DividendAmounts,
+  DividendSeries,
+  HoldingDividends,
+  StockDividendsResult,
+  TAX_COUNTRIES,
+  computeHoldingDividends,
+  resolveTax,
+  scaleAmounts,
+  sumAmounts,
+} from "./dividends";
 import { YahooMarketDataSource, YahooNewsSource } from "./yahooFinance";
 import {
   FxRate,
@@ -38,6 +55,12 @@ const FETCH_CONCURRENCY = 4;
 const LISTINGS_TTL_MS = 30 * 60 * 1000;
 const MAX_LISTING_CANDIDATES = 3;
 const OUTDATED_AFTER_MS = OUTDATED_AFTER_DAYS * 24 * 60 * 60 * 1000;
+/** Dividend history changes a few times a year; each symbol's is a larger request than a quote. */
+const DIVIDENDS_TTL_MS = 12 * 60 * 60 * 1000;
+/** A failed dividend request isn't retried more often than this. */
+const DIVIDENDS_RETRY_MS = 60 * 60 * 1000;
+/** Dividend history is read at least this far back, so the pattern behind the next-dividend estimate is there. */
+const DIVIDEND_WINDOW_DAYS = 400;
 /** Used when settings carry no valid base currency. */
 const DEFAULT_BASE_CURRENCY = "EUR";
 
@@ -81,6 +104,10 @@ export class StockProvider implements ContextProvider<StockContext> {
   >();
   private readonly newsFailures = new Map<string, number>();
   private readonly listings = new Map<string, { result: ListingSearchResult; fetchedAtMs: number }>();
+  private readonly dividendSeries = new Map<
+    string,
+    { series: DividendSeries | null; fromDate: string; attemptedAtMs: number; failed: boolean }
+  >();
   private inFlight: Promise<StockContext> | null = null;
   private lastForcedRefreshMs = -Infinity;
 
@@ -150,6 +177,150 @@ export class StockProvider implements ContextProvider<StockContext> {
       this.newsFailures.set(symbol, nowMs);
       return this.newsFallback(symbol, cached);
     }
+  }
+
+  /**
+   * Dividends for every holding, with tax estimated for a Portugal
+   * resident. Fetched on demand like news rather than inside the context:
+   * a history per symbol is a bigger request, and it is cached for 12
+   * hours. A symbol whose history fails keeps its last one (stale) or is
+   * listed as unavailable. Never throws.
+   */
+  async getDividends(): Promise<StockDividendsResult> {
+    const settings = this.getSettings();
+    const baseCurrency = normalizeCurrencyCode(settings.baseCurrency) ?? DEFAULT_BASE_CURRENCY;
+    const empty = (status: StockDividendsResult["status"]): StockDividendsResult => ({
+      status,
+      retrievedAt: null,
+      baseCurrency,
+      holdings: [],
+      unavailableSymbols: [],
+      base: null,
+      unconvertedCurrencies: [],
+      taxCountries: TAX_COUNTRIES,
+    });
+    if (!settings.enabled || settings.dividendsEnabled === false) return empty("disabled");
+    if (!this.marketData.fetchDividends) return empty("unavailable");
+
+    let context: StockContext;
+    try {
+      context = await this.getContext();
+    } catch {
+      return empty("unavailable");
+    }
+
+    const positions = this.validPositions(settings);
+    const nowMs = this.now().getTime();
+    const today = localCalendarDate(this.now().toISOString(), this.timeZone());
+    const windowStart = new Date(Date.parse(`${today}T00:00:00Z`) - DIVIDEND_WINDOW_DAYS * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const fromDate = positions.reduce(
+      (earliest, p) => (p.purchaseDate && p.purchaseDate < earliest ? p.purchaseDate : earliest),
+      windowStart
+    );
+
+    // The price symbol: an alternative that supplies the price supplies the dividends too.
+    const sources = [...new Set(context.holdings.map((h) => h.priceSymbol))];
+    const due = sources.filter((symbol) => {
+      const entry = this.dividendSeries.get(symbol);
+      if (!entry) return true;
+      const wait = entry.failed ? DIVIDENDS_RETRY_MS : fromDate < entry.fromDate ? 0 : DIVIDENDS_TTL_MS;
+      return nowMs - entry.attemptedAtMs >= wait;
+    });
+    for (let i = 0; i < due.length; i += FETCH_CONCURRENCY) {
+      const batch = due.slice(i, i + FETCH_CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map((s) => this.marketData.fetchDividends!(s, fromDate))
+      );
+      results.forEach((result, j) => {
+        const symbol = batch[j];
+        const previous = this.dividendSeries.get(symbol);
+        if (result.status === "fulfilled") {
+          this.dividendSeries.set(symbol, {
+            series: result.value,
+            fromDate,
+            attemptedAtMs: nowMs,
+            failed: false,
+          });
+          return;
+        }
+        logger.warn(`Dividends for ${symbol} failed`, { error: String(result.reason) });
+        this.dividendSeries.set(symbol, {
+          series: previous?.series ?? null,
+          fromDate: previous?.fromDate ?? fromDate,
+          attemptedAtMs: nowMs,
+          failed: true,
+        });
+      });
+    }
+
+    const holdings: HoldingDividends[] = [];
+    const unavailableSymbols: string[] = [];
+    for (const h of context.holdings) {
+      const entry = this.dividendSeries.get(h.priceSymbol);
+      if (!entry?.series) {
+        unavailableSymbols.push(h.symbol);
+        continue;
+      }
+      holdings.push(
+        computeHoldingDividends({
+          symbol: h.symbol,
+          sourceSymbol: h.priceSymbol,
+          lots: positions.filter((p) => p.symbol === h.symbol),
+          series: entry.series,
+          stale: entry.failed,
+          // The guess reads the listing that actually trades — a retired .L GDR says nothing true.
+          tax: resolveTax(h.usingAlternative ? h.priceSymbol : h.symbol, settings.dividendTax?.[h.symbol]),
+          today,
+        })
+      );
+    }
+
+    const rateFor = (currency: string | null): number | null => {
+      if (!currency) return null;
+      const fx = context.fxRates.find((r) => r.currency === currency);
+      if (fx) return fx.rate;
+      const major = majorCurrency(currency);
+      return major.currency === context.baseCurrency ? 1 / major.divisor : null;
+    };
+    const unconverted = new Set<string>();
+    const thisYear: DividendAmounts[] = [];
+    const receivedTotal: DividendAmounts[] = [];
+    const annual: DividendAmounts[] = [];
+    let next: { symbol: string; exDate: string; net: number } | null = null;
+    for (const h of holdings) {
+      const rate = rateFor(h.currency);
+      if (rate === null) {
+        unconverted.add(h.currency ?? "");
+        continue;
+      }
+      thisYear.push(scaleAmounts(h.thisYear, rate));
+      receivedTotal.push(scaleAmounts(h.receivedTotal, rate));
+      if (h.estimatedAnnual) annual.push(scaleAmounts(h.estimatedAnnual, rate));
+      if (h.expected && (!next || h.expected.exDate < next.exDate)) {
+        next = { symbol: h.symbol, exDate: h.expected.exDate, net: h.expected.net * rate };
+      }
+    }
+
+    return {
+      status: holdings.length > 0 || unavailableSymbols.length === 0 ? "ok" : "unavailable",
+      retrievedAt: this.now().toISOString(),
+      baseCurrency: context.baseCurrency,
+      holdings,
+      unavailableSymbols,
+      base:
+        thisYear.length > 0
+          ? {
+              thisYear: sumAmounts(thisYear),
+              receivedTotal: sumAmounts(receivedTotal),
+              estimatedAnnual: annual.length > 0 ? sumAmounts(annual) : null,
+              next,
+            }
+          : null,
+      unconvertedCurrencies: [...unconverted].sort(),
+      taxCountries: TAX_COUNTRIES,
+    };
   }
 
   /**
@@ -301,6 +472,7 @@ export class StockProvider implements ContextProvider<StockContext> {
     return {
       retrievedAt: this.now().toISOString(),
       positions: views,
+      holdings: computeHoldings(views),
       totals: computePortfolio(views),
       unpricedCount: views.filter((v) => v.status === "unavailable").length,
       outdatedCount: views.filter((v) => v.status === "outdated").length,

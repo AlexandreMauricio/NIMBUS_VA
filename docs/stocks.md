@@ -166,6 +166,45 @@ The briefing reads only the totals, through its usual builder pattern
   **Track prices** and **Show recent news** switches, and the **Total in**
   base-currency picker (`baseCurrency` in settings, default `EUR`).
 
+## Lots and holdings
+
+Each entry is a *lot* — a purchase with its own shares, cost and date.
+Lots of the same symbol are combined into a *holding*
+(`computeHoldings`, `StockContext.holdings`): total shares, the average
+cost weighted by shares, and the summed value, gain and day change. The
+list shows one row per holding ("2 lots"); its page lists every lot, and
+each lot keeps its own page for editing. Market figures are left blank
+unless every lot is priced.
+
+## Dividends
+
+`dividends.ts` (pure) and `StockProvider.getDividends()` (IPC
+`nimbus:get-stock-dividends`). Fetched on demand like news, not inside the
+context, and cached for 12 hours per symbol (a failure is retried after an
+hour, and an earlier history is kept as stale). The source is the Yahoo
+chart endpoint with dividend events: **ex-dividend dates and per-share
+amounts only — no payment dates and no announced dividends.** Holdings
+priced through an alternative symbol use that symbol's history.
+
+- **Received**: every ex-date after a lot's purchase date counts that
+  lot's shares (a lot bought on the ex-date doesn't qualify). Lots without
+  a purchase date can't be matched and are reported, not guessed.
+- **Next dividend (estimate)**: the last ex-date plus the median gap of
+  the last ~400 days, at the last amount, on all shares held now. No
+  estimate with fewer than two dividends, or when the projected date is
+  more than 20 days overdue (the pattern broke).
+- **Per year (estimate)**: the last amount × payments per year × shares.
+- **Tax, for a Portugal resident** (`taxDividend`): the source country
+  withholds its rate; Portugal taxes the gross at 28% (the liberatory
+  rate) and credits the foreign tax up to the treaty rate; anything
+  withheld above the treaty rate is shown as reclaimable. Rates come from
+  `TAX_COUNTRIES` (typical values, not advice). The country is guessed from
+  the listing (exchange suffix, plus a short list of well-known US ADRs
+  such as TSM → Taiwan); `.IL` GDRs are unknown. The user can pick a country
+  or a custom rate per holding (`dividendTax` in settings).
+- The overview adds three figures in the base currency: dividends this
+  year after tax, the next estimated dividend, and the yearly estimate.
+
 ## Limitations
 
 - The Yahoo endpoints are **unofficial**: undocumented, possibly
@@ -173,7 +212,7 @@ The briefing reads only the totals, through its usual builder pattern
   depending on the exchange.
 - Average cost must be in the symbol's trading currency. London-listed
   prices are quoted in pence (`GBp`), so enter the cost in pence too.
-- Currency conversion uses today's rate only — no historical rates. No dividends, splits, fees, taxes, realized gains
+- Currency conversion uses today's rate only — no historical rates. No splits, fees, taxes, realized gains
   or history. The purchase date only matters for a position bought today.
 - News links open Yahoo Finance's page for the article, which credits the
   publisher — the endpoint provides no direct publisher URL. Relevance

@@ -309,6 +309,7 @@
             <p class="form-error" id="stocksError" role="alert" hidden></p>
 
             <div class="stock-overview" id="stockOverview"></div>
+            <div class="stock-overview" id="stockDividendOverview" hidden></div>
             <div class="stock-positions" id="stockPositionList"></div>
             <p class="feed-empty" id="stockEmpty" hidden>
               No positions yet. Click "+ Add position" to track a stock you own.
@@ -345,6 +346,18 @@
               </span>
               <span class="toggle">
                 <input type="checkbox" id="stocksNewsEnabled" />
+                <span class="track"></span>
+              </span>
+            </label>
+            <label class="setting-row">
+              <span>
+                <span class="setting-title">Show dividends</span>
+                <span class="setting-desc">
+                  Fetches each holding's dividend history and estimates the tax for a Portugal resident.
+                </span>
+              </span>
+              <span class="toggle">
+                <input type="checkbox" id="stocksDividendsEnabled" />
                 <span class="track"></span>
               </span>
             </label>

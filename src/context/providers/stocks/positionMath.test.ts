@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeBaseTotals, computePortfolio, computePosition, majorCurrency } from "./positionMath";
+import {
+  computeBaseTotals,
+  computeHoldings,
+  computePortfolio,
+  computePosition,
+  majorCurrency,
+} from "./positionMath";
 import { StockPosition, StockQuote } from "./types";
 
 const TODAY = "2026-09-11";
@@ -246,4 +252,37 @@ test("the price symbol defaults to the position's own, and records an alternativ
   const alt = computePosition(position({ alternativeSymbol: "AAPL.MX" }), quote(), TODAY, "AAPL.MX");
   assert.equal(alt.priceSymbol, "AAPL.MX");
   assert.equal(alt.usingAlternative, true);
+});
+
+// ----------------------------------------------------------------- holdings
+
+test("lots of the same symbol combine into one holding", () => {
+  const a = computePosition(position({ id: "a", shares: 10, averageCost: 100 }), quote(), TODAY);
+  const b = computePosition(position({ id: "b", shares: 5, averageCost: 130 }), quote(), TODAY);
+  const other = computePosition(position({ id: "c", symbol: "MSFT" }), quote({ symbol: "MSFT" }), TODAY);
+
+  const [aapl, msft] = computeHoldings([a, b, other]);
+
+  assert.deepEqual(aapl.lotIds, ["a", "b"]);
+  assert.equal(aapl.shares, 15);
+  assert.equal(aapl.invested, 1650);
+  close(aapl.averageCost, 110);
+  assert.equal(aapl.marketValue, 2250);
+  assert.equal(aapl.unrealizedGain, 600);
+  close(aapl.unrealizedGainPercent, (600 / 1650) * 100);
+  assert.equal(aapl.dayChange, 150);
+  close(aapl.dayChangePercent, (150 / 2100) * 100);
+  assert.deepEqual(msft.lotIds, ["c"]);
+});
+
+test("a holding with an unpriced lot shows no market figures rather than a partial sum", () => {
+  const a = computePosition(position({ id: "a" }), quote(), TODAY);
+  const b = computePosition(position({ id: "b" }), null, TODAY);
+
+  const [holding] = computeHoldings([a, b]);
+
+  assert.equal(holding.marketValue, null);
+  assert.equal(holding.unrealizedGain, null);
+  assert.equal(holding.dayChange, null);
+  assert.equal(holding.invested, 2000);
 });

@@ -17,6 +17,7 @@ import {
   StockProvider,
   StockPosition,
   normalizeCurrencyCode,
+  normalizeDividendTax,
   normalizeSymbol,
   validateStockPositions,
 } from "../context/providers/stocks";
@@ -391,7 +392,14 @@ function registerIpcHandlers(): void {
     "nimbus:update-stock-settings",
     (
       _event,
-      partial: { enabled?: unknown; newsEnabled?: unknown; baseCurrency?: unknown; positions?: unknown }
+      partial: {
+        enabled?: unknown;
+        newsEnabled?: unknown;
+        baseCurrency?: unknown;
+        dividendsEnabled?: unknown;
+        dividendTax?: unknown;
+        positions?: unknown;
+      }
     ) => {
       const current = settings.userPreferences.stocks;
       let positions = current.positions;
@@ -416,10 +424,21 @@ function registerIpcHandlers(): void {
         if (!code) throw new Error("Base currency must be a three-letter code such as EUR.");
         baseCurrency = code;
       }
+      let dividendTax = current.dividendTax;
+      if (partial?.dividendTax !== undefined) {
+        const checked = normalizeDividendTax(partial.dividendTax);
+        if (checked.error) throw new Error(`Invalid dividend tax setting: ${checked.error}`);
+        dividendTax = checked.settings!;
+      }
       settings.userPreferences.stocks = {
         enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
         newsEnabled: typeof partial?.newsEnabled === "boolean" ? partial.newsEnabled : current.newsEnabled,
         baseCurrency,
+        dividendsEnabled:
+          typeof partial?.dividendsEnabled === "boolean"
+            ? partial.dividendsEnabled
+            : current.dividendsEnabled,
+        dividendTax,
         positions,
       };
       saveSettings(settings);
@@ -456,6 +475,8 @@ function registerIpcHandlers(): void {
     if (!normalized || !tracked) return { symbol: String(symbol), status: "unavailable", candidates: [] };
     return stockProvider.findListings(normalized);
   });
+  // Dividend history per holding, with tax estimated for a Portugal resident.
+  ipcMain.handle("nimbus:get-stock-dividends", () => stockProvider.getDividends());
 
   // Spotify's connection state is derived from SpotifyAuthManager (has a
   // stored refresh token or not) rather than persisted as its own

@@ -2,6 +2,7 @@ import { migrateRoutineActivities } from "./activityMigration";
 import { Routine } from "../routines/types";
 import { ActivityMapping, DEFAULT_ACTIVITY_GRACE_MINUTES } from "../activity/types";
 import { StockPosition } from "../context/providers/stocks/types";
+import type { DividendTaxSetting } from "../context/providers/stocks/dividends";
 
 /**
  * Persisted NIMBUS state, split by who owns the data — not just grouped
@@ -164,6 +165,10 @@ export interface StockPreferences {
   newsEnabled: boolean;
   /** Currency every position is converted into for the single portfolio total. Three-letter code. */
   baseCurrency: string;
+  /** Whether dividend history is fetched and shown. */
+  dividendsEnabled: boolean;
+  /** Per-symbol tax country choices; a symbol not listed uses the country guessed from its listing. */
+  dividendTax: Record<string, DividendTaxSetting>;
   positions: StockPosition[];
 }
 
@@ -233,6 +238,8 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       enabled: true,
       newsEnabled: true,
       baseCurrency: "EUR",
+      dividendsEnabled: true,
+      dividendTax: {},
       positions: [],
     },
   },
@@ -336,6 +343,7 @@ export function applyDefaults(parsed: any): NimbusSettings {
       stocks: {
         ...defaults.userPreferences.stocks,
         ...parsed.userPreferences?.stocks,
+        dividendTax: { ...parsed.userPreferences?.stocks?.dividendTax },
       },
     },
   };

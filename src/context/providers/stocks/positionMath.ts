@@ -1,4 +1,4 @@
-import { PortfolioTotals, PositionView, StockPosition, StockQuote } from "./types";
+import { HoldingView, PortfolioTotals, PositionView, StockPosition, StockQuote } from "./types";
 
 /**
  * Quote currencies that are a hundredth of a major currency: London prices
@@ -177,4 +177,45 @@ export function computeBaseTotals(
 
   const [totals] = computePortfolio(converted);
   return { totals: totals ?? null, unconverted: [...unconverted].sort() };
+}
+
+/** Lots grouped by symbol, in the order each symbol first appears. */
+export function computeHoldings(positions: PositionView[]): HoldingView[] {
+  const bySymbol = new Map<string, PositionView[]>();
+  for (const p of positions) {
+    const lots = bySymbol.get(p.symbol);
+    if (lots) lots.push(p);
+    else bySymbol.set(p.symbol, [p]);
+  }
+
+  return [...bySymbol.values()].map((lots) => {
+    const first = lots.find((l) => l.quote !== null) ?? lots[0];
+    const shares = lots.reduce((sum, l) => sum + l.shares, 0);
+    const invested = lots.reduce((sum, l) => sum + l.invested, 0);
+    const priced = lots.every((l) => l.marketValue !== null);
+    const marketValue = priced ? lots.reduce((sum, l) => sum + l.marketValue!, 0) : null;
+    const unrealizedGain = marketValue === null ? null : marketValue - invested;
+    const dayKnown = priced && lots.every((l) => l.dayChange !== null);
+    const dayChange = dayKnown ? lots.reduce((sum, l) => sum + l.dayChange!, 0) : null;
+    const previousValue = marketValue !== null && dayChange !== null ? marketValue - dayChange : 0;
+    return {
+      symbol: first.symbol,
+      priceSymbol: first.priceSymbol,
+      usingAlternative: first.usingAlternative,
+      companyName: first.companyName,
+      currency: first.currency,
+      quote: first.quote,
+      status: first.status,
+      lotIds: lots.map((l) => l.id),
+      shares,
+      averageCost: shares > 0 ? invested / shares : 0,
+      invested,
+      marketValue,
+      unrealizedGain,
+      unrealizedGainPercent:
+        unrealizedGain !== null && invested > 0 ? (unrealizedGain / invested) * 100 : null,
+      dayChange,
+      dayChangePercent: dayChange !== null && previousValue > 0 ? (dayChange / previousValue) * 100 : null,
+    };
+  });
 }

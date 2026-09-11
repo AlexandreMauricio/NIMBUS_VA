@@ -28,7 +28,12 @@ Dates are the day the work landed.
   A symbol whose price hasn't changed in over a week is marked outdated,
   left out of the totals, and offered the company's live listings. A
   position can keep an alternative symbol that supplies the price whenever
-  its own symbol is retired or outdated. Prices come from
+  its own symbol is retired or outdated.
+- Stocks: lots of the same symbol are grouped into one holding, with a
+  page listing each lot. Dividends per holding: received since purchase,
+  the next one estimated from the recent pattern, and a yearly estimate,
+  with tax estimated for a Portugal resident (source withholding plus
+  Portugal's 28%, crediting foreign tax up to the treaty rate). Prices come from
   Yahoo Finance's public endpoints (no key); stale and unavailable prices
   are marked, never guessed. The briefing gains a portfolio line ("Your
   portfolio is up 1.8% today."). Strictly read-only: no trading, no

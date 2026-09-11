@@ -1885,6 +1885,67 @@ button.btn {
   color: var(--color-neutral-500);
 }
 
+.stock-dividends,
+.stock-lots {
+  margin-bottom: var(--space-4);
+}
+
+.stock-tax-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.stock-tax-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stock-tax-row .setting-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.stock-tax-custom {
+  width: 110px;
+}
+
+.stock-table-wrap {
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+
+.stock-dividend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-dividend-table th,
+.stock-dividend-table td {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--color-divider);
+  white-space: nowrap;
+}
+
+.stock-dividend-table th {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-neutral-400);
+}
+
+.stock-dividend-table th:first-child,
+.stock-dividend-table td:first-child {
+  text-align: left;
+}
+
 .stock-listing-actions {
   display: flex;
   gap: var(--space-2);

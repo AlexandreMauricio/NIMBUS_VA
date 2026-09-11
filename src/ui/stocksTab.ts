@@ -72,6 +72,7 @@ interface StockContextView {
   retrievedAt: string;
   positions: StockPositionView[];
   totals: StockTotalsView[];
+  holdings?: HoldingViewUI[];
   unpricedCount: number;
   outdatedCount?: number;
   anyStale: boolean;
@@ -105,6 +106,8 @@ interface StockPreferencesView {
   enabled: boolean;
   newsEnabled: boolean;
   baseCurrency: string;
+  dividendsEnabled: boolean;
+  dividendTax: Record<string, DividendTaxSettingView>;
   positions: StockPositionInput[];
 }
 
@@ -137,7 +140,90 @@ interface ListingSearchResultView {
   candidates: ListingCandidateView[];
 }
 
+/** The figures a list row and the market/estimate cards need — shared by a lot and a holding. */
+type Figures = Pick<
+  StockPositionView,
+  | "companyName"
+  | "currency"
+  | "quote"
+  | "status"
+  | "marketValue"
+  | "unrealizedGain"
+  | "unrealizedGainPercent"
+  | "dayChange"
+  | "dayChangePercent"
+  | "priceSymbol"
+  | "usingAlternative"
+>;
+
+interface HoldingViewUI extends Figures {
+  symbol: string;
+  lotIds: string[];
+  shares: number;
+  averageCost: number;
+  invested: number;
+}
+
+interface DividendAmountsView {
+  gross: number;
+  foreignTax: number;
+  portugueseTax: number;
+  net: number;
+  reclaimable: number;
+}
+
+interface DividendLineView extends DividendAmountsView {
+  exDate: string;
+  amountPerShare: number;
+  shares: number;
+}
+
+interface HoldingDividendsView {
+  symbol: string;
+  sourceSymbol: string;
+  currency: string | null;
+  status: "ok" | "stale";
+  tax: {
+    country: string;
+    countryName: string;
+    guessed: boolean;
+    known: boolean;
+    withholdingPercent: number;
+    creditCapPercent: number;
+    portuguesePercent: number;
+  };
+  received: DividendLineView[];
+  receivedTotal: DividendAmountsView;
+  thisYear: DividendAmountsView;
+  frequency: string | null;
+  expected: DividendLineView | null;
+  estimatedAnnual: DividendAmountsView | null;
+  lotsWithoutDate: number;
+}
+
+interface StockDividendsView {
+  status: "ok" | "disabled" | "unavailable";
+  retrievedAt: string | null;
+  baseCurrency: string;
+  holdings: HoldingDividendsView[];
+  unavailableSymbols: string[];
+  base: {
+    thisYear: DividendAmountsView;
+    receivedTotal: DividendAmountsView;
+    estimatedAnnual: DividendAmountsView | null;
+    next: { symbol: string; exDate: string; net: number } | null;
+  } | null;
+  unconvertedCurrencies: string[];
+  taxCountries: { code: string; name: string; withholdingPercent: number; creditCapPercent: number }[];
+}
+
+interface DividendTaxSettingView {
+  country: string;
+  withholdingPercent?: number;
+}
+
 interface StocksBridge {
+  getStockDividends(): Promise<StockDividendsView>;
   findStockListings(symbol: string): Promise<ListingSearchResultView>;
   getContext(): Promise<{ providers: Record<string, unknown> }>;
   getStockSettings(): Promise<StockPreferencesView>;
@@ -240,6 +326,8 @@ export function initStocksTab(): void {
   const newsInput = document.getElementById("stocksNewsEnabled") as HTMLInputElement;
   const refreshBtn = document.getElementById("refreshStocksBtn") as HTMLButtonElement;
   const baseSelect = document.getElementById("stocksBaseCurrency") as HTMLSelectElement;
+  const dividendsInput = document.getElementById("stocksDividendsEnabled") as HTMLInputElement;
+  const dividendOverviewEl = document.getElementById("stockDividendOverview") as HTMLElement;
 
   const formHeading = document.getElementById("positionFormHeading") as HTMLElement;
   const symbolInput = document.getElementById("positionSymbol") as HTMLInputElement;
@@ -252,9 +340,21 @@ export function initStocksTab(): void {
   const formError = document.getElementById("positionFormError") as HTMLElement;
   const saveBtn = document.getElementById("savePositionBtn") as HTMLButtonElement;
 
-  let prefs: StockPreferencesView = { enabled: true, newsEnabled: true, baseCurrency: "EUR", positions: [] };
+  let prefs: StockPreferencesView = {
+    enabled: true,
+    newsEnabled: true,
+    baseCurrency: "EUR",
+    dividendsEnabled: true,
+    dividendTax: {},
+    positions: [],
+  };
   let result: StockProviderResultView | undefined;
   let selectedId: string | null = null;
+  /** The holding page being shown, when it is a holding of several lots rather than one lot. */
+  let selectedSymbol: string | null = null;
+  /** A lot opened from its holding page goes back there. */
+  let returnToSymbol: string | null = null;
+  let dividends: StockDividendsView | null = null;
   let editingId: string | null = null;
 
   function show(view: "list" | "detail" | "edit"): void {
@@ -274,7 +374,7 @@ export function initStocksTab(): void {
   }
 
   /** Base currency and the rate into it for a position, or null when it is already in the base or has no rate. */
-  function conversionFor(view: StockPositionView | null): { base: string; rate: number } | null {
+  function conversionFor(view: { currency: string | null } | null): { base: string; rate: number } | null {
     const data = result?.data;
     if (!view?.currency || !data?.baseCurrency) return null;
     const fx = data.fxRates?.find((r) => r.currency === view.currency);
@@ -291,11 +391,13 @@ export function initStocksTab(): void {
       showError(errorEl, `Couldn't load stocks: ${errorText(err)}`);
     }
     render();
+    void loadDividends();
   }
 
   function render(): void {
     enabledInput.checked = prefs.enabled;
     newsInput.checked = prefs.newsEnabled;
+    dividendsInput.checked = prefs.dividendsEnabled;
     const codes = BASE_CURRENCIES.includes(prefs.baseCurrency)
       ? BASE_CURRENCIES
       : [prefs.baseCurrency, ...BASE_CURRENCIES];
@@ -304,8 +406,12 @@ export function initStocksTab(): void {
       baseSelect.appendChild(new Option(code, code, false, code === prefs.baseCurrency));
     renderStatus();
     renderOverview();
+    renderDividendOverview();
     renderList();
-    if (!detailView.hidden && selectedId) renderDetail(selectedId);
+    if (!detailView.hidden) {
+      if (selectedId) renderDetail(selectedId);
+      else if (selectedSymbol) renderHolding(selectedSymbol);
+    }
   }
 
   function renderStatus(): void {
@@ -421,121 +527,102 @@ export function initStocksTab(): void {
   function renderList(): void {
     listEl.innerHTML = "";
     emptyEl.hidden = prefs.positions.length > 0;
-    for (const position of prefs.positions) {
-      const view = viewFor(position.id);
+    for (const [symbol, lots] of groupedLots()) {
+      const single = lots.length === 1;
+      const figures: Figures | null = single ? viewFor(lots[0].id) : holdingFor(symbol);
       const row = el("button", "stock-row");
       row.type = "button";
 
       const who = el("span");
-      const symbolLine = el("span", "stock-row-symbol", position.symbol);
-      if (view?.status === "stale") symbolLine.appendChild(el("span", "tag tag-neutral", "stale"));
-      if (view?.status === "outdated") symbolLine.appendChild(el("span", "tag tag-neutral", "outdated"));
-      if (view?.usingAlternative && view.priceSymbol) {
-        symbolLine.appendChild(el("span", "tag tag-neutral", `via ${view.priceSymbol}`));
+      const symbolLine = el("span", "stock-row-symbol", symbol);
+      if (!single) symbolLine.appendChild(el("span", "tag tag-neutral", `${lots.length} lots`));
+      if (figures?.status === "stale") symbolLine.appendChild(el("span", "tag tag-neutral", "stale"));
+      if (figures?.status === "outdated") symbolLine.appendChild(el("span", "tag tag-neutral", "outdated"));
+      if (figures?.usingAlternative && figures.priceSymbol) {
+        symbolLine.appendChild(el("span", "tag tag-neutral", `via ${figures.priceSymbol}`));
       }
-      if (prefs.enabled && result?.data && (!view || view.status === "unavailable")) {
+      if (prefs.enabled && result?.data && (!figures || figures.status === "unavailable")) {
         symbolLine.appendChild(el("span", "tag tag-neutral", "no price"));
       }
       who.appendChild(symbolLine);
-      who.appendChild(el("div", "stock-row-name", view?.companyName ?? position.companyName ?? ""));
+      who.appendChild(el("div", "stock-row-name", figures?.companyName ?? lots[0].companyName ?? ""));
       row.appendChild(who);
 
-      const currency = view?.currency ?? null;
-      row.appendChild(numberCell("Price", money(view?.quote?.price, currency)));
+      const currency = figures?.currency ?? null;
+      row.appendChild(numberCell("Price", money(figures?.quote?.price, currency)));
       row.appendChild(
-        numberCell("Today", percent(view?.dayChangePercent), trendClass(view?.dayChangePercent))
+        numberCell("Today", percent(figures?.dayChangePercent), trendClass(figures?.dayChangePercent))
       );
-      const fx = conversionFor(view);
+      const fx = conversionFor(figures);
       row.appendChild(
         numberCell(
           "Value",
-          money(view?.marketValue, currency),
+          money(figures?.marketValue, currency),
           "",
-          fx && view?.marketValue != null ? `≈ ${money(view.marketValue * fx.rate, fx.base)}` : undefined
+          fx && figures?.marketValue != null
+            ? `≈ ${money(figures.marketValue * fx.rate, fx.base)}`
+            : undefined
         )
       );
       row.appendChild(
         numberCell(
           "Total return",
-          view?.unrealizedGain !== null && view?.unrealizedGain !== undefined
-            ? `${money(view.unrealizedGain, currency, true)} (${percent(view.unrealizedGainPercent)})`
+          figures?.unrealizedGain !== null && figures?.unrealizedGain !== undefined
+            ? `${money(figures.unrealizedGain, currency, true)} (${percent(figures.unrealizedGainPercent)})`
             : "—",
-          trendClass(view?.unrealizedGain)
+          trendClass(figures?.unrealizedGain)
         )
       );
 
-      row.addEventListener("click", () => openDetail(position.id));
+      row.addEventListener("click", () => (single ? openDetail(lots[0].id) : openHolding(symbol)));
       listEl.appendChild(row);
     }
   }
 
+  /** Lots grouped by symbol, in the order each symbol was first entered. */
+  function groupedLots(): Map<string, StockPositionInput[]> {
+    const groups = new Map<string, StockPositionInput[]>();
+    for (const p of prefs.positions) {
+      const group = groups.get(p.symbol);
+      if (group) group.push(p);
+      else groups.set(p.symbol, [p]);
+    }
+    return groups;
+  }
+
+  function holdingFor(symbol: string): HoldingViewUI | null {
+    return result?.data?.holdings?.find((h) => h.symbol === symbol) ?? null;
+  }
+
   // --------------------------------------------------------------- detail
 
-  function openDetail(id: string): void {
+  /** What the detail page shows: a lot's id, or "holding:SYMBOL". */
+  function detailKey(): string | null {
+    return selectedId ?? (selectedSymbol ? `holding:${selectedSymbol}` : null);
+  }
+
+  function openDetail(id: string, fromSymbol: string | null = null): void {
     selectedId = id;
+    selectedSymbol = null;
+    returnToSymbol = fromSymbol;
     show("detail");
     renderDetail(id);
   }
 
-  function renderDetail(id: string): void {
-    const position = prefs.positions.find((p) => p.id === id);
-    if (!position) {
-      show("list");
-      return;
-    }
-    const view = viewFor(id);
+  function openHolding(symbol: string): void {
+    selectedId = null;
+    selectedSymbol = symbol;
+    returnToSymbol = null;
+    show("detail");
+    renderHolding(symbol);
+  }
+
+  function marketCard(view: Figures | null, symbol: string): HTMLElement {
     const currency = view?.currency ?? null;
-    detailEl.innerHTML = "";
-
-    const title = view?.companyName ?? position.companyName ?? position.symbol;
-    detailEl.appendChild(
-      el("h3", undefined, title === position.symbol ? title : `${title} (${position.symbol})`)
-    );
-
-    const grid = el("div", "stock-detail-grid");
-
-    const yours = el("div", "stock-detail-card");
-    yours.appendChild(el("div", "stock-stat-label", "Your position"));
-    if (position.alternativeSymbol)
-      yours.appendChild(keyValue("Alternative symbol", position.alternativeSymbol));
-    yours.appendChild(keyValue("Shares", new Intl.NumberFormat().format(position.shares)));
-    yours.appendChild(keyValue("Average cost", money(position.averageCost, currency)));
-    yours.appendChild(keyValue("Purchase date", plainDate(position.purchaseDate)));
-    yours.appendChild(keyValue("Invested", money(position.shares * position.averageCost, currency)));
-    if (position.notes) yours.appendChild(keyValue("Notes", position.notes));
-    grid.appendChild(yours);
-
     const market = el("div", "stock-detail-card");
     market.appendChild(el("div", "stock-stat-label", "Market"));
     const quote = view?.quote ?? null;
-    if (quote) {
-      if (view?.usingAlternative && view.priceSymbol) {
-        market.appendChild(
-          keyValue("Price from", `${view.priceSymbol} (${position.symbol} has no current price)`)
-        );
-      }
-      market.appendChild(keyValue("Price", money(quote.price, currency)));
-      market.appendChild(keyValue("Previous close", money(quote.previousClose, currency)));
-      market.appendChild(
-        keyValue(
-          "Day change",
-          `${money(quote.change, currency, true)} (${percent(quote.changePercent)})`,
-          trendClass(quote.change)
-        )
-      );
-      market.appendChild(keyValue("Exchange", quote.exchange ?? "—"));
-      market.appendChild(keyValue("Price time", dateTime(quote.marketTime)));
-      market.appendChild(
-        keyValue(
-          "Status",
-          view?.status === "outdated"
-            ? "Not traded recently — listing looks inactive"
-            : quote.stale
-              ? "From an earlier fetch — may be out of date"
-              : "Latest retrieved"
-        )
-      );
-    } else {
+    if (!quote) {
       market.appendChild(
         el(
           "p",
@@ -545,12 +632,40 @@ export function initStocksTab(): void {
             : "Price tracking is off."
         )
       );
+      return market;
     }
-    grid.appendChild(market);
+    if (view?.usingAlternative && view.priceSymbol) {
+      market.appendChild(keyValue("Price from", `${view.priceSymbol} (${symbol} has no current price)`));
+    }
+    market.appendChild(keyValue("Price", money(quote.price, currency)));
+    market.appendChild(keyValue("Previous close", money(quote.previousClose, currency)));
+    market.appendChild(
+      keyValue(
+        "Day change",
+        `${money(quote.change, currency, true)} (${percent(quote.changePercent)})`,
+        trendClass(quote.change)
+      )
+    );
+    market.appendChild(keyValue("Exchange", quote.exchange ?? "—"));
+    market.appendChild(keyValue("Price time", dateTime(quote.marketTime)));
+    market.appendChild(
+      keyValue(
+        "Status",
+        view?.status === "outdated"
+          ? "Not traded recently — listing looks inactive"
+          : quote.stale
+            ? "From an earlier fetch — may be out of date"
+            : "Latest retrieved"
+      )
+    );
+    return market;
+  }
 
+  function estimateCard(view: Figures | null, label: string): HTMLElement {
+    const currency = view?.currency ?? null;
     const estimate = el("div", "stock-detail-card");
-    estimate.appendChild(el("div", "stock-stat-label", "Estimated from your entries"));
-    estimate.appendChild(keyValue("Position value", money(view?.marketValue, currency)));
+    estimate.appendChild(el("div", "stock-stat-label", label));
+    estimate.appendChild(keyValue("Value", money(view?.marketValue, currency)));
     estimate.appendChild(
       keyValue(
         "Unrealized gain/loss",
@@ -579,7 +694,59 @@ export function initStocksTab(): void {
         )
       );
     }
-    grid.appendChild(estimate);
+    return estimate;
+  }
+
+  function newsBlock(symbol: string, key: string): HTMLElement {
+    const newsSection = el("div");
+    newsSection.appendChild(el("div", "stock-stat-label", "Recent news"));
+    const newsBody = el("div", "stock-news-list");
+    newsBody.appendChild(
+      el("p", "feed-empty", prefs.newsEnabled ? "Loading headlines…" : "News is switched off.")
+    );
+    newsSection.appendChild(newsBody);
+    if (prefs.newsEnabled) void loadNews(symbol, newsBody, key);
+    return newsSection;
+  }
+
+  function renderDetail(id: string): void {
+    const position = prefs.positions.find((p) => p.id === id);
+    if (!position) {
+      show("list");
+      return;
+    }
+    const view = viewFor(id);
+    const currency = view?.currency ?? null;
+    const lotCount = prefs.positions.filter((p) => p.symbol === position.symbol).length;
+    detailEl.innerHTML = "";
+
+    const title = view?.companyName ?? position.companyName ?? position.symbol;
+    detailEl.appendChild(
+      el("h3", undefined, title === position.symbol ? title : `${title} (${position.symbol})`)
+    );
+    if (lotCount > 1) {
+      detailEl.appendChild(
+        el(
+          "p",
+          "setting-note",
+          `One of ${lotCount} lots of ${position.symbol}. The holding page adds them together and shows their dividends.`
+        )
+      );
+    }
+
+    const grid = el("div", "stock-detail-grid");
+    const yours = el("div", "stock-detail-card");
+    yours.appendChild(el("div", "stock-stat-label", lotCount > 1 ? "This lot" : "Your position"));
+    if (position.alternativeSymbol)
+      yours.appendChild(keyValue("Alternative symbol", position.alternativeSymbol));
+    yours.appendChild(keyValue("Shares", new Intl.NumberFormat().format(position.shares)));
+    yours.appendChild(keyValue("Average cost", money(position.averageCost, currency)));
+    yours.appendChild(keyValue("Purchase date", plainDate(position.purchaseDate)));
+    yours.appendChild(keyValue("Invested", money(position.shares * position.averageCost, currency)));
+    if (position.notes) yours.appendChild(keyValue("Notes", position.notes));
+    grid.appendChild(yours);
+    grid.appendChild(marketCard(view, position.symbol));
+    grid.appendChild(estimateCard(view, "Estimated from your entries"));
     detailEl.appendChild(grid);
 
     const actions = el("div", "stock-detail-actions");
@@ -600,15 +767,334 @@ export function initStocksTab(): void {
       void loadListings(position, view, body);
     }
 
-    const newsSection = el("div");
-    newsSection.appendChild(el("div", "stock-stat-label", "Recent news"));
-    const newsBody = el("div", "stock-news-list");
-    newsBody.appendChild(
-      el("p", "feed-empty", prefs.newsEnabled ? "Loading headlines…" : "News is switched off.")
+    if (lotCount === 1) detailEl.appendChild(dividendSection(position.symbol));
+    detailEl.appendChild(newsBlock(position.symbol, id));
+  }
+
+  function renderHolding(symbol: string): void {
+    const lots = prefs.positions.filter((p) => p.symbol === symbol);
+    if (lots.length === 0) {
+      selectedSymbol = null;
+      show("list");
+      return;
+    }
+    if (lots.length === 1) {
+      openDetail(lots[0].id);
+      return;
+    }
+    const holding = holdingFor(symbol);
+    const currency = holding?.currency ?? viewFor(lots[0].id)?.currency ?? null;
+    const shares = lots.reduce((sum, p) => sum + p.shares, 0);
+    const invested = lots.reduce((sum, p) => sum + p.shares * p.averageCost, 0);
+    detailEl.innerHTML = "";
+
+    const title = holding?.companyName ?? lots[0].companyName ?? symbol;
+    detailEl.appendChild(el("h3", undefined, title === symbol ? title : `${title} (${symbol})`));
+
+    const grid = el("div", "stock-detail-grid");
+    const yours = el("div", "stock-detail-card");
+    yours.appendChild(el("div", "stock-stat-label", "Your holding"));
+    yours.appendChild(keyValue("Lots", String(lots.length)));
+    yours.appendChild(keyValue("Total shares", new Intl.NumberFormat().format(shares)));
+    yours.appendChild(keyValue("Average cost", money(shares > 0 ? invested / shares : 0, currency)));
+    yours.appendChild(keyValue("Invested", money(invested, currency)));
+    grid.appendChild(yours);
+    grid.appendChild(marketCard(holding, symbol));
+    grid.appendChild(estimateCard(holding, "Estimated, all lots"));
+    detailEl.appendChild(grid);
+
+    const lotsSection = el("div", "stock-lots");
+    lotsSection.appendChild(el("div", "stock-stat-label", "Lots"));
+    const list = el("div", "stock-news-list");
+    for (const lot of lots) {
+      const view = viewFor(lot.id);
+      const item = el("button", "stock-news-item");
+      item.type = "button";
+      item.title = "Open this lot to edit or remove it";
+      item.appendChild(
+        el(
+          "div",
+          "stock-news-title",
+          `${new Intl.NumberFormat().format(lot.shares)} shares at ${money(lot.averageCost, currency)}`
+        )
+      );
+      const meta = [
+        lot.purchaseDate ? `bought ${plainDate(lot.purchaseDate)}` : "no purchase date",
+        view?.unrealizedGain != null
+          ? `${money(view.unrealizedGain, currency, true)} (${percent(view.unrealizedGainPercent)})`
+          : null,
+        lot.notes ?? null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      item.appendChild(el("div", "stock-news-meta", meta));
+      item.addEventListener("click", () => openDetail(lot.id, symbol));
+      list.appendChild(item);
+    }
+    lotsSection.appendChild(list);
+    detailEl.appendChild(lotsSection);
+
+    detailEl.appendChild(dividendSection(symbol));
+    detailEl.appendChild(newsBlock(symbol, `holding:${symbol}`));
+  }
+
+  // ------------------------------------------------------------ dividends
+
+  const FREQUENCY_LABELS: Record<string, string> = {
+    monthly: "Monthly",
+    quarterly: "Quarterly",
+    semiannual: "Twice a year",
+    annual: "Once a year",
+  };
+
+  function rate(value: number): string {
+    return `${Number(value.toFixed(3))}%`;
+  }
+
+  async function loadDividends(): Promise<void> {
+    if (!prefs.enabled || !prefs.dividendsEnabled || prefs.positions.length === 0) {
+      dividends = null;
+      renderDividendOverview();
+      return;
+    }
+    try {
+      dividends = await bridge().getStockDividends();
+    } catch {
+      dividends = {
+        status: "unavailable",
+        retrievedAt: null,
+        baseCurrency: prefs.baseCurrency,
+        holdings: [],
+        unavailableSymbols: [],
+        base: null,
+        unconvertedCurrencies: [],
+        taxCountries: [],
+      };
+    }
+    renderDividendOverview();
+    // Fill in the open page's dividend section in place, without reloading its news.
+    const section = detailEl.querySelector<HTMLElement>(".stock-dividends");
+    if (section?.dataset.symbol && !detailView.hidden)
+      section.replaceWith(dividendSection(section.dataset.symbol));
+  }
+
+  function renderDividendOverview(): void {
+    dividendOverviewEl.innerHTML = "";
+    const base = dividends?.base ?? null;
+    dividendOverviewEl.hidden = !base || !prefs.enabled || !prefs.dividendsEnabled;
+    if (!base || !dividends) return;
+    const cur = dividends.baseCurrency;
+    dividendOverviewEl.appendChild(
+      stat(
+        `Dividends ${new Date().getFullYear()} · after tax`,
+        money(base.thisYear.net, cur),
+        `Gross ${money(base.thisYear.gross, cur)} · tax ${money(base.thisYear.foreignTax + base.thisYear.portugueseTax, cur)}`
+      )
     );
-    newsSection.appendChild(newsBody);
-    detailEl.appendChild(newsSection);
-    if (prefs.newsEnabled) void loadNews(position.symbol, newsBody, id);
+    dividendOverviewEl.appendChild(
+      stat(
+        "Next dividend · estimate",
+        base.next ? money(base.next.net, cur) : "—",
+        base.next
+          ? `${base.next.symbol} · ex-date around ${plainDate(base.next.exDate)}`
+          : "No regular pattern to project from"
+      )
+    );
+    dividendOverviewEl.appendChild(
+      stat(
+        "Per year · estimate",
+        base.estimatedAnnual ? money(base.estimatedAnnual.net, cur) : "—",
+        base.estimatedAnnual
+          ? `After tax · gross ${money(base.estimatedAnnual.gross, cur)} at the latest amounts`
+          : "Not enough history yet"
+      )
+    );
+  }
+
+  function dividendSection(symbol: string): HTMLElement {
+    const section = el("div", "stock-dividends");
+    section.dataset.symbol = symbol;
+    section.appendChild(el("div", "stock-stat-label", "Dividends"));
+    if (!prefs.dividendsEnabled) {
+      section.appendChild(el("p", "feed-empty", "Dividends are switched off."));
+      return section;
+    }
+    if (!dividends) {
+      section.appendChild(el("p", "feed-empty", "Loading dividends…"));
+      return section;
+    }
+    const d = dividends.holdings.find((h) => h.symbol === symbol);
+    if (!d) {
+      section.appendChild(el("p", "feed-empty", "Dividend history isn't available right now."));
+      return section;
+    }
+    const cur = d.currency;
+    section.appendChild(taxControls(symbol, d));
+
+    const cards = el("div", "stock-detail-grid");
+    const got = el("div", "stock-detail-card");
+    got.appendChild(el("div", "stock-stat-label", "Received while you held it"));
+    got.appendChild(keyValue("Gross", money(d.receivedTotal.gross, cur)));
+    got.appendChild(keyValue("Withheld abroad", money(-d.receivedTotal.foreignTax, cur)));
+    got.appendChild(keyValue("Portuguese tax", money(-d.receivedTotal.portugueseTax, cur)));
+    got.appendChild(keyValue("Net", money(d.receivedTotal.net, cur)));
+    got.appendChild(keyValue(`Net in ${new Date().getFullYear()}`, money(d.thisYear.net, cur)));
+    cards.appendChild(got);
+
+    const next = el("div", "stock-detail-card");
+    next.appendChild(el("div", "stock-stat-label", "Next dividend · estimate"));
+    if (d.expected) {
+      next.appendChild(keyValue("Ex-date around", plainDate(d.expected.exDate)));
+      next.appendChild(keyValue("Per share", money(d.expected.amountPerShare, cur)));
+      next.appendChild(keyValue("Gross", money(d.expected.gross, cur)));
+      next.appendChild(keyValue("Net", money(d.expected.net, cur)));
+    } else {
+      next.appendChild(el("p", "feed-empty", "No regular pattern to project from."));
+    }
+    cards.appendChild(next);
+
+    const yearly = el("div", "stock-detail-card");
+    yearly.appendChild(el("div", "stock-stat-label", "Per year · estimate"));
+    if (d.estimatedAnnual && d.frequency) {
+      yearly.appendChild(keyValue("Pays", FREQUENCY_LABELS[d.frequency] ?? d.frequency));
+      yearly.appendChild(keyValue("Gross", money(d.estimatedAnnual.gross, cur)));
+      yearly.appendChild(keyValue("Net", money(d.estimatedAnnual.net, cur)));
+    } else {
+      yearly.appendChild(el("p", "feed-empty", "Not enough dividend history."));
+    }
+    cards.appendChild(yearly);
+    section.appendChild(cards);
+
+    if (d.received.length > 0) {
+      const wrap = el("div", "stock-table-wrap");
+      const table = el("table", "stock-dividend-table");
+      const thead = el("thead");
+      const head = el("tr");
+      for (const label of [
+        "Ex-date",
+        "Per share",
+        "Shares",
+        "Gross",
+        "Withheld abroad",
+        "Portuguese tax",
+        "Net",
+      ]) {
+        head.appendChild(el("th", undefined, label));
+      }
+      thead.appendChild(head);
+      table.appendChild(thead);
+      const tbody = el("tbody");
+      for (const r of d.received.slice(0, 12)) {
+        const tr = el("tr");
+        for (const value of [
+          plainDate(r.exDate),
+          money(r.amountPerShare, cur),
+          new Intl.NumberFormat().format(r.shares),
+          money(r.gross, cur),
+          money(r.foreignTax, cur),
+          money(r.portugueseTax, cur),
+          money(r.net, cur),
+        ]) {
+          tr.appendChild(el("td", undefined, value));
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      section.appendChild(wrap);
+    } else {
+      section.appendChild(el("p", "feed-empty", "No dividends went ex while you held these shares."));
+    }
+
+    const notes: string[] = [];
+    if (d.status === "stale")
+      notes.push("Couldn't refresh the dividend history — showing the last one retrieved.");
+    if (d.lotsWithoutDate > 0) {
+      notes.push(
+        `${d.lotsWithoutDate} lot${d.lotsWithoutDate === 1 ? " has" : "s have"} no purchase date, so ${d.lotsWithoutDate === 1 ? "it isn't" : "they aren't"} counted in past dividends.`
+      );
+    }
+    if (d.receivedTotal.reclaimable > 0) {
+      notes.push(
+        `${money(d.receivedTotal.reclaimable, cur)} was withheld above the treaty rate. Portugal doesn't credit it, but it can usually be reclaimed from ${d.tax.countryName}.`
+      );
+    }
+    if (d.sourceSymbol !== d.symbol) notes.push(`History from ${d.sourceSymbol}, the alternative symbol.`);
+    notes.push(
+      "Dates are ex-dividend dates: shares held before that day get the dividend, which is usually paid a few days to weeks later. The free data source has no payment dates, so the next dividend is projected from the recent pattern. Taxes are estimates for a Portugal resident at the 28% flat rate — check your broker's statement; foreign dividends are declared in IRS Anexo J."
+    );
+    section.appendChild(el("p", "setting-note", notes.join(" ")));
+    return section;
+  }
+
+  function taxControls(symbol: string, d: HoldingDividendsView): HTMLElement {
+    const row = el("div", "stock-tax-row");
+    const label = el("label", "stock-tax-label");
+    label.appendChild(el("span", undefined, "Company's tax country"));
+    const select = el("select", "select");
+    select.appendChild(
+      new Option(
+        d.tax.guessed && d.tax.known ? `Guessed: ${d.tax.countryName}` : "Guess from the listing",
+        ""
+      )
+    );
+    for (const c of dividends?.taxCountries ?? []) {
+      const withheld = c.code === "PT" ? "28% at source" : `${rate(c.withholdingPercent)} withheld`;
+      select.appendChild(new Option(`${c.name} — ${withheld}`, c.code));
+    }
+    select.appendChild(new Option("Custom rate", "CUSTOM"));
+    select.value = d.tax.guessed ? "" : d.tax.country;
+    label.appendChild(select);
+    row.appendChild(label);
+
+    const custom = el("input", "input stock-tax-custom");
+    custom.type = "number";
+    custom.min = "0";
+    custom.max = "100";
+    custom.step = "any";
+    custom.placeholder = "% withheld";
+    custom.hidden = select.value !== "CUSTOM";
+    if (d.tax.country === "CUSTOM") custom.value = String(d.tax.withholdingPercent);
+    row.appendChild(custom);
+
+    const save = async (setting: DividendTaxSettingView | null): Promise<void> => {
+      const next = { ...prefs.dividendTax };
+      if (setting) next[symbol] = setting;
+      else delete next[symbol];
+      try {
+        prefs = await bridge().updateStockSettings({ dividendTax: next });
+        await loadDividends();
+      } catch (err) {
+        showError(errorEl, errorText(err));
+      }
+    };
+    select.addEventListener("change", () => {
+      custom.hidden = select.value !== "CUSTOM";
+      if (select.value === "CUSTOM") {
+        custom.focus();
+        if (custom.value) void save({ country: "CUSTOM", withholdingPercent: Number(custom.value) });
+        return;
+      }
+      void save(select.value ? { country: select.value } : null);
+    });
+    custom.addEventListener("change", () => {
+      const value = Number(custom.value);
+      if (custom.value && Number.isFinite(value) && value >= 0 && value <= 100) {
+        void save({ country: "CUSTOM", withholdingPercent: value });
+      }
+    });
+
+    let summary: string;
+    if (!d.tax.known) {
+      summary =
+        "The listing doesn't say which country the company is from, so foreign withholding is counted as 0% until you choose it. Portugal's 28% still applies.";
+    } else if (d.tax.country === "PT") {
+      summary = "Portugal: 28% is withheld at source as the final tax.";
+    } else {
+      summary = `${d.tax.countryName}${d.tax.guessed ? " (guessed from the listing)" : ""}: ${rate(d.tax.withholdingPercent)} withheld at source; Portugal taxes ${rate(d.tax.portuguesePercent)} of the gross and credits foreign tax up to ${rate(d.tax.creditCapPercent)}.`;
+    }
+    row.appendChild(el("p", "setting-note", summary));
+    return row;
   }
 
   /** Two clicks instead of a confirm() dialog: the first arms it, the second deletes. */
@@ -726,7 +1212,7 @@ export function initStocksTab(): void {
     } catch {
       news = { symbol, status: "unavailable", items: [], retrievedAt: null };
     }
-    if (selectedId !== forId || detailView.hidden) return; // the user moved on
+    if (detailKey() !== forId || detailView.hidden) return; // the user moved on
     container.innerHTML = "";
 
     if (news.status === "disabled") {
@@ -844,7 +1330,12 @@ export function initStocksTab(): void {
   document.getElementById("cancelPositionBtn")?.addEventListener("click", closeForm);
   document.getElementById("backFromPositionFormBtn")?.addEventListener("click", closeForm);
   document.getElementById("backFromStockDetailBtn")?.addEventListener("click", () => {
+    if (selectedId && returnToSymbol) {
+      openHolding(returnToSymbol);
+      return;
+    }
     selectedId = null;
+    selectedSymbol = null;
     show("list");
   });
 
@@ -875,6 +1366,16 @@ export function initStocksTab(): void {
       showError(errorEl, errorText(err));
     }
     await load();
+  });
+  dividendsInput.addEventListener("change", async () => {
+    try {
+      prefs = await bridge().updateStockSettings({ dividendsEnabled: dividendsInput.checked });
+    } catch (err) {
+      showError(errorEl, errorText(err));
+    }
+    dividends = null;
+    render();
+    void loadDividends();
   });
   newsInput.addEventListener("change", async () => {
     try {

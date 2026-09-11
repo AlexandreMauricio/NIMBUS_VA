@@ -7,6 +7,8 @@ test("stock tracking defaults: on, with news, and no positions", () => {
     enabled: true,
     newsEnabled: true,
     baseCurrency: "EUR",
+    dividendsEnabled: true,
+    dividendTax: {},
     positions: [],
   });
 });
@@ -20,6 +22,8 @@ test("a settings file from before stocks existed gains the stocks defaults", () 
     enabled: true,
     newsEnabled: true,
     baseCurrency: "EUR",
+    dividendsEnabled: true,
+    dividendTax: {},
     positions: [],
   });
 });
@@ -44,6 +48,8 @@ test("saved positions survive a load unchanged", () => {
     enabled: false,
     newsEnabled: false,
     baseCurrency: "EUR",
+    dividendsEnabled: true,
+    dividendTax: {},
     positions,
   });
 });
@@ -68,4 +74,12 @@ test("loading never shares the default positions array between settings objects"
 test("a saved base currency survives a load", () => {
   const loaded = applyDefaults({ userPreferences: { stocks: { baseCurrency: "USD" } } });
   assert.equal(loaded.userPreferences.stocks.baseCurrency, "USD");
+});
+
+test("dividend tax choices survive a load, and an old file gets an empty map", () => {
+  const loaded = applyDefaults({
+    userPreferences: { stocks: { dividendTax: { TSM: { country: "TW" } } } },
+  });
+  assert.deepEqual(loaded.userPreferences.stocks.dividendTax, { TSM: { country: "TW" } });
+  assert.deepEqual(applyDefaults({}).userPreferences.stocks.dividendTax, {});
 });

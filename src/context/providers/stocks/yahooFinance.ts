@@ -1,4 +1,5 @@
 import { httpTimeoutSignal } from "../../../common/timeout";
+import { DividendEvent, DividendSeries } from "./dividends";
 import {
   ListingMatch,
   MarketDataSource,
@@ -37,6 +38,7 @@ interface ChartMeta {
   shortName?: unknown;
   regularMarketTime?: unknown;
   instrumentType?: unknown;
+  exchangeTimezoneName?: unknown;
 }
 
 interface SearchQuoteItem {
@@ -62,6 +64,20 @@ function finite(value: unknown): number | null {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+/** "YYYY-MM-DD" of an instant in a time zone, falling back to UTC for an unknown zone. */
+function localDate(ms: number, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
 }
 
 function isHttpUrl(value: string): boolean {
@@ -103,6 +119,45 @@ export class YahooMarketDataSource implements MarketDataSource {
       marketTime: marketSeconds !== null ? new Date(marketSeconds * 1000).toISOString() : null,
       instrumentType: text(meta.instrumentType),
     };
+  }
+
+  /**
+   * Ex-dividend dates and per-share amounts since `fromDate`, from the same
+   * chart endpoint with dividend events. Dates are converted to the
+   * exchange's own calendar day. There are no payment dates in this data.
+   */
+  async fetchDividends(symbol: string, fromDate: string): Promise<DividendSeries> {
+    const period1 = Math.floor(Date.parse(`${fromDate}T00:00:00Z`) / 1000);
+    const period2 = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
+    const url = `${CHART_URL}${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d&events=div`;
+    const response = await this.fetchFn(url, {
+      signal: httpTimeoutSignal(),
+      headers: { Accept: "application/json" },
+    });
+    if (response.status === 404) throw new Error(`No market data found for ${symbol}`);
+    if (!response.ok) throw new Error(`Dividend request failed with status ${response.status}`);
+
+    const body = (await response.json()) as {
+      chart?: {
+        result?: Array<{
+          meta?: ChartMeta;
+          events?: { dividends?: Record<string, { amount?: unknown; date?: unknown }> };
+        }> | null;
+      };
+    };
+    const result = body?.chart?.result?.[0];
+    if (!result?.meta) throw new Error(`No dividend data for ${symbol}`);
+    const timeZone = text(result.meta.exchangeTimezoneName) ?? "UTC";
+    const events = Object.values(result.events?.dividends ?? {})
+      .map((d): DividendEvent | null => {
+        const amount = finite(d.amount);
+        const seconds = finite(d.date);
+        if (amount === null || amount <= 0 || seconds === null) return null;
+        return { exDate: localDate(seconds * 1000, timeZone), amount };
+      })
+      .filter((e): e is DividendEvent => e !== null)
+      .sort((a, b) => a.exDate.localeCompare(b.exDate));
+    return { currency: text(result.meta.currency), events };
   }
 
   /** Equity and ETF listings Yahoo's search returns for a company name. Unpriced — the caller prices them. */
