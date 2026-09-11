@@ -71,6 +71,22 @@
             </svg>
             Network
           </button>
+          <button class="side-link" data-tab="memory">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 256 256"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="16"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M64 32h104l40 40v152H64z" />
+              <path d="M96 112h64M96 144h64M96 176h40" />
+            </svg>
+            Memory
+          </button>
           <button class="side-link" data-tab="context">
             <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">
               <path
@@ -599,6 +615,97 @@
             <button class="btn btn-ghost" id="backFromNetworkDeviceBtn">&larr; Back to network</button>
             <div id="networkDeviceDetail"></div>
           </div>
+        </section>
+
+        <section id="tab-memory" class="panel">
+          <div class="panel-header">
+            <h6 class="kicker">Memory</h6>
+          </div>
+          <p class="setting-note">
+            What NIMBUS remembers. <strong>Saved by you</strong> is kept until you change it.
+            <strong>Learned</strong> patterns grow more certain with each repeat and are forgotten after 90
+            days without one. <strong>Observed</strong> events are kept 30 days. Nothing learned or observed
+            becomes permanent unless you press Keep. Everything stays on this PC.
+          </p>
+          <div class="memory-filters">
+            <input
+              type="search"
+              id="memorySearch"
+              class="input"
+              placeholder="Search memory"
+              maxlength="200"
+            />
+            <select id="memoryKindFilter" class="select" title="Kind">
+              <option value="">All kinds</option>
+              <option value="preference">Preferences</option>
+              <option value="fact">Facts</option>
+              <option value="pattern">Patterns</option>
+              <option value="history">History</option>
+            </select>
+            <select id="memoryOriginFilter" class="select" title="Origin">
+              <option value="">Any origin</option>
+              <option value="explicit">Saved by you</option>
+              <option value="learned">Learned</option>
+              <option value="observed">Observed</option>
+            </select>
+          </div>
+          <p class="form-error" id="memoryError" role="alert" hidden></p>
+          <div id="memoryList"></div>
+          <p class="feed-empty" id="memoryEmpty" hidden>Nothing remembered yet.</p>
+
+          <div class="memory-form">
+            <h6 class="kicker" id="memoryFormHeading">Remember something</h6>
+            <div class="memory-form-grid">
+              <label class="network-field">
+                Kind
+                <select id="memoryKind" class="select">
+                  <option value="preference">Preference</option>
+                  <option value="fact">Fact</option>
+                </select>
+              </label>
+              <label class="network-field">
+                What
+                <input
+                  type="text"
+                  id="memoryTitle"
+                  class="input"
+                  maxlength="120"
+                  placeholder="e.g. Preferred volume"
+                />
+              </label>
+              <label class="network-field">
+                Value
+                <input type="text" id="memoryValue" class="input" maxlength="1000" placeholder="e.g. 40%" />
+              </label>
+              <label class="network-field">
+                Note
+                <input type="text" id="memoryNote" class="input" maxlength="500" placeholder="Optional" />
+              </label>
+              <label class="network-field">
+                Forget on
+                <input type="date" id="memoryExpires" class="input" />
+              </label>
+            </div>
+            <p class="form-error" id="memoryFormError" role="alert" hidden></p>
+            <div class="memory-actions">
+              <button class="btn btn-primary" id="memorySaveBtn" type="button">Remember</button>
+              <button class="btn btn-ghost" id="memoryCancelEditBtn" type="button" hidden>Cancel</button>
+            </div>
+          </div>
+
+          <label class="setting-row">
+            <span>
+              <span class="setting-title">Learn from what I do</span>
+              <span class="setting-desc">
+                Records recurring activities, how you answer routine suggestions and new devices on your
+                network. Off keeps what's remembered but adds nothing new.
+              </span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="memoryLearning" />
+              <span class="track"></span>
+            </span>
+          </label>
         </section>
 
         <section id="tab-context" class="panel">

@@ -123,6 +123,17 @@ src/
                                    NetBIOS packets and parsing, and the
                                    summary of what a device says — pure
 
+  memory/                   [1] Core — Persistent memory
+    types.ts                     MemoryItem (kind × origin), limits, and
+                                   per-item validation of persisted data
+    memoryService.ts             The three tiers: remember (explicit),
+                                   reinforce (learned), observe (observed);
+                                   update, promote, forget, list/search,
+                                   recall, expiry — over an injected store
+    recorders.ts                 What gets remembered: activity sessions,
+                                   routine answers, new network devices —
+                                   called only from lifecycle wiring
+
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
                                    Pure functions/classes over ContextSnapshot
@@ -171,6 +182,8 @@ src/
                                    (activity-history.json)
     appUsageStore.ts              The opt-in app-usage tally
                                    (app-usage.json)
+    memoryStore.ts                Memory, one file per tier
+                                   (memory/*.json)
     network/
       windowsNetworkScanner.ts     Two fixed PowerShell scripts: read the
                                    neighbor cache; ping validated private
@@ -230,6 +243,7 @@ renderer can only call what its preload exposes.
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
 | Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings` |
+| Memory | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
 
 **Suggestion popup** (`suggestionPreload.ts`): `nimbus:get-popup-suggestion`,
@@ -242,7 +256,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:open-activity-editor` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:
@@ -276,6 +290,7 @@ written atomically (temp file, fsync, rename):
 | `activity-history.json` | `activityStateStore.ts` | Up to 200 activity sessions |
 | `network-devices.json` | `network/networkFiles.ts` | Devices seen on the local network: MAC, nickname, recognized, names, first/last seen, recent IPs |
 | `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
+| `memory/explicit.json`, `memory/learned.json`, `memory/observed.json` | `memoryStore.ts` | Memory, one tier per file: `{version: 1, items}`. Validated item by item on load; an unparseable file is renamed `<tier>.unreadable-<time>.json` |
 | `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
 
 **Credential lifecycle.** `loadSettings()` runs before Electron is ready
@@ -333,8 +348,8 @@ Context/OS → Event → Event Bus → Trigger Matcher → Routine gates
   | --- | --- |
   | `applicationOpened`, `applicationClosed`, `websiteOpened`, `folderOpened` | `DesktopActivityMonitor` |
   | `timerCompleted` | `TimerService` (every phase) |
-  | `activityEnded` | `ActivityService` (not on shutdown) |
-  | `networkDeviceAppeared` | `NetworkService` (not for the first-run baseline); nothing subscribes yet |
+  | `activityEnded` | `ActivityService` (not on shutdown); also recorded to memory as a pattern |
+  | `networkDeviceAppeared` | `NetworkService` (not for the first-run baseline); recorded to memory as an observation |
 
   `playbackChanged`, `calendarEventApproaching` and `emailReceived` are
   reserved names in `ContextEventType`; nothing emits them.
@@ -388,6 +403,25 @@ The Action boundary is kept structurally: Attention has no Action service
 RoutineService and are accepted there; Attention's own suggestions are
 informational, and answering them only acknowledges. See
 [docs/attention.md](docs/attention.md).
+
+## Memory
+
+`src/memory/` is what NIMBUS keeps knowing across restarts, in three
+tiers that are stored and trusted apart: **explicit** (the user saved it —
+confidence 1, no expiry unless they set one, only they edit it),
+**learned** (patterns — confidence `n/(n+3)` capped at 0.95, forgotten 90
+days after the last reinforcement) and **observed** (single events —
+forgotten after 30 days). Only the user's **Keep** turns a learned or
+observed item into an explicit one. `recall(key)` returns the most
+trusted enabled item.
+
+Nothing writes to memory on its own behalf: `recorders.ts` translates what
+services already publish (`activityEnded`, `networkDeviceAppeared`, a
+routine suggestion's answer), and only `lifecycle.ts` calls it. The
+renderer can save its own memories and switch off, keep or forget any —
+never write a learned or observed one. The "Learn from what I do" setting
+(`userPreferences.memory.learning`) stops all recording. Nothing reads
+memory back into decisions yet. See [docs/memory.md](docs/memory.md).
 
 ## Activity & Sessions
 

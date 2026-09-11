@@ -52,6 +52,8 @@ import { NetworkProvider, NetworkService, dnsHostnameResolver } from "../network
 import { WindowsNetworkScanner } from "./network/windowsNetworkScanner";
 import { DeviceProber } from "./network/deviceProbe";
 import { FileNetworkStore, loadVendorLookup } from "./network/networkFiles";
+import { MemoryService, recordActivityEnded, recordNewNetworkDevice, recordRoutineDecision } from "../memory";
+import { FileMemoryStore } from "./memoryStore";
 import {
   ActivityService,
   ActivityMapping,
@@ -87,6 +89,21 @@ const timerService = new TimerService(contextEventBus);
 let activityService: ActivityService;
 let appUsage: AppUsageTracker | null = null;
 let networkService: NetworkService;
+let memoryService: MemoryService;
+
+/** A routine suggestion the user answered — reinforces that routine's acceptance pattern. */
+function rememberRoutineDecision(
+  suggestion: { routineId?: string },
+  outcome: "accepted" | "dismissed"
+): void {
+  const routine = settings.userPreferences.routines.routines.find((r) => r.id === suggestion.routineId);
+  if (!routine) return;
+  try {
+    recordRoutineDecision(memoryService, { id: routine.id, name: routine.name }, outcome);
+  } catch (err) {
+    logger.warn("Could not record a routine decision to memory", { error: String(err) });
+  }
+}
 
 function createMainWindow(show: boolean): void {
   mainWindow = new BrowserWindow({
@@ -534,6 +551,45 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:identify-network-device", (_event, id: unknown) =>
     networkService.identifyDevice(String(id ?? ""))
   );
+  // Memory (src/memory/). The renderer can list, save its own memories,
+  // switch any off, keep (promote) or forget — never write a learned or
+  // observed item itself; those come only from the wiring below.
+  ipcMain.handle("nimbus:list-memories", (_event, filter: unknown) => {
+    const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
+    return memoryService.list({
+      kind: typeof f.kind === "string" ? (f.kind as never) : undefined,
+      origin: typeof f.origin === "string" ? (f.origin as never) : undefined,
+      source: typeof f.source === "string" ? f.source : undefined,
+      text: typeof f.text === "string" ? f.text.slice(0, 200) : undefined,
+      includeDisabled: f.includeDisabled === true,
+    });
+  });
+  ipcMain.handle("nimbus:remember-memory", (_event, input: unknown) => {
+    const i = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+    return memoryService.remember({
+      kind: i.kind as "preference" | "fact",
+      title: String(i.title ?? ""),
+      value:
+        typeof i.value === "string" || typeof i.value === "number" || typeof i.value === "boolean"
+          ? i.value
+          : null,
+      detail: typeof i.detail === "string" ? i.detail : null,
+      expiresAt: typeof i.expiresAt === "string" ? i.expiresAt : null,
+    });
+  });
+  ipcMain.handle("nimbus:update-memory", (_event, id: unknown, changes: unknown) =>
+    memoryService.update(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:promote-memory", (_event, id: unknown) => memoryService.promote(String(id ?? "")));
+  ipcMain.handle("nimbus:forget-memory", (_event, id: unknown) => memoryService.forget(String(id ?? "")));
+  ipcMain.handle("nimbus:get-memory-settings", () => settings.userPreferences.memory);
+  ipcMain.handle("nimbus:update-memory-settings", (_event, partial: unknown) => {
+    settings.userPreferences.memory = mergeKnown(settings.userPreferences.memory, partial);
+    saveSettings(settings);
+    logger.info("Memory settings updated", { ...settings.userPreferences.memory });
+    return settings.userPreferences.memory;
+  });
+
   ipcMain.handle("nimbus:update-network-settings", (_event, partial: unknown) => {
     settings.windowsClient.network = mergeKnown(settings.windowsClient.network, partial);
     saveSettings(settings);
@@ -788,14 +844,18 @@ function registerIpcHandlers(): void {
   // so it leaves the popup queue.
   ipcMain.handle("nimbus:accept-suggestion", async (_event, suggestionId: string) => {
     if (attentionService.acknowledgeSuggestion(suggestionId)) return [];
+    const suggestion = routineService.getActiveSuggestions().find((s) => s.id === suggestionId);
     const results = await routineService.acceptSuggestion(suggestionId);
     attentionService.suggestionResolved(suggestionId, "accepted");
+    if (suggestion) rememberRoutineDecision(suggestion, "accepted");
     return results;
   });
   ipcMain.handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
     if (attentionService.dismissSuggestion(suggestionId)) return;
+    const suggestion = routineService.getActiveSuggestions().find((s) => s.id === suggestionId);
     routineService.dismissSuggestion(suggestionId);
     attentionService.suggestionResolved(suggestionId, "dismissed");
+    if (suggestion) rememberRoutineDecision(suggestion, "dismissed");
   });
   // The Attention debug view (Context tab): every current item, its score,
   // decision and why. Read-only.
@@ -1008,6 +1068,28 @@ export function startApp(): void {
     },
   });
   contextService.register(new NetworkProvider(networkService));
+
+  // Persistent memory (src/memory/): the user's own memories, learned
+  // patterns and observations, each in its own file under userData/memory.
+  // Only this wiring translates what other services already publish into
+  // memory — no provider or service writes to it. See docs/memory.md.
+  memoryService = new MemoryService(
+    new FileMemoryStore(path.join(app.getPath("userData"), "memory")),
+    undefined,
+    undefined,
+    () => settings.userPreferences.memory.learning
+  );
+  memoryService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:memory-changed");
+  });
+  contextEventBus.subscribe((event) => {
+    try {
+      if (event.type === "activityEnded") recordActivityEnded(memoryService, event);
+      else if (event.type === "networkDeviceAppeared") recordNewNetworkDevice(memoryService, event);
+    } catch (err) {
+      logger.warn("Could not record to memory", { event: event.type, error: String(err) });
+    }
+  });
 
   // Spotify is NIMBUS's first Action Provider alongside its Context
   // Provider — see src/actions/ and ARCHITECTURE.md's Context-vs-Action

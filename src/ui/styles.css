@@ -2267,3 +2267,72 @@ details.context-card > summary .context-card-title {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* Memory tab. */
+.memory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.memory-filters .input {
+  flex: 1 1 200px;
+}
+
+.memory-row {
+  margin-bottom: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.memory-row.memory-off {
+  opacity: 0.55;
+}
+
+.memory-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.memory-title {
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.memory-origin-explicit {
+  color: var(--color-success);
+}
+
+.memory-body {
+  margin-top: 4px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.memory-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-neutral-400);
+}
+
+.memory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.memory-form {
+  margin-top: var(--space-6);
+}
+
+.memory-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 var(--space-3);
+}

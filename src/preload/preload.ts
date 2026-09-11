@@ -1,4 +1,5 @@
 import type { NetworkState } from "../network/types";
+import type { MemoryFilter, MemoryItem } from "../memory/types";
 import type { AttentionDebugState, AttentionSettings } from "../attention";
 import { contextBridge, ipcRenderer } from "electron";
 import { AssistantEvent } from "../common/assistantEvents";
@@ -224,6 +225,28 @@ contextBridge.exposeInMainWorld("nimbus", {
     const listener = () => callback();
     ipcRenderer.on("nimbus:network-changed", listener);
     return () => ipcRenderer.removeListener("nimbus:network-changed", listener);
+  },
+  /** Persistent memory. Learned and observed items can be switched off, kept or forgotten — never written here. */
+  listMemories: (filter: MemoryFilter): Promise<MemoryItem[]> =>
+    ipcRenderer.invoke("nimbus:list-memories", filter),
+  rememberMemory: (input: {
+    kind: "preference" | "fact";
+    title: string;
+    value: string;
+    detail: string | null;
+    expiresAt: string | null;
+  }): Promise<MemoryItem> => ipcRenderer.invoke("nimbus:remember-memory", input),
+  updateMemory: (id: string, changes: Record<string, unknown>): Promise<MemoryItem> =>
+    ipcRenderer.invoke("nimbus:update-memory", id, changes),
+  promoteMemory: (id: string): Promise<MemoryItem> => ipcRenderer.invoke("nimbus:promote-memory", id),
+  forgetMemory: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:forget-memory", id),
+  getMemorySettings: (): Promise<{ learning: boolean }> => ipcRenderer.invoke("nimbus:get-memory-settings"),
+  updateMemorySettings: (partial: { learning?: boolean }): Promise<{ learning: boolean }> =>
+    ipcRenderer.invoke("nimbus:update-memory-settings", partial),
+  onMemoryChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:memory-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:memory-changed", listener);
   },
 
   getSpotifySettings: (): Promise<PublicSpotifySettings> => ipcRenderer.invoke("nimbus:get-spotify-settings"),

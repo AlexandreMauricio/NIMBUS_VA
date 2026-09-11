@@ -18,6 +18,24 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.9 — 2026-09-11
+
+- Memory: a persistent memory layer (`src/memory/`) with three tiers kept
+  in separate files under `memory/` — what you saved (preferences and
+  facts; fully trusted, kept until you change them), what NIMBUS learned
+  (patterns whose confidence grows with evidence and fade after 90 days
+  without it) and what it observed (events, kept 30 days). Nothing
+  observed becomes permanent unless you press Keep.
+- First recordings: recurring activities (sessions of 10+ minutes — count,
+  total time, usual start hour), how you answer each routine's
+  suggestions, and new devices on your network. A "Learn from what I do"
+  switch turns recording off.
+- New Memory tab: search, filter by kind and origin, see where each item
+  came from and how sure NIMBUS is, switch items off, forget them, keep
+  learned ones, and add or edit your own.
+- Malformed memory files are handled item by item; an unreadable file is
+  set aside rather than overwritten.
+
 ## 0.3.8 — 2026-09-11
 
 - Network: "Ask the device" on a device's page asks that one device what it

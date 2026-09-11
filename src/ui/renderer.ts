@@ -10,6 +10,7 @@ import {
 } from "./uiFormat";
 import { initStocksTab } from "./stocksTab";
 import { initNetworkTab } from "./networkTab";
+import { initMemoryTab } from "./memoryTab";
 
 /**
  * Renderer script for the placeholder UI. Talks to the main process
@@ -3920,6 +3921,7 @@ initNowPlayingCard();
 initCalendarTab();
 initStocksTab();
 initNetworkTab();
+initMemoryTab();
 initContext();
 initAssistantFeed();
 

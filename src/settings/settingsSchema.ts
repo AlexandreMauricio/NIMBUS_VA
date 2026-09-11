@@ -203,6 +203,17 @@ export interface UserPreferences {
   stocks: StockPreferences;
   /** The Attention engine's two switches (see src/attention/). */
   attention: AttentionSettings;
+  /** Persistent memory (see src/memory/). */
+  memory: MemoryPreferences;
+}
+
+export interface MemoryPreferences {
+  /**
+   * "Learn from what I do": whether NIMBUS records observations and
+   * learned patterns. Off keeps what's remembered; the user's own saved
+   * memories work either way.
+   */
+  learning: boolean;
 }
 
 export interface NimbusSettings {
@@ -255,6 +266,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       suggestFrequentApps: false,
     },
     attention: { enabled: true, popups: true },
+    memory: { learning: true },
     stocks: {
       enabled: true,
       newsEnabled: true,
@@ -370,6 +382,10 @@ export function applyDefaults(parsed: any): NimbusSettings {
       attention: {
         ...defaults.userPreferences.attention,
         ...parsed.userPreferences?.attention,
+      },
+      memory: {
+        ...defaults.userPreferences.memory,
+        ...parsed.userPreferences?.memory,
       },
       stocks: {
         ...defaults.userPreferences.stocks,

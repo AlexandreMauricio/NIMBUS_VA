@@ -20,7 +20,8 @@ into that) — playing Spotify or other media, launching and arranging
 apps, setting the system volume, starting a timer or a Pomodoro
 study/break plan, opening a website, file or folder — and can wind them
 down again when the activity ends. An **Attention** engine decides which of all this deserves a popup
-now, and the **Network** tab shows the devices on your local network.
+now, the **Network** tab shows the devices on your local network, and
+**Memory** keeps what you tell NIMBUS and what it learns, apart and in view.
 
 **What it does not do:** there is no AI/LLM, no natural-language
 understanding, no voice, no packaged installer, and no multi-device sync.
@@ -68,6 +69,13 @@ which modules are portable "Core" versus Windows-specific.
   you recognize. Observation first: it reads Windows' neighbor list, pings the local
   subnet once on request, and on a device's page can ask that one device
   what it is (name, model, software). See [docs/network.md](docs/network.md).
+- **Memory tab** — what NIMBUS remembers, kept in three tiers: what you
+  saved (preferences and facts, kept until you change them), what it
+  learned (recurring activities, how you answer each routine — more
+  certain with each repeat, forgotten after 90 days without one) and what
+  it observed (new network devices, kept 30 days). Search, filter, switch
+  off, forget, or **Keep** a learned item to make it yours. Nothing becomes
+  permanent on its own. See [docs/memory.md](docs/memory.md).
 - **Context tab** — one fold-away box per source, each explaining how that
   source works and showing what it returned, plus the Attention box: what
   NIMBUS thinks deserves attention, and why.
@@ -180,6 +188,7 @@ src/
   routines/        Trigger → Suggestion → Action rules
   attention/       Attention & Priority — what deserves attention now
   network/         Network awareness — local devices, observation only
+  memory/          Persistent memory — saved, learned and observed, apart
   timers/          Generic timer engine (single countdowns and phase plans)
   events/          The in-process Context event bus
   briefing/        Turns a context snapshot into the Home briefing
@@ -202,7 +211,7 @@ subsystem.
   `.env`. `settings` is persisted, user-editable state — split into
   `WindowsClientSettings` (window bounds, startup behaviour; Windows-only)
   and `UserPreferences` (weather, calendar, email, tasks, Spotify,
-  routines, activities, stocks, attention; conceptually cross-device
+  routines, activities, stocks, attention, memory; conceptually cross-device
   data).
 - **`logging/logger.ts` has no Electron dependency.** File output is
   opt-in via `configureFileLogging(...)`, called once from
@@ -271,6 +280,7 @@ that subsystem.
 | [Tasks](docs/tasks.md) | Todoist setup and the read/write Tasks tab |
 | [Spotify](docs/spotify.md) | Registering a Spotify app, the PKCE flow, and playback control |
 | [Network](docs/network.md) | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
+| [Memory](docs/memory.md) | The three memory tiers, trust and expiry, what is recorded, and the Memory tab |
 | [Stocks](docs/stocks.md) | Tracked positions, the estimates, market data and news, and their limits |
 
 Architecture-level decisions — what counts as portable Core versus
@@ -345,6 +355,7 @@ Everything is written under Electron's per-user data directory
 | `network-devices.json` | Devices seen on your local network: MAC, nickname, recognized, names, first/last seen, recent IPs | Plain JSON, atomic write |
 | `oui.csv` | Optional: the IEEE manufacturer list, if you put it there — NIMBUS only reads it | Your file |
 | `app-usage.json` | Opt-in: programs with a window, minutes per day for two weeks, and your "make it an activity?" answers | Plain JSON, atomic write |
+| `memory\explicit.json`, `memory\learned.json`, `memory\observed.json` | What NIMBUS remembers, one file per tier (see [docs/memory.md](docs/memory.md)) | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `logs\nimbus.log` | The application log | Plain text; never contains credentials |
 
 If OS-level encryption is unavailable, credentials are not persisted at
