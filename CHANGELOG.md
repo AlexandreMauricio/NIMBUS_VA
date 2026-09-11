@@ -18,7 +18,7 @@ Dates are the day the work landed.
 
 ---
 
-## Unreleased
+## 0.3.0 — 2026-09-11
 
 - Stock Tracker: a Stocks tab for positions you enter by hand — current
   price and day change, estimated value, gain/loss and today's change,
