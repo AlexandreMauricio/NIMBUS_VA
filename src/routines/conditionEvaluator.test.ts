@@ -289,3 +289,120 @@ test("labels name the configured days rather than raw numbers", async () => {
 
   assert.match(evaluation.results[0].label, /Monday, Friday/);
 });
+
+test("timeIs checks one side of a time of day", async () => {
+  const nineAm = new Date(2026, 0, 1, 9, 0, 0);
+  const before: RoutineCondition[] = [{ type: "timeIs", operator: "before", hour: 12 }];
+  const after: RoutineCondition[] = [{ type: "timeIs", operator: "after", hour: 12 }];
+  assert.equal(await evaluateConditions(before, { now: nineAm }), true);
+  assert.equal(await evaluateConditions(after, { now: nineAm }), false);
+
+  const halfPast: RoutineCondition[] = [{ type: "timeIs", operator: "after", hour: 9, minute: 30 }];
+  assert.equal(await evaluateConditions(halfPast, { now: nineAm }), false);
+  assert.equal(await evaluateConditions(halfPast, { now: new Date(2026, 0, 1, 9, 30, 0) }), true);
+});
+
+test("activity is not X passes when nothing is running, where is X does not", async () => {
+  const isStudy: RoutineCondition[] = [{ type: "activityIs", activity: "Study" }];
+  const isNotStudy: RoutineCondition[] = [{ type: "activityIs", activity: "Study", negate: true }];
+  const nothing = { now: new Date() };
+  const studying = {
+    now: new Date(),
+    getCurrentActivity: () => ({
+      activity: "Study",
+      source: "application" as const,
+      sourceValue: "study.exe",
+      startedAt: "2026-01-01T09:00:00.000Z",
+      durationMs: 0,
+    }),
+  };
+
+  assert.equal(await evaluateConditions(isStudy, nothing), false, "cannot tell, so it blocks");
+  assert.equal(await evaluateConditions(isNotStudy, nothing), true, "nothing running is not Study");
+  assert.equal(await evaluateConditions(isStudy, studying), true);
+  assert.equal(await evaluateConditions(isNotStudy, studying), false);
+});
+
+test("activityDuration compares either way", async () => {
+  const ctx = {
+    now: new Date(),
+    getCurrentActivity: () => ({
+      activity: "Study",
+      source: "application" as const,
+      sourceValue: "study.exe",
+      startedAt: "2026-01-01T09:00:00.000Z",
+      durationMs: 30 * 60_000,
+    }),
+  };
+  const atLeast: RoutineCondition[] = [{ type: "activityDuration", minMinutes: 20 }];
+  const lessThan: RoutineCondition[] = [{ type: "activityDuration", minMinutes: 20, operator: "lessThan" }];
+  assert.equal(await evaluateConditions(atLeast, ctx), true);
+  assert.equal(await evaluateConditions(lessThan, ctx), false);
+});
+
+test("the Spotify playlist condition compares what playback reports", async () => {
+  const is: RoutineCondition[] = [{ type: "spotifyPlaylistIs", playlistUri: "spotify:playlist:focus" }];
+  const isNot: RoutineCondition[] = [
+    { type: "spotifyPlaylistIs", playlistUri: "spotify:playlist:focus", negate: true },
+  ];
+  const playing = { now: new Date(), getPlaybackContextUri: async () => "spotify:playlist:focus" };
+  const other = { now: new Date(), getPlaybackContextUri: async () => "spotify:playlist:party" };
+  const silent = { now: new Date(), getPlaybackContextUri: async () => null };
+
+  assert.equal(await evaluateConditions(is, playing), true);
+  assert.equal(await evaluateConditions(is, other), false);
+  assert.equal(await evaluateConditions(is, silent), false);
+  assert.equal(await evaluateConditions(isNot, silent), true, "nothing playing is a real answer");
+  assert.equal(await evaluateConditions(isNot, playing), false);
+
+  assert.equal(await evaluateConditions(is, { now: new Date() }), false, "no signal: fails closed");
+  assert.equal(await evaluateConditions(isNot, { now: new Date() }), false);
+});
+
+test("the timer conditions read the timer state, and fail closed without one", async () => {
+  const running: RoutineCondition[] = [{ type: "timerStatusIs", status: "running" }];
+  const paused: RoutineCondition[] = [{ type: "timerStatusIs", status: "paused" }];
+  const none: RoutineCondition[] = [{ type: "timerStatusIs", status: "none" }];
+
+  const whileRunning = { now: new Date(), getTimerStatus: () => "running" as const };
+  assert.equal(await evaluateConditions(running, whileRunning), true);
+  assert.equal(await evaluateConditions(paused, whileRunning), false);
+  assert.equal(await evaluateConditions(none, whileRunning), false);
+  assert.equal(
+    await evaluateConditions(none, { now: new Date(), getTimerStatus: () => "none" as const }),
+    true
+  );
+  assert.equal(await evaluateConditions(running, { now: new Date() }), false);
+});
+
+test("the device condition needs NIMBUS to actually know the device", async () => {
+  const home: RoutineCondition[] = [{ type: "deviceOnline", deviceId: "mac:aa" }];
+  const away: RoutineCondition[] = [{ type: "deviceOnline", deviceId: "mac:aa", negate: true }];
+
+  const online = { now: new Date(), isDeviceOnline: () => true };
+  const offline = { now: new Date(), isDeviceOnline: () => false };
+  const unknown = { now: new Date(), isDeviceOnline: () => undefined };
+
+  assert.equal(await evaluateConditions(home, online), true);
+  assert.equal(await evaluateConditions(away, online), false);
+  assert.equal(await evaluateConditions(home, offline), false);
+  assert.equal(await evaluateConditions(away, offline), true);
+  assert.equal(await evaluateConditions(home, unknown), false, "an unknown device blocks both ways");
+  assert.equal(await evaluateConditions(away, unknown), false);
+  assert.equal(await evaluateConditions(home, { now: new Date() }), false);
+});
+
+test("explanations say which way round the newer conditions came out", async () => {
+  const detailed = await evaluateConditionsDetailed(
+    [
+      { type: "timeIs", operator: "after", hour: 22 },
+      { type: "timerStatusIs", status: "none" },
+      { type: "deviceOnline", deviceId: "mac:aa", deviceName: "Phone", negate: true },
+    ],
+    { now: new Date(2026, 0, 1, 9, 0, 0), getTimerStatus: () => "none", isDeviceOnline: () => true }
+  );
+  assert.deepEqual(
+    detailed.results.map((result) => result.label),
+    ["Time is not after 22:00", "No timer is running", "Phone is on the network"]
+  );
+});

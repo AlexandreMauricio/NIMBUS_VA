@@ -10,6 +10,18 @@ import {
 } from "./uiFormat";
 import { initStocksTab } from "./stocksTab";
 import { initNetworkTab } from "./networkTab";
+// The one description of what a routine can check (field -> operator ->
+// value). Imported from Core rather than mirrored here: it is pure data
+// with no imports of its own, and a second copy would drift from the
+// evaluator that reads the same conditions.
+import {
+  CONDITION_FIELDS,
+  ConditionRow,
+  ConditionValue,
+  buildCondition,
+  operatorsFor,
+  readCondition,
+} from "../routines/conditionCatalog";
 import { initMemoryTab } from "./memoryTab";
 
 /**
@@ -357,22 +369,8 @@ type TriggerConfig =
  * even though new ones are offered `daysOfWeek` instead.
  */
 interface RoutineCondition {
-  type:
-    | "timeOfDay"
-    | "weekdaysOnly"
-    | "daysOfWeek"
-    | "activityIs"
-    | "activityDuration"
-    | "spotifyNotAlreadyPlaying"
-    | "spotifyIsPlaying"
-    | "actionsNotAlreadyActive";
-  startHour?: number;
-  endHour?: number;
-  startMinute?: number;
-  endMinute?: number;
-  days?: number[];
-  activity?: string;
-  minMinutes?: number;
+  type: string;
+  [field: string]: unknown;
 }
 
 interface RoutineActionStep {
@@ -478,6 +476,8 @@ interface NimbusApi {
   executeAction: (actionId: string, params?: Record<string, unknown>) => Promise<ActionResult>;
   pickPath: (format: "file" | "folder" | "application") => Promise<string | null>;
   listSpotifyPlaylists: () => Promise<SpotifyPlaylistSummary[]>;
+  /** Only what a device condition needs to offer a picker. */
+  getNetworkState: () => Promise<{ devices: Array<{ id: string; displayName: string }> }>;
   getRoutineSettings: () => Promise<RoutineSettings>;
   updateRoutineSettings: (partial: { enabled?: boolean; routines?: Routine[] }) => Promise<RoutineSettings>;
   testRoutine: (routineId: string) => Promise<RoutineEvaluation | null>;
@@ -2021,7 +2021,7 @@ async function initRoutinesSettings(): Promise<void> {
     // editing the form never mutates the stored routine before save.
     pendingConditions = routine.conditions
       .filter((c) => c.type !== "actionsNotAlreadyActive")
-      .map((c) => ({ ...c, days: c.days ? [...c.days] : undefined }));
+      .map((c) => structuredClone(c));
     renderPendingConditions();
 
     (document.getElementById("routineAppName") as HTMLInputElement).value = "";
@@ -2052,10 +2052,7 @@ async function initRoutinesSettings(): Promise<void> {
       params: { ...step.params },
     }));
     stopAutoRunCheckbox.checked = routine.stopAutoRun !== false;
-    pendingStopConditions = (routine.stopConditions ?? []).map((c) => ({
-      ...c,
-      days: c.days ? [...c.days] : undefined,
-    }));
+    pendingStopConditions = (routine.stopConditions ?? []).map((c) => structuredClone(c));
     stopConditionLogicSelect.value = routine.stopConditionLogic ?? "all";
     loadStopTrigger(routine.stopTrigger);
     renderStopConditions();
@@ -2155,15 +2152,21 @@ async function initRoutinesSettings(): Promise<void> {
   const stopConditionListEl = document.getElementById("routineStopConditionList") as HTMLElement;
   const stopConditionEmptyEl = document.getElementById("routineStopConditionEmpty") as HTMLElement;
   const stopConditionLogicSelect = document.getElementById("routineStopConditionLogic") as HTMLSelectElement;
-  const stopConditionTypeSelect = document.getElementById(
-    "routineStopConditionTypeSelect"
+  const stopConditionFieldSelect = document.getElementById(
+    "routineStopConditionFieldSelect"
+  ) as HTMLSelectElement;
+  const stopConditionOperatorSelect = document.getElementById(
+    "routineStopConditionOperatorSelect"
   ) as HTMLSelectElement;
   const addStopConditionBtn = document.getElementById("routineAddStopConditionBtn") as HTMLButtonElement;
   const stopTriggerTypeSelect = document.getElementById("routineStopTriggerType") as HTMLSelectElement;
   const stopActivitySelect = document.getElementById("routineStopActivityName") as HTMLSelectElement;
   const conditionEmptyEl = document.getElementById("routineConditionEmpty") as HTMLElement;
   const conditionLogicSelect = document.getElementById("routineConditionLogic") as HTMLSelectElement;
-  const conditionTypeSelect = document.getElementById("routineConditionTypeSelect") as HTMLSelectElement;
+  const conditionFieldSelect = document.getElementById("routineConditionFieldSelect") as HTMLSelectElement;
+  const conditionOperatorSelect = document.getElementById(
+    "routineConditionOperatorSelect"
+  ) as HTMLSelectElement;
   const addConditionBtn = document.getElementById("routineAddConditionBtn") as HTMLButtonElement;
   const descriptionInput = document.getElementById("routineDescription") as HTMLInputElement;
   const oncePerSessionCheckbox = document.getElementById("routineOncePerSession") as HTMLInputElement;
@@ -2176,21 +2179,206 @@ async function initRoutinesSettings(): Promise<void> {
     return `${String(hour).padStart(2, "0")}:${String(minute ?? 0).padStart(2, "0")}`;
   }
 
-  /** A blank condition of the chosen type, ready to be edited in place. */
-  function newCondition(type: string): RoutineCondition | null {
-    if (type === "timeOfDay") return { type: "timeOfDay", startHour: 18, endHour: 23 };
-    if (type === "daysOfWeek") return { type: "daysOfWeek", days: [1, 2, 3, 4, 5] };
-    if (type === "activityIs") return { type: "activityIs", activity: knownActivities[0] ?? "" };
-    if (type === "activityDuration") return { type: "activityDuration", minMinutes: 90 };
-    if (type === "spotifyNotAlreadyPlaying") return { type: "spotifyNotAlreadyPlaying" };
-    if (type === "spotifyIsPlaying") return { type: "spotifyIsPlaying" };
-    return null;
+  /**
+   * Fills a condition picker: the fields NIMBUS can check, and the
+   * operators that follow whichever field is chosen. Both come from the
+   * catalog, so a new condition appears here without touching this code.
+   */
+  function fillConditionPickers(fieldSelect: HTMLSelectElement, operatorSelect: HTMLSelectElement): void {
+    fieldSelect.innerHTML = "";
+    for (const field of CONDITION_FIELDS) {
+      const option = document.createElement("option");
+      option.value = field.id;
+      option.textContent = field.label;
+      if (field.note) option.title = field.note;
+      fieldSelect.appendChild(option);
+    }
+
+    const syncOperators = (): void => {
+      operatorSelect.innerHTML = "";
+      for (const operator of operatorsFor(fieldSelect.value)) {
+        const option = document.createElement("option");
+        option.value = operator.id;
+        option.textContent = operator.label;
+        operatorSelect.appendChild(option);
+      }
+    };
+    fieldSelect.addEventListener("change", syncOperators);
+    syncOperators();
   }
 
-  function addCondition(type: string): void {
-    const condition = newCondition(type);
-    if (condition) pendingConditions.push(condition);
-    renderPendingConditions();
+  /** Adds the chosen field/operator as a new row, with its default value. */
+  function addCondition(
+    fieldSelect: HTMLSelectElement,
+    operatorSelect: HTMLSelectElement,
+    into: RoutineCondition[],
+    redraw: () => void
+  ): void {
+    const condition = buildCondition(fieldSelect.value, operatorSelect.value);
+    if (condition) into.push(condition as RoutineCondition);
+    redraw();
+  }
+
+  // Loaded once, and only when a condition actually needs them.
+  let playlistOptionsPromise: Promise<Array<{ id: string; name: string }>> | null = null;
+  function conditionPlaylists(): Promise<Array<{ id: string; name: string }>> {
+    playlistOptionsPromise ??= window.nimbus
+      .listSpotifyPlaylists()
+      .then((playlists) => playlists.map((playlist) => ({ id: playlist.uri, name: playlist.name })))
+      .catch(() => []);
+    return playlistOptionsPromise;
+  }
+
+  let deviceOptionsPromise: Promise<Array<{ id: string; name: string }>> | null = null;
+  function conditionDevices(): Promise<Array<{ id: string; name: string }>> {
+    deviceOptionsPromise ??= window.nimbus
+      .getNetworkState()
+      .then((state) => state.devices.map((device) => ({ id: device.id, name: device.displayName })))
+      .catch(() => []);
+    return deviceOptionsPromise;
+  }
+
+  function timeInput(value: string, onPicked: (hour: number, minute: number) => void): HTMLInputElement {
+    const input = document.createElement("input");
+    input.type = "time";
+    input.className = "input";
+    input.value = value;
+    input.addEventListener("change", () => {
+      const [hour, minute] = input.value.split(":").map(Number);
+      if (Number.isFinite(hour) && Number.isFinite(minute)) onPicked(hour, minute);
+    });
+    return input;
+  }
+
+  /**
+   * A picker over things NIMBUS already knows about - the Spotify
+   * playlists, or the devices on the network. Whatever the routine names
+   * stays selectable even if it is no longer in the list, so editing a
+   * routine never silently repoints it at something else.
+   */
+  function knownThingPicker(
+    chosen: { id: string; name: string },
+    load: () => Promise<Array<{ id: string; name: string }>>,
+    emptyLabel: string,
+    onPicked: (value: { id: string; name: string }) => void
+  ): HTMLSelectElement {
+    const picker = document.createElement("select");
+    picker.className = "input input-compact";
+    const placeholder = document.createElement("option");
+    placeholder.value = chosen.id;
+    placeholder.textContent = chosen.name || chosen.id || "Loading…";
+    picker.appendChild(placeholder);
+
+    void load().then((items) => {
+      picker.innerHTML = "";
+      for (const item of items) {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        picker.appendChild(option);
+      }
+      if (chosen.id && !items.some((item) => item.id === chosen.id)) {
+        const missing = document.createElement("option");
+        missing.value = chosen.id;
+        missing.textContent = `${chosen.name || chosen.id} (not found)`;
+        picker.appendChild(missing);
+      }
+      if (items.length === 0 && !chosen.id) {
+        const none = document.createElement("option");
+        none.value = "";
+        none.textContent = emptyLabel;
+        picker.appendChild(none);
+      }
+      picker.value = chosen.id;
+    });
+
+    picker.addEventListener("change", () => {
+      const label = picker.options[picker.selectedIndex]?.textContent ?? "";
+      onPicked({ id: picker.value, name: label.replace(" (not found)", "") });
+    });
+    return picker;
+  }
+
+  /** The inputs one condition's value needs - nothing at all for "none". */
+  function conditionValueControls(row: ConditionRow, apply: (value: ConditionValue) => void): HTMLElement[] {
+    const separator = (text: string): HTMLElement => {
+      const span = document.createElement("span");
+      span.className = "condition-row-sep";
+      span.textContent = text;
+      return span;
+    };
+
+    switch (row.valueKind) {
+      case "timeRange": {
+        const range = {
+          ...(row.value as { startHour: number; startMinute: number; endHour: number; endMinute: number }),
+        };
+        const from = timeInput(toTimeValue(range.startHour, range.startMinute), (hour, minute) => {
+          range.startHour = hour;
+          range.startMinute = minute;
+          apply({ ...range });
+        });
+        const to = timeInput(toTimeValue(range.endHour, range.endMinute), (hour, minute) => {
+          range.endHour = hour;
+          range.endMinute = minute;
+          apply({ ...range });
+        });
+        return [from, separator("to"), to];
+      }
+      case "time": {
+        const at = row.value as { hour: number; minute: number };
+        return [timeInput(toTimeValue(at.hour, at.minute), (hour, minute) => apply({ hour, minute }))];
+      }
+      case "days": {
+        const days = [...((row.value as number[]) ?? [])];
+        return Array.from({ length: 7 }, (_unused, day) => {
+          const chip = document.createElement("label");
+          chip.className = "day-chip";
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.checked = days.includes(day);
+          box.addEventListener("change", () => {
+            const next = (box.checked ? [...days, day] : days.filter((d) => d !== day)).sort((a, b) => a - b);
+            days.length = 0;
+            days.push(...next);
+            apply([...days]);
+          });
+          const text = document.createElement("span");
+          text.textContent = DAY_LABELS[day];
+          chip.append(box, text);
+          return chip;
+        });
+      }
+      case "activity": {
+        const picker = document.createElement("select");
+        picker.className = "input input-compact";
+        fillActivityOptions(picker, String(row.value ?? ""));
+        picker.addEventListener("change", () => apply(picker.value));
+        return [picker];
+      }
+      case "minutes": {
+        const minutes = document.createElement("input");
+        minutes.type = "number";
+        minutes.min = "0";
+        minutes.className = "input";
+        minutes.value = String(row.value ?? 0);
+        minutes.addEventListener("change", () => {
+          const value = Number(minutes.value);
+          if (Number.isFinite(value) && value >= 0) apply(value);
+        });
+        return [minutes, separator("minutes")];
+      }
+      case "playlist": {
+        const chosen = (row.value ?? { id: "", name: "" }) as { id: string; name: string };
+        return [knownThingPicker(chosen, conditionPlaylists, "No playlists available", apply)];
+      }
+      case "device": {
+        const chosen = (row.value ?? { id: "", name: "" }) as { id: string; name: string };
+        return [knownThingPicker(chosen, conditionDevices, "No devices seen yet", apply)];
+      }
+      default:
+        return [];
+    }
   }
 
   function renderPendingConditions(): void {
@@ -2221,103 +2409,33 @@ async function initRoutinesSettings(): Promise<void> {
     emptyEl.hidden = conditions.length > 0;
 
     conditions.forEach((condition, index) => {
-      const row = document.createElement("div");
-      row.className = "condition-row";
+      const rowEl = document.createElement("div");
+      rowEl.className = "condition-row";
 
       const label = document.createElement("span");
       label.className = "condition-row-label";
-      row.appendChild(label);
+      rowEl.appendChild(label);
 
       const controls = document.createElement("div");
       controls.className = "condition-row-controls";
-      row.appendChild(controls);
+      rowEl.appendChild(controls);
 
-      if (condition.type === "timeOfDay") {
-        label.textContent = "Time of day";
-        const from = document.createElement("input");
-        from.type = "time";
-        from.className = "input";
-        from.value = toTimeValue(condition.startHour ?? 0, condition.startMinute);
-        from.addEventListener("change", () => {
-          const [h, m] = from.value.split(":").map(Number);
-          if (Number.isFinite(h) && Number.isFinite(m)) {
-            condition.startHour = h;
-            condition.startMinute = m;
-          }
-        });
-        const to = document.createElement("input");
-        to.type = "time";
-        to.className = "input";
-        to.value = toTimeValue(condition.endHour ?? 0, condition.endMinute);
-        to.addEventListener("change", () => {
-          const [h, m] = to.value.split(":").map(Number);
-          if (Number.isFinite(h) && Number.isFinite(m)) {
-            condition.endHour = h;
-            condition.endMinute = m;
-          }
-        });
-        const between = document.createElement("span");
-        between.className = "condition-row-sep";
-        between.textContent = "to";
-        controls.append(from, between, to);
-      } else if (condition.type === "daysOfWeek") {
-        label.textContent = "Days of the week";
-        // Normalized up front so a malformed saved condition (no days
-        // array at all) still edits cleanly rather than throwing.
-        const days = condition;
-        if (!Array.isArray(days.days)) days.days = [];
-        for (let day = 0; day < 7; day++) {
-          const dayLabel = document.createElement("label");
-          dayLabel.className = "day-chip";
-          const box = document.createElement("input");
-          box.type = "checkbox";
-          box.checked = (days.days ?? []).includes(day);
-          box.addEventListener("change", () => {
-            const current = days.days ?? [];
-            days.days = box.checked
-              ? [...current, day].sort((a, b) => a - b)
-              : current.filter((d) => d !== day);
-          });
-          const text = document.createElement("span");
-          text.textContent = DAY_LABELS[day];
-          dayLabel.append(box, text);
-          controls.appendChild(dayLabel);
-        }
-      } else if (condition.type === "weekdaysOnly") {
-        // Superseded by daysOfWeek and not offered for new routines, but
-        // still rendered so an older routine that uses it stays editable
-        // and is not silently dropped on save.
-        label.textContent = "Weekdays only (Mon-Fri)";
-      } else if (condition.type === "activityIs") {
-        label.textContent = "Current activity is";
-        const picker = document.createElement("select");
-        picker.className = "input input-compact";
-        fillActivityOptions(picker, condition.activity ?? "");
-        picker.addEventListener("change", () => {
-          condition.activity = picker.value;
-        });
-        controls.appendChild(picker);
-      } else if (condition.type === "activityDuration") {
-        label.textContent = "Current activity has lasted at least";
-        const minutes = document.createElement("input");
-        minutes.type = "number";
-        minutes.min = "0";
-        minutes.className = "input";
-        minutes.value = String(condition.minMinutes ?? 0);
-        minutes.addEventListener("change", () => {
-          const value = Number(minutes.value);
-          if (Number.isFinite(value) && value >= 0) condition.minMinutes = value;
-        });
-        const unit = document.createElement("span");
-        unit.className = "condition-row-sep";
-        unit.textContent = "minutes";
-        controls.append(minutes, unit);
-      } else if (condition.type === "spotifyNotAlreadyPlaying") {
-        label.textContent = "Spotify is not already playing";
-      } else if (condition.type === "spotifyIsPlaying") {
-        label.textContent = "Spotify is playing";
+      const row = readCondition(condition);
+      if (!row) {
+        // Something this NIMBUS doesn't know - shown, never silently
+        // dropped, so an older or newer routine survives an edit.
+        label.textContent = `Unrecognized condition (${String(condition.type)})`;
       } else {
-        label.textContent = `Unrecognized condition (${(condition as { type?: string }).type})`;
+        label.textContent = `${row.fieldLabel} ${row.operatorLabel}`;
+        // Written back in place rather than by redrawing: re-rendering on
+        // every keystroke would take the focus out of the input.
+        const apply = (value: ConditionValue): void => {
+          const rebuilt = buildCondition(row.fieldId, row.operatorId, value);
+          if (!rebuilt) return;
+          for (const key of Object.keys(condition)) delete condition[key];
+          Object.assign(condition, rebuilt);
+        };
+        controls.append(...conditionValueControls(row, apply));
       }
 
       const remove = document.createElement("button");
@@ -2328,11 +2446,15 @@ async function initRoutinesSettings(): Promise<void> {
       });
       controls.appendChild(remove);
 
-      listEl.appendChild(row);
+      listEl.appendChild(rowEl);
     });
   }
 
-  addConditionBtn.addEventListener("click", () => addCondition(conditionTypeSelect.value));
+  fillConditionPickers(conditionFieldSelect, conditionOperatorSelect);
+  fillConditionPickers(stopConditionFieldSelect, stopConditionOperatorSelect);
+  addConditionBtn.addEventListener("click", () =>
+    addCondition(conditionFieldSelect, conditionOperatorSelect, pendingConditions, renderPendingConditions)
+  );
   stopTriggerTypeSelect.addEventListener("change", () => {
     syncStopTriggerFields();
     syncStopSectionAvailability();
@@ -2341,11 +2463,14 @@ async function initRoutinesSettings(): Promise<void> {
   // The hint above depends on the trigger, so every path that changes it
   // has to refresh -- including loading a routine into the form.
 
-  addStopConditionBtn.addEventListener("click", () => {
-    const condition = newCondition(stopConditionTypeSelect.value);
-    if (condition) pendingStopConditions.push(condition);
-    renderStopConditions();
-  });
+  addStopConditionBtn.addEventListener("click", () =>
+    addCondition(
+      stopConditionFieldSelect,
+      stopConditionOperatorSelect,
+      pendingStopConditions,
+      renderStopConditions
+    )
+  );
 
   /**
    * The end trigger to persist, or undefined when there is nothing worth

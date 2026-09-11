@@ -79,7 +79,9 @@ which modules are portable "Core" versus Windows-specific.
 - **Context tab** — one fold-away box per source, each explaining how that
   source works and showing what it returned, plus the Attention box: what
   NIMBUS thinks deserves attention, and why.
-- **Routines** — triggers, conditions, cooldowns, once-per-session
+- **Routines** — triggers, conditions built as field → operator → value
+  (time, day, activity, Spotify, the playing playlist, the timer, and
+  whether a known device is on the network), cooldowns, once-per-session
   limits, an explainable **Test**, **Run now**, optional run-automatically,
   and an end half ("when it ends") with its own trigger, conditions and
   actions. See [docs/routines.md](docs/routines.md).
@@ -93,7 +95,8 @@ which modules are portable "Core" versus Windows-specific.
   See [docs/activity.md](docs/activity.md).
 - **Actions** — `spotify.*` (play, pause, next, previous, volume, search,
   playlist), `timer.start` (single countdown or Pomodoro plan),
-  `timer.stop`, `timer.addStudy`, `system.openUrl` (http/https only), and
+  `timer.stop`, `timer.pause`, `timer.resume`, `timer.addStudy`,
+  `system.openUrl` (http/https only), and
   Windows desktop actions: `app.*` (launch, focus, minimize, maximize,
   close), `files.*` (open a file or folder), `media.*` (media keys, system
   volume, mute) and `system.lock`.

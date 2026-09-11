@@ -6,6 +6,8 @@ export const TIMER_ACTIONS = {
   START: "timer.start",
   ADD_STUDY: "timer.addStudy",
   STOP: "timer.stop",
+  PAUSE: "timer.pause",
+  RESUME: "timer.resume",
 } as const;
 
 const VALID_TIMER_TYPES: TimerType[] = ["focus", "pomodoro", "break", "custom"];
@@ -101,6 +103,26 @@ export class TimerActionProvider implements ActionProvider {
         affectsService: "timer",
       },
       {
+        id: TIMER_ACTIONS.PAUSE,
+        name: "Pause the timer",
+        description: "Pauses the countdown that's running, keeping its remaining time.",
+        parameters: [],
+        readOnly: false,
+        changesExternalState: true,
+        requiresConfirmation: false,
+        affectsService: "timer",
+      },
+      {
+        id: TIMER_ACTIONS.RESUME,
+        name: "Resume the timer",
+        description: "Starts a paused countdown again from where it stopped.",
+        parameters: [],
+        readOnly: false,
+        changesExternalState: true,
+        requiresConfirmation: false,
+        affectsService: "timer",
+      },
+      {
         id: TIMER_ACTIONS.ADD_STUDY,
         name: "Add another study",
         description:
@@ -126,7 +148,13 @@ export class TimerActionProvider implements ActionProvider {
   }
 
   validate(actionId: string, params: Record<string, unknown>): ActionValidationResult {
-    if (actionId === TIMER_ACTIONS.STOP) return { valid: true };
+    if (
+      actionId === TIMER_ACTIONS.STOP ||
+      actionId === TIMER_ACTIONS.PAUSE ||
+      actionId === TIMER_ACTIONS.RESUME
+    ) {
+      return { valid: true };
+    }
 
     if (actionId === TIMER_ACTIONS.ADD_STUDY) {
       const count = params.count;
@@ -173,13 +201,19 @@ export class TimerActionProvider implements ActionProvider {
     if (
       actionId !== TIMER_ACTIONS.START &&
       actionId !== TIMER_ACTIONS.ADD_STUDY &&
-      actionId !== TIMER_ACTIONS.STOP
+      actionId !== TIMER_ACTIONS.STOP &&
+      actionId !== TIMER_ACTIONS.PAUSE &&
+      actionId !== TIMER_ACTIONS.RESUME
     ) {
       return this.failure(actionId, startedAt, "That action isn't available.");
     }
 
     if (actionId === TIMER_ACTIONS.STOP) {
       return this.stopTimer(actionId, startedAt);
+    }
+
+    if (actionId === TIMER_ACTIONS.PAUSE || actionId === TIMER_ACTIONS.RESUME) {
+      return this.holdTimer(actionId, startedAt, actionId === TIMER_ACTIONS.PAUSE);
     }
 
     if (actionId === TIMER_ACTIONS.ADD_STUDY) {
@@ -252,6 +286,37 @@ export class TimerActionProvider implements ActionProvider {
       status: "success",
       message: current ? `Stopped "${current.title}".` : "No timer was running.",
       data: { stopped: current !== null, timerId: current?.id ?? null },
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMs: finishedAt.getTime() - startedAt.getTime(),
+    };
+  }
+
+  /**
+   * Pauses or resumes the countdown in progress.
+   *
+   * Unlike stopping, this reports a failure when there is nothing in the
+   * right state: "resume the timer" with no paused timer did not do what
+   * the step said, and a routine's history should show that rather than a
+   * quiet success.
+   */
+  private holdTimer(actionId: string, startedAt: Date, pause: boolean): ActionResult {
+    const current = this.timerService.getState();
+    if (!current) return this.failure(actionId, startedAt, "No timer is running.");
+    if (pause && current.status !== "running") {
+      return this.failure(actionId, startedAt, "The timer isn't running.");
+    }
+    if (!pause && current.status !== "paused") {
+      return this.failure(actionId, startedAt, "The timer isn't paused.");
+    }
+
+    const state = pause ? this.timerService.pause(current.id) : this.timerService.resume(current.id);
+    const finishedAt = this.now();
+    return {
+      actionId,
+      status: "success",
+      message: `${pause ? "Paused" : "Resumed"} "${current.title}".`,
+      data: { timerId: current.id, status: state?.status ?? null },
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),

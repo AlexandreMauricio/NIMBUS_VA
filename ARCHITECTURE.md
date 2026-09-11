@@ -61,7 +61,8 @@ src/
                                    validate, execute — time-bounded, never throws
     providers/
       spotifyActionProvider.ts    spotify.* (the write half of Spotify)
-      timerActionProvider.ts      timer.start / timer.stop / timer.addStudy
+      timerActionProvider.ts      timer.start / stop / pause / resume /
+                                   addStudy
       systemActionProvider.ts     system.openUrl (http/https only), system.lock
       appActionProvider.ts        app.launch / focus / minimize / maximize / close
       fileActionProvider.ts       files.openFile / files.openFolder
@@ -78,6 +79,10 @@ src/
     types.ts                     Routine / TriggerConfig / RoutineCondition,
                                    validateRoutine, runtime-state types
     triggerMatcher.ts            Pure event-vs-trigger matching
+    conditionCatalog.ts          What can be checked, as data: field →
+                                   operator → value, and the translation
+                                   both ways to a stored condition. Shared
+                                   by the evaluator and the editor
     conditionEvaluator.ts        Pure condition evaluation, with per-condition
                                    explanations
     routineService.ts            Orchestrator: event → gates → suggestion /

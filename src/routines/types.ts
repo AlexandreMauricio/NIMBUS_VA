@@ -118,6 +118,55 @@ export interface SpotifyIsPlayingCondition {
 }
 
 /**
+ * Only while Spotify is playing a particular playlist - what playback
+ * reports as its current context. Unknown playback reads as "can't tell"
+ * and does not pass; nothing playing is a real answer for the negated
+ * form.
+ */
+export interface SpotifyPlaylistIsCondition {
+  type: "spotifyPlaylistIs";
+  /** The playlist's Spotify URI, which is what playback reports. */
+  playlistUri: string;
+  /** Its name when the routine was saved - for the editor and explanations. */
+  playlistName?: string;
+  negate?: boolean;
+}
+
+/** What NIMBUS's own timer is doing. "none" means nothing is running. */
+export type RoutineTimerStatus = "running" | "paused" | "none";
+
+/** Only while the timer is in a particular state. */
+export interface TimerStatusIsCondition {
+  type: "timerStatusIs";
+  status: RoutineTimerStatus;
+}
+
+/** Only before, or after, a time of day - the one-sided form of timeOfDay. */
+export interface TimeIsCondition {
+  type: "timeIs";
+  operator: "before" | "after";
+  hour: number;
+  minute?: number;
+}
+
+/**
+ * Only when a device NIMBUS knows from the Network tab is (or is not) on
+ * the local network - "when my phone is home".
+ *
+ * Presence is NIMBUS's own observation by MAC address, not a security
+ * check (see docs/network.md), and phones drop off the network while
+ * asleep. A device NIMBUS has never seen - or network watching being off
+ * - reads as "can't tell", and then the condition does not pass.
+ */
+export interface DeviceOnlineCondition {
+  type: "deviceOnline";
+  /** "mac:..." as listed in the Network tab. */
+  deviceId: string;
+  deviceName?: string;
+  negate?: boolean;
+}
+
+/**
  * Only when the routine's own configured actions don't already appear to
  * be in effect — e.g. a routine that plays a specific playlist and
  * starts a timer won't re-suggest itself while that exact playlist is
@@ -146,6 +195,12 @@ export interface ActionsNotAlreadyActiveCondition {
 export interface ActivityIsCondition {
   type: "activityIs";
   activity: string;
+  /**
+   * Inverts it: "the activity is not X". Nothing running counts as a real
+   * answer here (it certainly is not X), where the positive form still
+   * needs a known activity.
+   */
+  negate?: boolean;
 }
 
 /**
@@ -157,6 +212,8 @@ export interface ActivityIsCondition {
 export interface ActivityDurationCondition {
   type: "activityDuration";
   minMinutes: number;
+  /** Which way to compare. Absent means "atLeast", as it always did. */
+  operator?: "atLeast" | "lessThan";
 }
 
 export type RoutineCondition =
@@ -165,6 +222,10 @@ export type RoutineCondition =
   | DaysOfWeekCondition
   | SpotifyNotAlreadyPlayingCondition
   | SpotifyIsPlayingCondition
+  | SpotifyPlaylistIsCondition
+  | TimerStatusIsCondition
+  | TimeIsCondition
+  | DeviceOnlineCondition
   | ActionsNotAlreadyActiveCondition
   | ActivityIsCondition
   | ActivityDurationCondition;
@@ -539,6 +600,35 @@ function validateCondition(condition: RoutineCondition): string | null {
         condition.minMinutes < 0
       ) {
         return "activityDuration condition needs a non-negative minMinutes.";
+      }
+      return null;
+    case "timeIs":
+      if (condition.operator !== "before" && condition.operator !== "after") {
+        return "timeIs condition needs an operator of before or after.";
+      }
+      if (!Number.isInteger(condition.hour) || condition.hour < 0 || condition.hour > 23) {
+        return "timeIs condition needs an hour between 0 and 23.";
+      }
+      if (
+        condition.minute !== undefined &&
+        (!Number.isInteger(condition.minute) || condition.minute < 0 || condition.minute > 59)
+      ) {
+        return "timeIs condition minutes must be between 0 and 59.";
+      }
+      return null;
+    case "spotifyPlaylistIs":
+      if (typeof condition.playlistUri !== "string" || condition.playlistUri.trim().length === 0) {
+        return "A Spotify playlist condition needs a playlist.";
+      }
+      return null;
+    case "timerStatusIs":
+      if (!["running", "paused", "none"].includes(condition.status)) {
+        return "timerStatusIs condition needs a status of running, paused or none.";
+      }
+      return null;
+    case "deviceOnline":
+      if (typeof condition.deviceId !== "string" || condition.deviceId.trim().length === 0) {
+        return "A device condition needs a device.";
       }
       return null;
     case "weekdaysOnly":

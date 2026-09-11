@@ -69,16 +69,39 @@ Conditions decide *whether* a matched routine fires. They are structured
 data, combined with `conditionLogic` — `"all"` (default) or `"any"`. An
 empty list always passes.
 
+The editor builds each row as **field → operator → value**, where the
+value disappears when the operator doesn't need one ("Spotify — is
+playing"). One catalog
+([conditionCatalog.ts](../src/routines/conditionCatalog.ts)) lists every
+field, its operators and the kind of value each needs; the editor draws
+its pickers from it, and it translates both ways between a picker row and
+the stored condition. Adding a condition means one entry there and one
+case in the evaluator.
+
+| Field | Operators | Value | Notes |
+| --- | --- | --- | --- |
+| **Time** | is between | two times | A local-time window, e.g. 18:30–23:15. May cross midnight; the end is exclusive; start == end means always. |
+| **Time** | is before, is after | a time | The one-sided form. "after" includes the minute itself. |
+| **Day** | is one of | days | 0 (Sunday) to 6 (Saturday). |
+| **Activity** | is, is not | an activity | "is" fails closed with no activity; "is not" treats nothing running as a real answer. |
+| **Activity** | has lasted at least, has lasted less than | minutes | Fails closed with no activity. |
+| **Spotify** | is playing, is not playing | — | Fails open if Spotify can't be checked. |
+| **Spotify playlist** | is, is not | a playlist | Compares what playback reports as its context, by URI. Nothing playing answers "is not"; an uncheckable Spotify fails closed. |
+| **Timer** | is running, is paused, is not running | — | NIMBUS's own timer. Fails closed if the timer can't be read. |
+| **Device** | is on the network, is not on the network | a device | Presence from the Network tab, by MAC. NIMBUS's own observation, **not** a security check; phones drop off while asleep. A device it has never seen, or network watching being off, fails closed both ways. |
+
+Two conditions aren't rows in that list:
+
 | Condition | What it checks |
 | --- | --- |
-| `timeOfDay` | A local-time window, e.g. 18:30–23:15. May cross midnight; the end is exclusive; start == end means always. |
-| `daysOfWeek` | Specific days, 0 (Sunday) to 6 (Saturday). |
-| `activityIs` | The current activity is this one. Fails closed with no activity. |
-| `activityDuration` | The current activity has lasted at least N minutes. Fails closed with no activity. |
-| `spotifyNotAlreadyPlaying` | Nothing is playing on Spotify. Fails open if Spotify can't be checked. |
-| `spotifyIsPlaying` | Something *is* playing on Spotify. Mainly for the wind-down half, so "stop the music" isn't offered when no music is playing. Fails open if Spotify can't be checked. |
 | `actionsNotAlreadyActive` | This routine's own playlist (by exact URI) or timer isn't already running. Set with the **Skip if already active** switch. Fails open. |
-| `weekdaysOnly` | Monday–Friday. Legacy: still honoured for existing routines, not offered for new ones. |
+| `weekdaysOnly` | Monday–Friday. Legacy: still honoured and still shown, but new routines get **Day is one of** instead. |
+
+**Fail open vs fail closed.** The Spotify playing checks fail *open* — a
+broken playback check shouldn't silence every suggestion. Everything that
+names something specific (an activity, a playlist, a timer state, a
+device) fails *closed*: "only while my phone is home" must not fire when
+NIMBUS has no idea where the phone is.
 
 ### Actions
 
@@ -90,7 +113,9 @@ failing never stops the rest; every step's result is returned.
   result, play a playlist. "Play playlist" shows a dropdown of your actual
   playlists and stores the exact playlist URI.
 - **Timer**: start a single countdown or a Pomodoro plan, stop the timer,
-  add another study. See [Timers](#timers).
+  pause or resume it, add another study. Pause and resume report a failure
+  when there is nothing in that state, rather than a quiet success. See
+  [Timers](#timers).
 - **System**: open a website (`http://`/`https://` only), lock Windows.
 - **Applications**: launch an app from its `.exe` or a `.lnk` shortcut;
   bring an app to the front, minimize, maximize or close it by process

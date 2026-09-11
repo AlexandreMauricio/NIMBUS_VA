@@ -18,6 +18,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.2 — 2026-09-12
+
+- **Routine conditions are now built as field → operator → value**, with
+  the value hidden when the operator doesn't need one. One catalog
+  (`src/routines/conditionCatalog.ts`) describes every field and operator;
+  the editor draws its two pickers from it, so a new condition is one
+  entry there plus one case in the evaluator. Routines saved before this
+  keep working untouched, and `weekdaysOnly` still shows while no longer
+  being offered.
+- **New conditions**: Time is before/after, Activity is not, Activity has
+  lasted less than, Spotify playlist is/is not (by URI, from a picker of
+  your playlists), Timer is running/paused/not running, and **Device is
+  (or is not) on the network** — presence from the Network tab, the
+  groundwork for "when my phone is home". Everything that names something
+  specific fails closed when NIMBUS can't tell.
+- **New actions**: `timer.pause` and `timer.resume`.
+
 ## 0.4.1 — 2026-09-12
 
 - **Interface size**: Settings > Display scales the main window between 50%

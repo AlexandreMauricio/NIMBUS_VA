@@ -1303,7 +1303,30 @@ export function startApp(): void {
     new FileRoutineStateStore(),
     // Injected rather than imported, same as isSpotifyPlaying: the
     // engine reads the current activity without knowing what produces it.
-    () => activityService.getCurrentActivity()
+    () => activityService.getCurrentActivity(),
+    // The signals the newer conditions read. Each throws or reports
+    // "can't tell" rather than guessing, which is what makes those
+    // conditions fail closed instead of firing blind.
+    {
+      // Whatever Spotify says is driving playback right now. A failure
+      // propagates: the evaluator reads that as "can't tell".
+      getPlaybackContextUri: async () => {
+        const playback = await spotifyContextProvider.getContext();
+        return playback.context?.uri ?? null;
+      },
+      getTimerStatus: () => {
+        const state = timerService.getState();
+        if (state?.status === "running") return "running";
+        if (state?.status === "paused") return "paused";
+        return "none";
+      },
+      // undefined means NIMBUS has no idea: network watching is off, or
+      // it has never seen that device.
+      isDeviceOnline: (deviceId: string) => {
+        if (!settings.windowsClient.network.enabled) return undefined;
+        return networkService.getState().devices.find((device) => device.id === deviceId)?.online;
+      },
+    }
   );
   routineService.start();
 

@@ -7,7 +7,7 @@ import { AssistantSuggestion } from "../common/assistantEvents";
 import { ContextEventBus } from "../events/eventBus";
 import { ContextEvent } from "../events/types";
 import { matchesTrigger } from "./triggerMatcher";
-import { evaluateConditionsDetailed } from "./conditionEvaluator";
+import { ConditionContext, evaluateConditionsDetailed } from "./conditionEvaluator";
 import {
   DEFAULT_ROUTINE_COOLDOWN_MINUTES,
   effectiveStopTrigger,
@@ -104,7 +104,19 @@ export class RoutineService {
      */
     private readonly stateStore?: RoutineStateStore,
     /** Injected like isSpotifyPlaying — the engine never reaches into the Activity service itself. Used only by the activity conditions. */
-    private readonly getCurrentActivity?: () => CurrentActivity | null
+    private readonly getCurrentActivity?: () => CurrentActivity | null,
+    /**
+     * The remaining signals the newer conditions read: Spotify's current
+     * playlist, the timer's state, and whether a known device is on the
+     * local network. Grouped in one object rather than three more
+     * positional parameters — and injected like every other signal, so
+     * this class still knows nothing about what provides them. An absent
+     * getter means "can't tell", and those conditions fail closed.
+     */
+    private readonly conditionSignals?: Pick<
+      ConditionContext,
+      "getPlaybackContextUri" | "getTimerStatus" | "isDeviceOnline"
+    >
   ) {
     if (stateStore) {
       try {
@@ -354,6 +366,7 @@ export class RoutineService {
         routineActions: routine.actions,
         areActionsAlreadyActive: this.areActionsAlreadyActive,
         getCurrentActivity: this.getCurrentActivity,
+        ...this.conditionSignals,
       },
       routine.conditionLogic ?? "all"
     );
@@ -487,6 +500,7 @@ export class RoutineService {
               routineActions: routine.stopActions,
               areActionsAlreadyActive: this.areActionsAlreadyActive,
               getCurrentActivity: this.getCurrentActivity,
+              ...this.conditionSignals,
             },
             routine.stopConditionLogic ?? "all"
           )

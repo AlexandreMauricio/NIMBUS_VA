@@ -1152,14 +1152,16 @@
               <p class="feed-empty" id="routineConditionEmpty">No conditions — the trigger alone decides.</p>
 
               <div class="action-picker-row">
-                <select id="routineConditionTypeSelect" class="input input-compact">
-                  <option value="timeOfDay">Time of day</option>
-                  <option value="daysOfWeek">Days of the week</option>
-                  <option value="activityIs">Current activity is…</option>
-                  <option value="activityDuration">Current activity has lasted…</option>
-                  <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
-                  <option value="spotifyIsPlaying">Spotify is playing</option>
-                </select>
+                <select
+                  id="routineConditionFieldSelect"
+                  class="input input-compact"
+                  title="What to check"
+                ></select>
+                <select
+                  id="routineConditionOperatorSelect"
+                  class="input input-compact"
+                  title="How to compare"
+                ></select>
                 <button class="btn btn-secondary" id="routineAddConditionBtn">Add condition</button>
               </div>
 
@@ -1232,14 +1234,16 @@
               </p>
 
               <div class="action-picker-row">
-                <select id="routineStopConditionTypeSelect" class="input input-compact">
-                  <option value="timeOfDay">Time of day</option>
-                  <option value="daysOfWeek">Days of the week</option>
-                  <option value="activityIs">Current activity is…</option>
-                  <option value="activityDuration">Current activity has lasted…</option>
-                  <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
-                  <option value="spotifyIsPlaying">Spotify is playing</option>
-                </select>
+                <select
+                  id="routineStopConditionFieldSelect"
+                  class="input input-compact"
+                  title="What to check"
+                ></select>
+                <select
+                  id="routineStopConditionOperatorSelect"
+                  class="input input-compact"
+                  title="How to compare"
+                ></select>
                 <button class="btn btn-secondary" id="routineAddStopConditionBtn">Add condition</button>
               </div>
 

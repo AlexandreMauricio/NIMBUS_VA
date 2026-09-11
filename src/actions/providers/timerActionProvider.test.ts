@@ -108,12 +108,21 @@ test("listActions declares timer.start with no confirmation required", () => {
   assert.equal(start!.affectsService, "timer");
 });
 
-test("listActions declares exactly start, addStudy and stop", () => {
+test("listActions declares exactly start, addStudy, stop, pause and resume", () => {
   const ids = provider()
     .listActions()
     .map((a) => a.id)
     .sort();
-  assert.deepEqual(ids, [TIMER_ACTIONS.ADD_STUDY, TIMER_ACTIONS.START, TIMER_ACTIONS.STOP].sort());
+  assert.deepEqual(
+    ids,
+    [
+      TIMER_ACTIONS.ADD_STUDY,
+      TIMER_ACTIONS.START,
+      TIMER_ACTIONS.STOP,
+      TIMER_ACTIONS.PAUSE,
+      TIMER_ACTIONS.RESUME,
+    ].sort()
+  );
 });
 
 test("validate accepts mode: pomodoro with no other params (all default)", () => {
@@ -353,4 +362,29 @@ test("stopping when nothing is running succeeds quietly", async () => {
 
   assert.equal(result.status, "success");
   assert.match(result.message!, /No timer was running/);
+});
+
+test("pause holds the countdown and resume starts it again", async () => {
+  const { provider, timerService } = providerWithFakeTimers();
+  await provider.execute(TIMER_ACTIONS.START, { duration: 25 });
+
+  assert.equal(provider.validate(TIMER_ACTIONS.PAUSE, {}).valid, true);
+  const paused = await provider.execute(TIMER_ACTIONS.PAUSE, {});
+  assert.equal(paused.status, "success");
+  assert.equal(timerService.getState()?.status, "paused");
+
+  const resumed = await provider.execute(TIMER_ACTIONS.RESUME, {});
+  assert.equal(resumed.status, "success");
+  assert.equal(timerService.getState()?.status, "running");
+});
+
+test("pausing or resuming the wrong state is a failure, not a quiet success", async () => {
+  const { provider } = providerWithFakeTimers();
+  assert.equal((await provider.execute(TIMER_ACTIONS.PAUSE, {})).status, "failure");
+  assert.equal((await provider.execute(TIMER_ACTIONS.RESUME, {})).status, "failure");
+
+  await provider.execute(TIMER_ACTIONS.START, { duration: 25 });
+  const resumeWhileRunning = await provider.execute(TIMER_ACTIONS.RESUME, {});
+  assert.equal(resumeWhileRunning.status, "failure");
+  assert.match(JSON.stringify(resumeWhileRunning), /paused/);
 });

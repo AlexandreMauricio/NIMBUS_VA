@@ -1,5 +1,5 @@
 import { CurrentActivity } from "../activity/types";
-import { ConditionLogic, RoutineActionStep, RoutineCondition } from "./types";
+import { ConditionLogic, RoutineActionStep, RoutineCondition, RoutineTimerStatus } from "./types";
 
 /** External signals a condition might need — kept as a small, optional bag of injected functions so evaluation stays pure/testable and Core never reaches into Electron or a specific provider directly. */
 export interface ConditionContext {
@@ -34,6 +34,21 @@ export interface ConditionContext {
    * when NIMBUS has no idea whether the user is studying.
    */
   getCurrentActivity?: () => CurrentActivity | null;
+  /**
+   * The Spotify URI of whatever is driving playback (a playlist, album or
+   * artist), or null when nothing is. Only the Spotify playlist
+   * condition reads it; absent means "can't tell" and it fails closed,
+   * since "only while this playlist plays" must not fire blind.
+   */
+  getPlaybackContextUri?: () => string | null | Promise<string | null>;
+  /** What the timer is doing. Absent means "can't tell": the timer conditions then fail closed. */
+  getTimerStatus?: () => RoutineTimerStatus;
+  /**
+   * Whether a device NIMBUS knows is on the local network. `undefined`
+   * means NIMBUS has no idea (an unknown device, or network watching
+   * off), which fails closed both ways - see DeviceOnlineCondition.
+   */
+  isDeviceOnline?: (deviceId: string) => boolean | undefined;
 }
 
 /** One condition's outcome, with a description fit to show the user verbatim. */
@@ -110,14 +125,43 @@ function describeCondition(condition: RoutineCondition, passed: boolean): string
       return passed ? "Spotify is not already playing" : "Spotify is already playing";
     case "spotifyIsPlaying":
       return passed ? "Spotify is playing" : "Spotify is not playing";
-    case "activityIs":
+    case "activityIs": {
+      const is = `Current activity is ${condition.activity}`;
+      const isNot = `Current activity is not ${condition.activity}`;
+      if (condition.negate === true) return passed ? isNot : is;
+      return passed ? is : isNot;
+    }
+    case "activityDuration": {
+      const minutes = condition.minMinutes;
+      if (condition.operator === "lessThan") {
+        return passed
+          ? `Current activity has lasted less than ${minutes} min`
+          : `Current activity has lasted ${minutes} min or more`;
+      }
       return passed
-        ? `Current activity is ${condition.activity}`
-        : `Current activity is not ${condition.activity}`;
-    case "activityDuration":
-      return passed
-        ? `Current activity has lasted at least ${condition.minMinutes} min`
-        : `Current activity has not lasted ${condition.minMinutes} min yet`;
+        ? `Current activity has lasted at least ${minutes} min`
+        : `Current activity has not lasted ${minutes} min yet`;
+    }
+    case "timeIs": {
+      const at = formatHm(condition.hour, condition.minute);
+      const side = condition.operator === "after" ? "after" : "before";
+      return passed ? `Time is ${side} ${at}` : `Time is not ${side} ${at}`;
+    }
+    case "spotifyPlaylistIs": {
+      const name = condition.playlistName || "that playlist";
+      const wanted = condition.negate === true ? `is not ${name}` : `is ${name}`;
+      const other = condition.negate === true ? `is ${name}` : `is not ${name}`;
+      return passed ? `The playlist ${wanted}` : `The playlist ${other}`;
+    }
+    case "timerStatusIs":
+      if (condition.status === "none") return passed ? "No timer is running" : "A timer is running";
+      return passed ? `The timer is ${condition.status}` : `The timer is not ${condition.status}`;
+    case "deviceOnline": {
+      const name = condition.deviceName || "That device";
+      const wanted = condition.negate === true ? "not on the network" : "on the network";
+      const other = condition.negate === true ? "on the network" : "not on the network";
+      return passed ? `${name} is ${wanted}` : `${name} is ${other}`;
+    }
     case "actionsNotAlreadyActive":
       return passed
         ? "This routine's actions are not already active"
@@ -170,14 +214,61 @@ async function evaluateCondition(condition: RoutineCondition, ctx: ConditionCont
 
     case "activityIs": {
       const current = ctx.getCurrentActivity?.() ?? null;
-      if (!current) return false; // fail closed — see getCurrentActivity's doc
-      return current.activity.trim().toLowerCase() === condition.activity.trim().toLowerCase();
+      const matches =
+        current !== null && current.activity.trim().toLowerCase() === condition.activity.trim().toLowerCase();
+      // "is X" fails closed with no activity (see getCurrentActivity's
+      // doc); "is not X" treats nothing running as a real answer, because
+      // whatever the user is doing, it demonstrably isn't X.
+      return condition.negate === true ? !matches : matches;
     }
 
     case "activityDuration": {
       const current = ctx.getCurrentActivity?.() ?? null;
       if (!current) return false;
-      return current.durationMs >= condition.minMinutes * 60_000;
+      const threshold = condition.minMinutes * 60_000;
+      return condition.operator === "lessThan"
+        ? current.durationMs < threshold
+        : current.durationMs >= threshold;
+    }
+
+    case "timeIs": {
+      const minuteOfDay = ctx.now.getHours() * 60 + ctx.now.getMinutes();
+      const at = condition.hour * 60 + (condition.minute ?? 0);
+      return condition.operator === "after" ? minuteOfDay >= at : minuteOfDay < at;
+    }
+
+    case "spotifyPlaylistIs": {
+      if (!ctx.getPlaybackContextUri) return false; // can't tell - fail closed
+      let uri: string | null;
+      try {
+        uri = await ctx.getPlaybackContextUri();
+      } catch {
+        return false;
+      }
+      // Nothing playing is a real answer: the playlist certainly isn't it.
+      const matches = uri !== null && uri === condition.playlistUri;
+      return condition.negate === true ? !matches : matches;
+    }
+
+    case "timerStatusIs": {
+      if (!ctx.getTimerStatus) return false; // can't tell - fail closed
+      try {
+        return ctx.getTimerStatus() === condition.status;
+      } catch {
+        return false;
+      }
+    }
+
+    case "deviceOnline": {
+      if (!ctx.isDeviceOnline) return false; // can't tell - fail closed
+      let online: boolean | undefined;
+      try {
+        online = ctx.isDeviceOnline(condition.deviceId);
+      } catch {
+        return false;
+      }
+      if (online === undefined) return false; // NIMBUS has never seen this device
+      return condition.negate === true ? !online : online;
     }
 
     case "actionsNotAlreadyActive": {
