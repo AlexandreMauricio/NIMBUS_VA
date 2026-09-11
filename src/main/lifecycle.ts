@@ -402,6 +402,7 @@ function registerIpcHandlers(): void {
         positions = (partial.positions as StockPosition[]).map((p) => ({
           id: p.id,
           symbol: normalizeSymbol(p.symbol)!,
+          alternativeSymbol: p.alternativeSymbol ? normalizeSymbol(p.alternativeSymbol)! : undefined,
           companyName: p.companyName?.trim() || undefined,
           shares: p.shares,
           averageCost: p.averageCost,

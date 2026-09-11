@@ -14,6 +14,12 @@ export interface StockPosition {
   id: string;
   /** Market symbol as the data source knows it, e.g. "AAPL", "ASML.AS", "BRK-B". Stored uppercase. */
   symbol: string;
+  /**
+   * Optional second listing of the same company, used for the price only
+   * when `symbol` has none or only an outdated one (a retired ticker).
+   * Stored uppercase.
+   */
+  alternativeSymbol?: string;
   /** Optional display name; the market data's company name is used when absent. */
   companyName?: string;
   shares: number;
@@ -72,6 +78,9 @@ export type QuoteStatus = "live" | "stale" | "outdated" | "unavailable";
 export interface PositionView {
   id: string;
   symbol: string;
+  /** The symbol the price actually came from: `symbol`, or the alternative when that took over. */
+  priceSymbol: string;
+  usingAlternative: boolean;
   companyName: string;
   shares: number;
   averageCost: number;
@@ -268,6 +277,15 @@ export function validateStockPosition(value: unknown, now: Date = new Date()): S
   }
   if (!normalizeSymbol(p.symbol)) {
     return { valid: false, error: "Symbol must be a ticker such as AAPL, BRK-B or ASML.AS." };
+  }
+  if (p.alternativeSymbol !== undefined) {
+    const alternative = normalizeSymbol(p.alternativeSymbol);
+    if (!alternative) {
+      return { valid: false, error: "Alternative symbol must be a ticker such as SMSN.IL." };
+    }
+    if (alternative === normalizeSymbol(p.symbol)) {
+      return { valid: false, error: "The alternative symbol must be different from the symbol." };
+    }
   }
   if (typeof p.shares !== "number" || !Number.isFinite(p.shares) || p.shares <= 0 || p.shares > 1e12) {
     return { valid: false, error: "Shares must be a number greater than 0." };

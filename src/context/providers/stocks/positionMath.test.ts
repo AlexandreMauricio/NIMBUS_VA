@@ -237,3 +237,13 @@ test("a position whose price is outdated is left out of every total", () => {
   assert.equal(computePortfolio([live, old])[0].positions, 1);
   assert.equal(computeBaseTotals([live, old], "USD", new Map()).totals?.positions, 1);
 });
+
+test("the price symbol defaults to the position's own, and records an alternative", () => {
+  const own = computePosition(position(), quote(), TODAY);
+  assert.equal(own.priceSymbol, "AAPL");
+  assert.equal(own.usingAlternative, false);
+
+  const alt = computePosition(position({ alternativeSymbol: "AAPL.MX" }), quote(), TODAY, "AAPL.MX");
+  assert.equal(alt.priceSymbol, "AAPL.MX");
+  assert.equal(alt.usingAlternative, true);
+});

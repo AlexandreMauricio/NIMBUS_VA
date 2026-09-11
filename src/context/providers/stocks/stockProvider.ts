@@ -226,7 +226,11 @@ export class StockProvider implements ContextProvider<StockContext> {
     const positions = Array.isArray(settings.positions) ? settings.positions : [];
     return positions
       .filter((p) => validateStockPosition(p, this.now()).valid)
-      .map((p) => ({ ...p, symbol: normalizeSymbol(p.symbol)! }));
+      .map((p) => ({
+        ...p,
+        symbol: normalizeSymbol(p.symbol)!,
+        alternativeSymbol: p.alternativeSymbol ? normalizeSymbol(p.alternativeSymbol)! : undefined,
+      }));
   }
 
   private async build(): Promise<StockContext> {
@@ -244,12 +248,31 @@ export class StockProvider implements ContextProvider<StockContext> {
       const quote = this.quotes.get(symbol)?.quote ?? null;
       return quote ? { ...quote, outdated: this.isOutdated(quote, nowMs) } : null;
     };
-    if (symbols.every((s) => quoteFor(s) === null)) {
+
+    // A position whose own symbol has no current price takes it from its
+    // alternative symbol, if it has one. Alternatives are only fetched then.
+    const needsAlternative = (p: StockPosition): boolean => {
+      const own = quoteFor(p.symbol);
+      return Boolean(p.alternativeSymbol) && (!own || own.outdated);
+    };
+    await this.fetchDue(
+      [...new Set(positions.filter(needsAlternative).map((p) => p.alternativeSymbol!))],
+      nowMs
+    );
+    const chosen = positions.map((p) => {
+      if (needsAlternative(p)) {
+        const alternative = quoteFor(p.alternativeSymbol!);
+        if (alternative && !alternative.outdated)
+          return { p, symbol: p.alternativeSymbol!, quote: alternative };
+      }
+      return { p, symbol: p.symbol, quote: quoteFor(p.symbol) };
+    });
+    if (chosen.every((c) => c.quote === null)) {
       throw new Error("Market data is unavailable for every tracked symbol");
     }
 
     const today = localCalendarDate(this.now().toISOString(), this.timeZone());
-    const views = positions.map((p) => computePosition(p, quoteFor(p.symbol), today));
+    const views = chosen.map((c) => computePosition(c.p, c.quote, today, c.symbol));
 
     // One pair per position currency that isn't already the base.
     const pairs = new Map<string, { pair: string; divisor: number }>();

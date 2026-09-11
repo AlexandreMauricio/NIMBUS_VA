@@ -1885,6 +1885,12 @@ button.btn {
   color: var(--color-neutral-500);
 }
 
+.stock-listing-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .stock-listings {
   margin-bottom: var(--space-4);
 }

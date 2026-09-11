@@ -20,6 +20,7 @@ data, with no credential involved:
 | `symbol` | As the market lists it: `AAPL`, `BRK-B`, `ASML.AS`, `0700.HK`. Stored uppercase. |
 | `companyName` | Optional; the market data's name is used when blank. |
 | `shares` | Greater than 0; fractions allowed. |
+| `alternativeSymbol` | Optional. Another listing of the same company, used for the price only when `symbol` has none or only an outdated one. |
 | `averageCost` | Per share, in the currency the symbol trades in. |
 | `purchaseDate` | Optional plain date; can't be in the future. |
 | `notes` | Optional. |
@@ -86,6 +87,15 @@ is an ordinary position edit that changes only the symbol — nothing
 switches automatically, and the average cost is left as entered (a note
 warns when the new listing trades in another currency). Results are
 cached for 30 minutes.
+
+**Use as alternative** keeps the original symbol and saves the suggestion
+as the position's `alternativeSymbol` (also editable in the form). From
+then on, whenever the symbol has no price or only an outdated one, the
+price comes from the alternative — fetched only in that case — and the
+position counts in the totals again, shown "via" the alternative. Its
+`priceSymbol` / `usingAlternative` fields say which symbol priced it. If
+the alternative is outdated too, the position stays outdated. The average
+cost is used as entered, so it must match the alternative's currency.
 
 ## Caching and rate limiting
 

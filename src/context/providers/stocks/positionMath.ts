@@ -32,12 +32,16 @@ export function majorCurrency(currency: string): { currency: string; divisor: nu
 export function computePosition(
   position: StockPosition,
   quote: StockQuote | null,
-  today: string
+  today: string,
+  /** The symbol `quote` belongs to — the position's alternative symbol when that supplied the price. */
+  priceSymbol: string = position.symbol
 ): PositionView {
   const invested = position.shares * position.averageCost;
   const base = {
     id: position.id,
     symbol: position.symbol,
+    priceSymbol,
+    usingAlternative: priceSymbol !== position.symbol,
     shares: position.shares,
     averageCost: position.averageCost,
     purchaseDate: position.purchaseDate ?? null,

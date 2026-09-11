@@ -457,3 +457,74 @@ test("news is searched by the company's name once it is known", async () => {
   await provider.getNews("AAPL");
   assert.deepEqual(seen, ["AAPL Inc."]);
 });
+
+// ------------------------------------------------------ alternative symbol
+
+function retire(market: FakeMarket, symbol: string) {
+  const original = market.fetchQuote.bind(market);
+  market.fetchQuote = async (s: string) => {
+    const quote = await original(s);
+    return s === symbol ? { ...quote, marketTime: "2022-07-21T15:07:19.000Z" } : quote;
+  };
+}
+
+test("an outdated symbol takes its price from the alternative, which then counts in the totals", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "SMSN.L", alternativeSymbol: "SMSN.IL", shares: 2, averageCost: 3000 },
+  ]);
+  market.prices.set("SMSN.L", 1179.5);
+  market.prices.set("SMSN.IL", 4860);
+  retire(market, "SMSN.L");
+
+  const context = await provider.getContext();
+
+  const view = context.positions[0];
+  assert.equal(view.symbol, "SMSN.L");
+  assert.equal(view.priceSymbol, "SMSN.IL");
+  assert.equal(view.usingAlternative, true);
+  assert.equal(view.status, "live");
+  assert.equal(view.marketValue, 2 * 4860);
+  assert.equal(context.outdatedCount, 0);
+  assert.equal(context.totals[0].marketValue, 2 * 4860);
+});
+
+test("an unknown symbol also falls back to the alternative", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "GONE", alternativeSymbol: "MSFT", shares: 1, averageCost: 1 },
+  ]);
+
+  const context = await provider.getContext();
+
+  assert.equal(context.positions[0].priceSymbol, "MSFT");
+  assert.deepEqual(market.calls, ["GONE", "MSFT"]);
+});
+
+test("the alternative isn't fetched while the symbol itself has a current price", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "AAPL", alternativeSymbol: "MSFT", shares: 1, averageCost: 1 },
+  ]);
+
+  const context = await provider.getContext();
+
+  assert.equal(context.positions[0].priceSymbol, "AAPL");
+  assert.deepEqual(market.calls, ["AAPL"]);
+});
+
+test("with the alternative outdated too, the position stays outdated", async () => {
+  const { market, provider } = setup([
+    { id: "p1", symbol: "AAPL", shares: 1, averageCost: 1 },
+    { id: "p2", symbol: "SMSN.L", alternativeSymbol: "SMSN.IL", shares: 1, averageCost: 1 },
+  ]);
+  market.prices.set("SMSN.L", 1179.5);
+  market.prices.set("SMSN.IL", 4860);
+  const original = market.fetchQuote.bind(market);
+  market.fetchQuote = async (s: string) => {
+    const quote = await original(s);
+    return s.startsWith("SMSN") ? { ...quote, marketTime: "2022-07-21T15:07:19.000Z" } : quote;
+  };
+
+  const context = await provider.getContext();
+
+  assert.equal(context.positions[1].status, "outdated");
+  assert.equal(context.positions[1].priceSymbol, "SMSN.L");
+});

@@ -31,6 +31,8 @@ interface StockQuoteView {
 interface StockPositionView {
   id: string;
   symbol: string;
+  priceSymbol?: string;
+  usingAlternative?: boolean;
   companyName: string;
   shares: number;
   averageCost: number;
@@ -91,6 +93,7 @@ interface StockProviderResultView {
 interface StockPositionInput {
   id: string;
   symbol: string;
+  alternativeSymbol?: string;
   companyName?: string;
   shares: number;
   averageCost: number;
@@ -240,6 +243,7 @@ export function initStocksTab(): void {
 
   const formHeading = document.getElementById("positionFormHeading") as HTMLElement;
   const symbolInput = document.getElementById("positionSymbol") as HTMLInputElement;
+  const altInput = document.getElementById("positionAltSymbol") as HTMLInputElement;
   const nameInput = document.getElementById("positionName") as HTMLInputElement;
   const sharesInput = document.getElementById("positionShares") as HTMLInputElement;
   const costInput = document.getElementById("positionCost") as HTMLInputElement;
@@ -426,6 +430,9 @@ export function initStocksTab(): void {
       const symbolLine = el("span", "stock-row-symbol", position.symbol);
       if (view?.status === "stale") symbolLine.appendChild(el("span", "tag tag-neutral", "stale"));
       if (view?.status === "outdated") symbolLine.appendChild(el("span", "tag tag-neutral", "outdated"));
+      if (view?.usingAlternative && view.priceSymbol) {
+        symbolLine.appendChild(el("span", "tag tag-neutral", `via ${view.priceSymbol}`));
+      }
       if (prefs.enabled && result?.data && (!view || view.status === "unavailable")) {
         symbolLine.appendChild(el("span", "tag tag-neutral", "no price"));
       }
@@ -489,6 +496,8 @@ export function initStocksTab(): void {
 
     const yours = el("div", "stock-detail-card");
     yours.appendChild(el("div", "stock-stat-label", "Your position"));
+    if (position.alternativeSymbol)
+      yours.appendChild(keyValue("Alternative symbol", position.alternativeSymbol));
     yours.appendChild(keyValue("Shares", new Intl.NumberFormat().format(position.shares)));
     yours.appendChild(keyValue("Average cost", money(position.averageCost, currency)));
     yours.appendChild(keyValue("Purchase date", plainDate(position.purchaseDate)));
@@ -500,6 +509,11 @@ export function initStocksTab(): void {
     market.appendChild(el("div", "stock-stat-label", "Market"));
     const quote = view?.quote ?? null;
     if (quote) {
+      if (view?.usingAlternative && view.priceSymbol) {
+        market.appendChild(
+          keyValue("Price from", `${view.priceSymbol} (${position.symbol} has no current price)`)
+        );
+      }
       market.appendChild(keyValue("Price", money(quote.price, currency)));
       market.appendChild(keyValue("Previous close", money(quote.previousClose, currency)));
       market.appendChild(
@@ -679,7 +693,28 @@ export function initStocksTab(): void {
           use.disabled = false;
         }
       });
-      row.appendChild(use);
+      const alternative = el("button", "btn btn-ghost", "Use as alternative");
+      alternative.type = "button";
+      alternative.title = `Keep ${position.symbol}, and take the price from ${c.symbol} whenever ${position.symbol} has none`;
+      alternative.addEventListener("click", async () => {
+        alternative.disabled = true;
+        try {
+          prefs = await bridge().updateStockSettings({
+            positions: prefs.positions.map((p) =>
+              p.id === position.id ? { ...p, alternativeSymbol: c.symbol } : p
+            ),
+          });
+          await load();
+          renderDetail(position.id);
+        } catch (err) {
+          showError(errorEl, errorText(err));
+          alternative.disabled = false;
+        }
+      });
+      const buttons = el("div", "stock-listing-actions");
+      buttons.appendChild(alternative);
+      buttons.appendChild(use);
+      row.appendChild(buttons);
       container.appendChild(row);
     }
   }
@@ -735,6 +770,7 @@ export function initStocksTab(): void {
     editingId = position?.id ?? null;
     formHeading.textContent = position ? `Edit ${position.symbol}` : "Add a position";
     symbolInput.value = position?.symbol ?? "";
+    altInput.value = position?.alternativeSymbol ?? "";
     nameInput.value = position?.companyName ?? "";
     sharesInput.value = position ? String(position.shares) : "";
     costInput.value = position ? String(position.averageCost) : "";
@@ -759,7 +795,11 @@ export function initStocksTab(): void {
     const symbol = symbolInput.value.trim().toUpperCase();
     const shares = Number(sharesInput.value);
     const averageCost = Number(costInput.value);
+    const alternativeSymbol = altInput.value.trim().toUpperCase();
     if (!symbol) return showError(formError, "Enter the stock's symbol, e.g. AAPL.");
+    if (alternativeSymbol && alternativeSymbol === symbol) {
+      return showError(formError, "The alternative symbol must be different from the symbol.");
+    }
     if (!sharesInput.value || !Number.isFinite(shares) || shares <= 0) {
       return showError(formError, "Shares must be a number greater than 0.");
     }
@@ -773,6 +813,7 @@ export function initStocksTab(): void {
       symbol,
       shares,
       averageCost,
+      ...(alternativeSymbol ? { alternativeSymbol } : {}),
       ...(nameInput.value.trim() ? { companyName: nameInput.value.trim() } : {}),
       ...(dateInput.value ? { purchaseDate: dateInput.value } : {}),
       ...(notesInput.value.trim() ? { notes: notesInput.value.trim() } : {}),

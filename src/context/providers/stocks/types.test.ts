@@ -80,3 +80,9 @@ test("company names lose their legal form for searching", () => {
   assert.equal(companySearchName("Bank of America Corporation"), "Bank of America");
   assert.equal(companySearchName(null), null);
 });
+
+test("an alternative symbol must be a valid ticker different from the symbol", () => {
+  assert.equal(validateStockPosition(valid({ alternativeSymbol: "AAPL.MX" }), NOW).valid, true);
+  assert.equal(validateStockPosition(valid({ alternativeSymbol: "not a symbol" }), NOW).valid, false);
+  assert.equal(validateStockPosition(valid({ alternativeSymbol: "aapl" }), NOW).valid, false);
+});

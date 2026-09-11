@@ -24,6 +24,8 @@ function positionAt(marketTime: string): PositionView {
   return {
     id: "p1",
     symbol: "AAPL",
+    priceSymbol: "AAPL",
+    usingAlternative: false,
     companyName: "Apple",
     shares: 10,
     averageCost: 100,
