@@ -373,8 +373,11 @@ export function frequentAppSignals(apps: AttentionFrequentApp[], now: Date): Att
   return apps.map((app) => {
     const hours = app.minutesUsed / 60;
     const usage = app.minutesUsed < 60 ? "under an hour" : `about ${Math.round(hours)} h`;
+    const website = app.source === "website";
     return {
-      key: `frequentApp:${app.executable}`,
+      // Websites get their own key space: a site called "steam" and
+      // steam.exe are different things to ask about.
+      key: `frequentApp:${website ? "site:" : ""}${app.executable}`,
       source: "activity" as const,
       kind: "frequentApp",
       title: `Make ${app.name} an activity?`,
@@ -388,7 +391,12 @@ export function frequentAppSignals(apps: AttentionFrequentApp[], now: Date): Att
         ...(app.justOpened ? ["You just opened it"] : []),
       ],
       expiresAt: new Date(now.getTime() + HOUR).toISOString(),
-      followUp: { type: "createActivity" as const, application: app.executable, name: app.name },
+      followUp: {
+        type: "createActivity" as const,
+        application: app.executable,
+        name: app.name,
+        ...(website ? { source: "website" as const } : {}),
+      },
       labels: { primary: "Make it an activity", secondary: "Not now" },
     };
   });

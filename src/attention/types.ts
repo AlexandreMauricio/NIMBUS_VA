@@ -158,15 +158,22 @@ export interface AttentionFollowUp {
   application: string;
   /** What to call it, e.g. "Halo Infinite". */
   name: string;
+  /** Which kind of activity to create. Absent means an application. */
+  source?: "application" | "website";
 }
 
-/** A program used often that isn't an activity yet (see src/activity/appUsage.ts). */
+/**
+ * A program (src/activity/appUsage.ts) or website (siteUsage.ts) used
+ * often that isn't an activity yet. For a website, `executable` is the
+ * lowercased site name.
+ */
 export interface AttentionFrequentApp {
   executable: string;
   name: string;
   daysUsed: number;
   minutesUsed: number;
   justOpened: boolean;
+  source?: "application" | "website";
 }
 
 /** The user answered one of Attention's own suggestions. */

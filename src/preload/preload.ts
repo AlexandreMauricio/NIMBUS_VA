@@ -318,9 +318,12 @@ contextBridge.exposeInMainWorld("nimbus", {
   /** Fires when the current activity changes, so Home can refresh without polling hard. */
   /** Asks the window to open Routines → Activities with a new activity filled in (after "make it an activity?"). */
   onOpenActivityEditor: (
-    callback: (prefill: { application: string; name: string }) => void
+    callback: (prefill: { application: string; name: string; source?: "application" | "website" }) => void
   ): (() => void) => {
-    const listener = (_event: unknown, prefill: { application: string; name: string }) => callback(prefill);
+    const listener = (
+      _event: unknown,
+      prefill: { application: string; name: string; source?: "application" | "website" }
+    ) => callback(prefill);
     ipcRenderer.on("nimbus:open-activity-editor", listener);
     return () => ipcRenderer.removeListener("nimbus:open-activity-editor", listener);
   },

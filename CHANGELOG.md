@@ -18,6 +18,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.10 — 2026-09-11
+
+- Activities: "Make it an activity?" now covers websites too. A separate
+  opt-in tally (`site-usage.json`, same switch as apps) counts sites by the
+  name at the end of their tab title — "… - YouTube" → YouTube — never
+  whole titles or addresses. A site used on 3 of 7 days or for 5 hours is
+  offered like an app; "yes" opens the editor with a Website activity
+  matching its name.
+
 ## 0.3.9 — 2026-09-11
 
 - Memory: a persistent memory layer (`src/memory/`) with three tiers kept

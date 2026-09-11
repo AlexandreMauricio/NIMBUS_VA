@@ -48,6 +48,8 @@ import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
 import { FileAppUsageStore } from "./appUsageStore";
+import { FileSiteUsageStore } from "./siteUsageStore";
+import { SiteUsageTracker } from "../activity/siteUsage";
 import { NetworkProvider, NetworkService, dnsHostnameResolver } from "../network";
 import { WindowsNetworkScanner } from "./network/windowsNetworkScanner";
 import { DeviceProber } from "./network/deviceProbe";
@@ -88,6 +90,7 @@ let activityMonitor: DesktopActivityMonitor | null = null;
 const timerService = new TimerService(contextEventBus);
 let activityService: ActivityService;
 let appUsage: AppUsageTracker | null = null;
+let siteUsage: SiteUsageTracker | null = null;
 let networkService: NetworkService;
 let memoryService: MemoryService;
 
@@ -991,7 +994,10 @@ function syncActivityMonitor(): void {
       undefined,
       undefined,
       undefined,
-      (snapshot) => appUsage?.observe(snapshot.windowedApps ?? [])
+      (snapshot) => {
+        appUsage?.observe(snapshot.windowedApps ?? []);
+        siteUsage?.observe(snapshot.browserWindows);
+      }
     );
     activityMonitor.start();
     logger.info("Desktop activity monitor started");
@@ -1003,9 +1009,14 @@ function syncActivityMonitor(): void {
 }
 
 /** Shows the main window on Routines → Activities with a new activity filled in, ready to save. */
-function openActivityEditor(application: string, name: string): void {
+function openActivityEditor(
+  application: string,
+  name: string,
+  source: "application" | "website" = "application"
+): void {
   showMainWindow();
-  const send = () => mainWindow?.webContents.send("nimbus:open-activity-editor", { application, name });
+  const send = () =>
+    mainWindow?.webContents.send("nimbus:open-activity-editor", { application, name, source });
   if (mainWindow?.webContents.isLoading()) mainWindow.webContents.once("did-finish-load", send);
   else send();
 }
@@ -1176,6 +1187,14 @@ export function startApp(): void {
     () => new Date(),
     new FileAppUsageStore()
   );
+  // Its website counterpart, fed by the browser titles the same polls
+  // already read — same switch, same "Make it an activity?" question.
+  siteUsage = new SiteUsageTracker(
+    () => settings.userPreferences.activity.suggestFrequentApps === true,
+    () => settings.userPreferences.activity.mappings,
+    () => new Date(),
+    new FileSiteUsageStore()
+  );
   activityService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send("nimbus:activity-changed");
@@ -1254,7 +1273,7 @@ export function startApp(): void {
     getSnapshot: () => contextService.getSnapshot(),
     getActivity: () => activityService.getCurrentActivity(),
     isTimerRunning: () => timerService.getState()?.status === "running",
-    getFrequentApps: () => appUsage?.candidates() ?? [],
+    getFrequentApps: () => [...(appUsage?.candidates() ?? []), ...(siteUsage?.candidates() ?? [])],
     presenter: {
       showSuggestion: (suggestion) => showSuggestionPopup(suggestion),
       postNotice: (item) =>
@@ -1280,12 +1299,17 @@ export function startApp(): void {
   attentionService.onAnswer((answer) => {
     if (answer.followUp?.type !== "createActivity") return;
     const { application, name } = answer.followUp;
+    const website = answer.followUp.source === "website";
+    const tracker = website ? siteUsage : appUsage;
     if (answer.outcome === "dismissed") {
-      appUsage?.decline(application);
+      tracker?.decline(application);
       return;
     }
-    appUsage?.accept(application);
-    openActivityEditor(application, name);
+    tracker?.accept(application);
+    // A website activity matches its window title, so the site's name is
+    // what goes in the form — not the lowercased key it's counted under.
+    if (website) openActivityEditor(name, name, "website");
+    else openActivityEditor(application, name);
   });
 
   routineService.onSuggestion((suggestion) => {
@@ -1415,6 +1439,7 @@ export function startApp(): void {
     activityService?.stop();
     attentionService?.stop();
     appUsage?.flush();
+    siteUsage?.flush();
     networkService?.stop();
     if (resizeSaveTimer) {
       clearTimeout(resizeSaveTimer);

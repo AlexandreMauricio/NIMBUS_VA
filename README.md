@@ -355,6 +355,7 @@ Everything is written under Electron's per-user data directory
 | `network-devices.json` | Devices seen on your local network: MAC, nickname, recognized, names, first/last seen, recent IPs | Plain JSON, atomic write |
 | `oui.csv` | Optional: the IEEE manufacturer list, if you put it there — NIMBUS only reads it | Your file |
 | `app-usage.json` | Opt-in: programs with a window, minutes per day for two weeks, and your "make it an activity?" answers | Plain JSON, atomic write |
+| `site-usage.json` | Opt-in: websites by the name at the end of their tab title (never whole titles or addresses), minutes per day for two weeks, and your answers | Plain JSON, atomic write |
 | `memory\explicit.json`, `memory\learned.json`, `memory\observed.json` | What NIMBUS remembers, one file per tier (see [docs/memory.md](docs/memory.md)) | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `logs\nimbus.log` | The application log | Plain text; never contains credentials |
 

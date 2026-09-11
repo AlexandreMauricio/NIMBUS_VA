@@ -135,25 +135,39 @@ the Spotify checks, which fail open.
 
 ## Suggested activities
 
-Optional — **Suggest activities for apps I use a lot**, off by default.
-While it's on (and the desktop monitor runs), NIMBUS keeps a small local
-tally of programs **with a visible window**: the program name, the
-description Windows gives it ("Halo Infinite"), minutes open per day for
-the last two weeks, and when it was last opened — in `app-usage.json`.
-Never window titles and nothing inside the program. Background processes,
-Windows' own shell windows, browsers (use a website activity for those)
-and NIMBUS itself aren't counted (`src/activity/appUsage.ts`).
+Optional — **Suggest activities for apps and websites I use a lot**, off
+by default. While it's on (and the desktop monitor runs), NIMBUS keeps two
+small local tallies, each with minutes open per day for the last two weeks
+and when it was last opened:
 
-A program opened on 3 of the last 7 days, or open for 5 hours in them,
+- **Programs with a visible window** (`app-usage.json`,
+  `src/activity/appUsage.ts`): the program name and the description
+  Windows gives it ("Halo Infinite"). Never window titles and nothing
+  inside the program. Background processes, Windows' own shell windows,
+  browsers and NIMBUS itself aren't counted.
+- **Websites** (`site-usage.json`, `src/activity/siteUsage.ts`): NIMBUS
+  sees tab titles, never addresses, so a site is known by the name at the
+  **end** of its title, where most sites put it — "(12) Some video -
+  YouTube" → YouTube, "Pull requests · user/repo · GitHub" → GitHub. The
+  browser's own name (and Edge's profile and "and 3 more pages") is
+  removed first. Only that last part is kept — never the whole title; a
+  part that looks like an email address, a number or a blank tab is
+  ignored. It's a heuristic: a site that puts its name first or leaves it
+  out is counted under whatever comes last, which usually never recurs
+  enough to be offered.
+
+A program or site used on 3 of the last 7 days, or for 5 hours in them,
 that isn't already an activity is offered to the Attention engine, which
 decides how to ask: a **popup** when you've used it a lot and have just
 opened it, a **Home feed line** otherwise (see [attention.md](attention.md)).
+A site counts as already covered when a website activity would match its
+name.
 
-- **Make it an activity** opens this form with the program filled in;
-  nothing is saved until you save it. If you don't, it may ask again in a
-  week.
-- **Not now** rests that program for a week; a second **Not now** means it
-  is never suggested again.
+- **Make it an activity** opens this form with the program (or, for a
+  site, a **Website** activity matching its name) filled in; nothing is
+  saved until you save it. If you don't, it may ask again in a week.
+- **Not now** rests that program or site for a week; a second **Not now**
+  means it is never suggested again.
 - A popup that runs out unanswered counts as neither.
 
 ## Privacy

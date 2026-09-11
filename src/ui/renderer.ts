@@ -491,7 +491,9 @@ interface NimbusApi {
     graceMinutes?: number;
     suggestFrequentApps?: boolean;
   }) => Promise<ActivityPreferences>;
-  onOpenActivityEditor: (callback: (prefill: { application: string; name: string }) => void) => () => void;
+  onOpenActivityEditor: (
+    callback: (prefill: { application: string; name: string; source?: "application" | "website" }) => void
+  ) => () => void;
   onActivityChanged: (callback: () => void) => () => void;
   getActivitySnapshot: () => Promise<RawActivitySnapshot | null>;
   getActiveSuggestions: () => Promise<AssistantEvent[]>;
@@ -4211,12 +4213,13 @@ async function initActivitySettings(): Promise<void> {
 
     // "Make it an activity?" answered yes: this form, with the program
     // filled in. Nothing is saved until the user presses "Add activity".
-    window.nimbus.onOpenActivityEditor(({ application, name }) => {
+    window.nimbus.onOpenActivityEditor(({ application, name, source }) => {
       switchToTab("routines");
       document.getElementById("routinesTabActivitiesBtn")?.click();
       resetForm();
       nameInput.value = name;
-      sourceSelect.value = "application";
+      sourceSelect.value = source === "website" ? "website" : "application";
+      sourceSelect.dispatchEvent(new Event("change"));
       valueInput.value = application;
       nameInput.focus();
       nameInput.select();

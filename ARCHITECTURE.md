@@ -90,6 +90,8 @@ src/
     knownActivities.ts           Activity names routines can refer to
     appUsage.ts                  Opt-in tally of windowed programs →
                                    "make it an activity?" candidates
+    siteUsage.ts                 The same for websites, by the name at
+                                   the end of their tab title
 
   timers/                   [1] Core — the timer engine
     timerService.ts              One timer or phase plan at a time; publishes
@@ -182,6 +184,8 @@ src/
                                    (activity-history.json)
     appUsageStore.ts              The opt-in app-usage tally
                                    (app-usage.json)
+    siteUsageStore.ts             The opt-in website tally
+                                   (site-usage.json)
     memoryStore.ts                Memory, one file per tier
                                    (memory/*.json)
     network/
@@ -290,6 +294,7 @@ written atomically (temp file, fsync, rename):
 | `activity-history.json` | `activityStateStore.ts` | Up to 200 activity sessions |
 | `network-devices.json` | `network/networkFiles.ts` | Devices seen on the local network: MAC, nickname, recognized, names, first/last seen, recent IPs |
 | `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
+| `site-usage.json` | `siteUsageStore.ts` | Opt-in: per website (the name at the end of its tab title), minutes per day (two weeks) and your answers |
 | `memory/explicit.json`, `memory/learned.json`, `memory/observed.json` | `memoryStore.ts` | Memory, one tier per file: `{version: 1, items}`. Validated item by item on load; an unparseable file is renamed `<tier>.unreadable-<time>.json` |
 | `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
 
