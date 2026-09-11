@@ -119,6 +119,9 @@ src/
                                    networkDeviceAppeared
     networkProvider.ts           The `network` Context provider
     hostnames.ts                 Reverse lookups for private addresses
+    identify.ts                  "Ask the device": SSDP/UPnP, mDNS and
+                                   NetBIOS packets and parsing, and the
+                                   summary of what a device says — pure
 
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
@@ -173,6 +176,8 @@ src/
                                    neighbor cache; ping validated private
                                    addresses
       neighborParsing.ts           [1]* Pure parsing of the read script
+      deviceProbe.ts               Asks one device (UDP 1900/5353/137 and
+                                   its own description file) on request
       networkFiles.ts              network-devices.json, and the optional
                                    oui.csv
     spotify/
@@ -224,7 +229,7 @@ renderer can only call what its preload exposes.
 | Stocks | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news`, `nimbus:find-stock-listings` (tracked symbols only), `nimbus:get-stock-dividends`, `nimbus:close-stock-position`, `nimbus:get-stock-irs-report` |
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
-| Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:update-network-settings` |
+| Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
 
 **Suggestion popup** (`suggestionPreload.ts`): `nimbus:get-popup-suggestion`,

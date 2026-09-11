@@ -12,3 +12,4 @@ export {
 } from "./networkService";
 export { NetworkProvider } from "./networkProvider";
 export { dnsHostnameResolver } from "./hostnames";
+export * from "./identify";

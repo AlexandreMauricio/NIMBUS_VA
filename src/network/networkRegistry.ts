@@ -1,3 +1,4 @@
+import { DeviceDetails } from "./identify";
 import { isDeviceMac, isRandomizedMac, normalizeMac } from "./mac";
 import { isHostInSubnet, isPrivateIPv4, parseIPv4 } from "./subnet";
 import {
@@ -39,6 +40,13 @@ export class NetworkRegistry {
         recognized: device.recognized === true,
         hostname: typeof device.hostname === "string" ? device.hostname : null,
         vendor: typeof device.vendor === "string" ? device.vendor : null,
+        details: isDetails(device.details)
+          ? {
+              ...device.details,
+              services: [...device.details.services],
+              sources: [...device.details.sources],
+            }
+          : null,
         ipHistory: device.ipHistory
           .filter(
             (e) =>
@@ -108,6 +116,12 @@ export class NetworkRegistry {
     if (device) device.recognized = recognized;
   }
 
+  /** What the device said when asked. */
+  setDetails(id: string, details: DeviceDetails): void {
+    const device = this.devices.get(id);
+    if (device) device.details = details;
+  }
+
   setHostname(id: string, hostname: string): void {
     const device = this.devices.get(id);
     const clean = hostname.trim().replace(/\.$/, "").slice(0, 100);
@@ -163,6 +177,18 @@ export class NetworkRegistry {
       this.devices.delete(device.id);
     }
   }
+}
+
+function isDetails(value: unknown): value is DeviceDetails {
+  const d = value as DeviceDetails;
+  return (
+    !!d &&
+    typeof d === "object" &&
+    typeof d.askedAt === "string" &&
+    typeof d.answered === "boolean" &&
+    Array.isArray(d.services) &&
+    Array.isArray(d.sources)
+  );
 }
 
 function isRecord(value: unknown): value is NetworkDeviceRecord {

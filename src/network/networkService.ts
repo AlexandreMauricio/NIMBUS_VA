@@ -3,7 +3,8 @@ import * as os from "os";
 import { logger } from "../logging/logger";
 import { ContextEventBus } from "../events/eventBus";
 import { NetworkRegistry } from "./networkRegistry";
-import { networkLabel, sweepTargets } from "./subnet";
+import { isHostInSubnet, isPrivateIPv4, networkLabel, sweepTargets } from "./subnet";
+import { DeviceIdentifier, summarizeDetails } from "./identify";
 import {
   HostnameResolver,
   LocalNetworkInfo,
@@ -25,6 +26,10 @@ const MIN_READ_INTERVAL_MS = 10_000;
 const HOSTNAME_RECHECK_MS = 60 * 60_000;
 const MAX_HOSTNAME_LOOKUPS = 64;
 const HOSTNAME_CONCURRENCY = 8;
+/** "Ask the device" may ask the same device at most this often. */
+export const IDENTIFY_COOLDOWN_MS = 30_000;
+/** The whole question — all three protocols and the description file — is abandoned after this. */
+const IDENTIFY_TIMEOUT_MS = 8_000;
 
 export interface NetworkServiceDeps {
   scanner: NetworkScanner;
@@ -37,6 +42,8 @@ export interface NetworkServiceDeps {
   now?: () => Date;
   /** This PC's own name. */
   localHostname?: () => string;
+  /** Asks one device what it is, when the user presses "Ask the device" (src/main/network/deviceProbe.ts). */
+  identifier?: DeviceIdentifier;
   /** Something the Network tab shows changed. */
   onChange?: () => void;
 }
@@ -60,6 +67,8 @@ export class NetworkService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly hostnameCheckedAt = new Map<string, number>();
   private readonly now: () => Date;
+  private identifying: string | null = null;
+  private readonly identifiedAt = new Map<string, number>();
 
   constructor(private readonly deps: NetworkServiceDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -159,6 +168,57 @@ export class NetworkService {
     return true;
   }
 
+  /**
+   * "Ask the device": asks one device on the local network what it is
+   * (UPnP, mDNS, NetBIOS, and the description file it advertises) and
+   * keeps what it says. Only on request, never this PC, one device at a
+   * time, each at most every 30 s, and 8 s at most.
+   */
+  async identifyDevice(id: string): Promise<NetworkState> {
+    if (!this.isEnabled()) throw new Error("Network watching is off.");
+    const identifier = this.deps.identifier;
+    if (!identifier) throw new Error("Asking devices isn't available here.");
+    const now = this.now();
+    const device = this.registry.views(now, this.local).find((d) => d.id === id);
+    if (!device) throw new Error("That device is no longer known.");
+    if (device.isSelf) throw new Error("That's this PC — there's nothing to ask.");
+    if (
+      !this.local ||
+      !isPrivateIPv4(device.lastIp) ||
+      !isHostInSubnet(device.lastIp, this.local.ip, this.local.prefixLength)
+    ) {
+      throw new Error("Only devices on your local network can be asked.");
+    }
+    if (this.identifying) throw new Error("Already asking another device — try again in a moment.");
+    const waitMs = IDENTIFY_COOLDOWN_MS - (now.getTime() - (this.identifiedAt.get(id) ?? -Infinity));
+    if (waitMs > 0) throw new Error(`You can ask this device again in ${Math.ceil(waitMs / 1000)} s.`);
+
+    this.identifying = id;
+    this.identifiedAt.set(id, now.getTime());
+    this.changed();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IDENTIFY_TIMEOUT_MS);
+    (timer as { unref?: () => void }).unref?.();
+    try {
+      const raw = await identifier.probe(device.lastIp, controller.signal);
+      const details = summarizeDetails(raw, this.now());
+      this.registry.setDetails(id, details);
+      this.persist();
+      logger.info("Asked a network device what it is", {
+        answered: details.answered,
+        sources: details.sources,
+      });
+    } catch (err) {
+      logger.warn("Asking a network device failed", { error: String(err) });
+      throw new Error("Couldn't ask the device right now.");
+    } finally {
+      clearTimeout(timer);
+      this.identifying = null;
+      this.changed();
+    }
+    return this.getState();
+  }
+
   /** Nickname and/or recognized flag — the user's own labels. */
   updateDevice(id: string, changes: unknown): NetworkState {
     if (!this.registry.has(id)) throw new Error("That device is no longer known.");
@@ -193,6 +253,7 @@ export class NetworkService {
     return {
       enabled: this.isEnabled(),
       scanning: this.sweep !== null,
+      identifying: this.identifying,
       sweepProgress: this.sweep ? { done: this.sweep.done, total: this.sweep.total } : null,
       lastScanAt: this.lastScanAt,
       lastError: this.lastError,

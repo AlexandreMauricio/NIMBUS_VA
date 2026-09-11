@@ -213,6 +213,9 @@ contextBridge.exposeInMainWorld("nimbus", {
     id: string,
     changes: { nickname?: string | null; recognized?: boolean }
   ): Promise<NetworkState> => ipcRenderer.invoke("nimbus:update-network-device", id, changes),
+  /** Asks one known device what it is (UPnP, mDNS, NetBIOS). By id — never an address. */
+  identifyNetworkDevice: (id: string): Promise<NetworkState> =>
+    ipcRenderer.invoke("nimbus:identify-network-device", id),
   forgetNetworkDevice: (id: string): Promise<NetworkState> =>
     ipcRenderer.invoke("nimbus:forget-network-device", id),
   updateNetworkSettings: (partial: { enabled?: boolean }): Promise<{ enabled: boolean }> =>

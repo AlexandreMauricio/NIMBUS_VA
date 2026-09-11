@@ -4,10 +4,11 @@ The **Network** tab shows the devices NIMBUS can see on your local
 network — this PC, the router, and everything else — and lets you
 nickname them and mark the ones you recognize.
 
-**It observes; it does nothing else.** NIMBUS never connects to a device,
-opens or probes a port, logs in, tries a password, captures traffic, or
-runs anything remotely. The only traffic it ever sends for this feature is
-one ping per local address, and only when you press **Scan network**.
+**It observes, and only asks when you ask it to.** NIMBUS never logs in,
+tries a password, scans ports, captures traffic or runs anything
+remotely. It sends something only on request: **Scan network** pings each
+local address once, and **Ask the device** asks one device what it is
+(see [Asking a device](#asking-a-device)).
 
 Code: [src/network/](../src/network/) (Core, no Electron) and
 [src/main/network/](../src/main/network/) (the Windows part).
@@ -83,6 +84,37 @@ that, unlabelled devices that have been gone the longest are dropped.
 The on/off switch is a per-PC setting (`windowsClient.network.enabled`,
 default on), since a local network only means something on this machine.
 
+## Asking a device
+
+On a device's page, **Ask the device** asks that one device what it is,
+with the same standard questions phones and PCs use to find TVs, speakers
+and printers (`DeviceProber` in `src/main/network/deviceProbe.ts`; the
+parsing in `src/network/identify.ts`). Each is sent straight to the
+device's own address, never as a broadcast:
+
+| Question | Where | What it can tell |
+| --- | --- | --- |
+| SSDP M-SEARCH (UPnP) | UDP 1900 | the software it announces (often the OS: "Tizen/4.0 UPnP/1.0"), what it offers (casting, DLNA, a Samsung TV remote…) and where its description file is |
+| Its description file | HTTP, the address and port it advertised | exact name ("[TV] Samsung Q60 Series"), manufacturer and model — only from the device's own address, plain HTTP, no redirects, 64 KB and 3 s at most |
+| mDNS / DNS-SD | UDP 5353 | its network name ("Galaxy-S23.local"), the services it offers (Google Cast, AirPlay, Spotify Connect, printing…) and their names |
+| NetBIOS node status | UDP 137 | a Windows PC's computer name |
+
+From the answers the page shows a name, manufacturer, model, the software
+it announces, what it offers, and a plain guess of what it is ("TV",
+"Printer", "Router", "Windows PC"…), with **Use as nickname**. What it
+said is kept with the device (`details` in `network-devices.json`).
+
+- Only when you press the button — one device at a time, each device at
+  most every 30 seconds, and 8 seconds at most in all.
+- Only devices on your local network (a private address on this PC's
+  subnet), taken from NIMBUS's own list — the tab sends a device id, never
+  an address — and never this PC.
+- **Phones, tablets and laptops usually don't answer** any of these;
+  silence is recorded, and is itself a hint. Many routers (ISP ones with
+  UPnP off) don't answer either.
+- "Software" is what the device announces about itself. NIMBUS does no OS
+  fingerprinting from how a device answers.
+
 ## New devices, Context and events
 
 - The first read ever records what's already there as the **baseline** and
@@ -102,8 +134,10 @@ action, no generic "run", nothing a routine could call. The IPC channels
 (`nimbus:get-network-state`, `nimbus:refresh-network`,
 `nimbus:scan-network`, `nimbus:cancel-network-scan`,
 `nimbus:update-network-device`, `nimbus:forget-network-device`,
-`nimbus:update-network-settings`) each do one fixed thing, and none takes
-an address. There is no port scanning, service or OS fingerprinting,
+`nimbus:identify-network-device`, `nimbus:update-network-settings`) each
+do one fixed thing, and none takes an address. Beyond the ping sweep, the
+only contact with a device is **Ask the device** — four fixed questions
+to one device, on request. There is no port scanning, OS fingerprinting,
 vulnerability detection, packet capture, credential or login attempt,
 remote command, Wake-on-LAN, or anything that touches the Internet.
 
@@ -131,7 +165,13 @@ changes, duplicates, a new MAC at an old IP, online/stale, labels and
 persistence, forgetting, read failures, no network, switched off, scan
 batching/limits/cancel, name lookups, the Context provider), and
 `src/main/network/neighborParsing.test.ts` (the script's output, and the
-scanner passing only private addresses to the ping script).
+scanner passing only private addresses to the ping script),
+`identify.test.ts` (DNS, NetBIOS, SSDP and UPnP parsing, and the summary:
+a TV, silence, a PC, a printer, an Apple device, a router),
+`src/main/network/deviceProbe.test.ts` (one device asked on the three
+ports; a description file on another host or over HTTPS is never
+fetched; public addresses refused) and the asking tests in
+`networkService.test.ts` (limits, one at a time, failures, persistence).
 
 ---
 

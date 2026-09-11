@@ -65,8 +65,9 @@ which modules are portable "Core" versus Windows-specific.
 - **Network tab** — the devices on your local network (this PC, the
   router, everything else) with name, IP, MAC, manufacturer (with the IEEE
   list), online state and first/last seen; nickname them and mark the ones
-  you recognize. Observation only: it reads Windows' neighbor list and, on
-  request, pings the local subnet once. See [docs/network.md](docs/network.md).
+  you recognize. Observation first: it reads Windows' neighbor list, pings the local
+  subnet once on request, and on a device's page can ask that one device
+  what it is (name, model, software). See [docs/network.md](docs/network.md).
 - **Context tab** — one fold-away box per source, each explaining how that
   source works and showing what it returned, plus the Attention box: what
   NIMBUS thinks deserves attention, and why.

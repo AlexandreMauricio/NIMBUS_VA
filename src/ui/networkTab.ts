@@ -26,11 +26,23 @@ interface NetworkDeviceUI {
   isSelf: boolean;
   isGateway: boolean;
   randomizedMac: boolean;
+  details?: {
+    askedAt: string;
+    answered: boolean;
+    name: string | null;
+    manufacturer: string | null;
+    model: string | null;
+    kind: string | null;
+    software: string | null;
+    services: string[];
+    sources: string[];
+  } | null;
 }
 
 interface NetworkStateUI {
   enabled: boolean;
   scanning: boolean;
+  identifying: string | null;
   sweepProgress: { done: number; total: number } | null;
   lastScanAt: string | null;
   lastError: string | null;
@@ -50,6 +62,7 @@ interface NetworkBridge {
     changes: { nickname?: string | null; recognized?: boolean }
   ): Promise<NetworkStateUI>;
   forgetNetworkDevice(id: string): Promise<NetworkStateUI>;
+  identifyNetworkDevice(id: string): Promise<NetworkStateUI>;
   updateNetworkSettings(partial: { enabled?: boolean }): Promise<{ enabled: boolean }>;
   onNetworkChanged(callback: () => void): () => void;
 }
@@ -289,6 +302,7 @@ export function initNetworkTab(): void {
     );
     grid.appendChild(labels);
     detailEl.appendChild(grid);
+    if (!device.isSelf) detailEl.appendChild(askSection(device));
 
     if (device.ipHistory.length > 0) {
       const history = node("div", "stock-lots");
@@ -335,6 +349,77 @@ export function initNetworkTab(): void {
         "Forgetting removes the nickname and label. If the device is still on the network, it comes back as new."
       )
     );
+  }
+
+  /** "What the device says" — and the button that asks it. */
+  function askSection(device: NetworkDeviceUI): HTMLElement {
+    const section = node("div", "stock-lots");
+    section.appendChild(node("div", "stock-stat-label", "What the device says"));
+    const details = device.details ?? null;
+    if (!details) {
+      section.appendChild(node("p", "feed-empty", "Not asked yet."));
+    } else if (!details.answered) {
+      section.appendChild(
+        node(
+          "p",
+          "setting-note",
+          `No answer when asked ${when(details.askedAt)}. Phones, tablets and laptops usually don't answer these questions, so silence often means one of those.`
+        )
+      );
+    } else {
+      const card = node("div", "stock-detail-card");
+      if (details.name) card.appendChild(row("Name", details.name));
+      if (details.kind) card.appendChild(row("Looks like", details.kind));
+      if (details.manufacturer) card.appendChild(row("Manufacturer", details.manufacturer));
+      if (details.model) card.appendChild(row("Model", details.model));
+      if (details.software) card.appendChild(row("Software", details.software));
+      if (details.services.length) card.appendChild(row("Offers", details.services.join(", ")));
+      card.appendChild(row("Answered", `${details.sources.join(", ")} · ${when(details.askedAt)}`));
+      section.appendChild(card);
+      if (details.name && !device.nickname) {
+        const use = node("button", "btn btn-ghost", `Use “${details.name}” as nickname`);
+        use.type = "button";
+        use.addEventListener("click", async () => {
+          state = await net().updateNetworkDevice(device.id, { nickname: details.name!.slice(0, 60) });
+          render();
+        });
+        section.appendChild(use);
+      }
+    }
+
+    const asking = state?.identifying === device.id;
+    const ask = node(
+      "button",
+      "btn btn-secondary",
+      asking ? "Asking…" : details ? "Ask again" : "Ask the device"
+    );
+    ask.type = "button";
+    ask.disabled = !!state?.identifying || !state?.enabled;
+    const askError = node("p", "form-error");
+    askError.hidden = true;
+    ask.addEventListener("click", async () => {
+      ask.disabled = true;
+      ask.textContent = "Asking…";
+      try {
+        state = await net().identifyNetworkDevice(device.id);
+        render();
+      } catch (err) {
+        askError.textContent = errorMessage(err);
+        askError.hidden = false;
+        ask.disabled = false;
+        ask.textContent = "Ask the device";
+      }
+    });
+    section.appendChild(askError);
+    section.appendChild(ask);
+    section.appendChild(
+      node(
+        "p",
+        "setting-note",
+        "Asks this one device what it is, with the standard questions phones and PCs use to find TVs and printers (UPnP, mDNS, NetBIOS), and reads the description file it publishes. It never logs in or tries other ports."
+      )
+    );
+    return section;
   }
 
   scanBtn.addEventListener("click", async () => {

@@ -18,6 +18,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.3.8 — 2026-09-11
+
+- Network: "Ask the device" on a device's page asks that one device what it
+  is — SSDP/UPnP (UDP 1900) and the description file it advertises, mDNS
+  (UDP 5353) and NetBIOS (UDP 137), each sent only to its address — and
+  shows its name, manufacturer, model, announced software (often the OS),
+  what it offers (casting, AirPlay, printing…) and a guess of what it is,
+  with "Use as nickname". Only on request, one device at a time, each at
+  most every 30 s; kept with the device. Silence is shown as a hint (phones
+  rarely answer).
+
 ## 0.3.7 — 2026-09-11
 
 - Documentation checked against the code after the Network feature: the

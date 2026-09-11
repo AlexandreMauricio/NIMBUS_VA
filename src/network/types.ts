@@ -1,3 +1,5 @@
+import type { DeviceDetails } from "./identify";
+
 /**
  * Network awareness — which devices are on the user's local network.
  *
@@ -79,6 +81,8 @@ export interface NetworkDeviceRecord {
   lastIp: string;
   /** Addresses it has used, the current one first. */
   ipHistory: IpHistoryEntry[];
+  /** What the device said the last time it was asked ("Ask the device"), or null. */
+  details?: DeviceDetails | null;
 }
 
 export interface NetworkStoreState {
@@ -105,6 +109,8 @@ export interface NetworkDeviceView extends NetworkDeviceRecord {
 export interface NetworkState {
   enabled: boolean;
   scanning: boolean;
+  /** The device being asked what it is, if any. */
+  identifying: string | null;
   sweepProgress: { done: number; total: number } | null;
   lastScanAt: string | null;
   lastError: string | null;

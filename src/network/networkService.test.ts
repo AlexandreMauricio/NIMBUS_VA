@@ -6,6 +6,7 @@ import { ONLINE_WINDOW_MS } from "./networkRegistry";
 import { NetworkProvider } from "./networkProvider";
 import { MIN_SWEEP_INTERVAL_MS, NetworkService } from "./networkService";
 import { DiscoveryResult, NetworkScanner, NetworkStoreState } from "./types";
+import { DeviceIdentifier, DeviceProbeResult } from "./identify";
 
 const SELF = "28-D0-43-00-00-01";
 const ROUTER = "D8-78-7F-00-00-02";
@@ -45,7 +46,9 @@ class FakeScanner implements NetworkScanner {
   }
 }
 
-function setup(options: { saved?: NetworkStoreState; enabled?: boolean } = {}) {
+function setup(
+  options: { saved?: NetworkStoreState; enabled?: boolean; identifier?: DeviceIdentifier } = {}
+) {
   const clock = { now: new Date("2026-09-11T10:00:00Z") };
   const scanner = new FakeScanner();
   const bus = new ContextEventBus();
@@ -57,6 +60,7 @@ function setup(options: { saved?: NetworkStoreState; enabled?: boolean } = {}) {
   const names: Record<string, string> = { "192.168.1.254": "GEN8." };
   const service = new NetworkService({
     scanner,
+    identifier: options.identifier,
     resolver: {
       reverse: async (ip) => {
         lookups.push(ip);
@@ -325,4 +329,100 @@ test("the Context provider fails clearly without a network, so ContextService ca
   const { service, scanner } = setup();
   scanner.result = { local: null, neighbors: [] };
   await assert.rejects(new NetworkProvider(service).getContext(), /connected/);
+});
+
+// -------------------------------------------------------------- asking
+
+const TV_ANSWER: DeviceProbeResult = {
+  ssdp: [
+    {
+      server: "Tizen/4.0 UPnP/1.0",
+      st: "urn:samsung.com:device:RemoteControlReceiver:1",
+      usn: null,
+      location: null,
+    },
+  ],
+  upnp: {
+    friendlyName: "[TV] Samsung Q60",
+    manufacturer: "Samsung Electronics",
+    modelName: "QE55Q60T",
+    modelNumber: null,
+    modelDescription: null,
+    deviceType: null,
+  },
+  mdnsNames: [],
+  mdnsServices: [],
+  mdnsInstances: [],
+  netbiosName: null,
+};
+const TV_ID = "mac:cc:28:aa:00:00:03";
+
+test("asking a device keeps what it said; each device at most every 30 s, never this PC", async () => {
+  const asked: string[] = [];
+  const identifier: DeviceIdentifier = {
+    probe: async (ip) => {
+      asked.push(ip);
+      return TV_ANSWER;
+    },
+  };
+  const { service, advance, saves } = setup({ identifier });
+  await service.refresh();
+
+  const state = await service.identifyDevice(TV_ID);
+  const tv = state.devices.find((d) => d.id === TV_ID)!;
+  assert.deepEqual(asked, ["192.168.1.40"], "the address comes from NIMBUS's own list");
+  assert.equal(tv.details?.kind, "TV");
+  assert.equal(tv.details?.model, "QE55Q60T");
+  assert.equal(tv.details?.software, "Tizen/4.0 UPnP/1.0");
+  assert.equal(state.identifying, null);
+
+  await assert.rejects(service.identifyDevice(TV_ID), /again in 30 s/);
+  advance(31_000);
+  await service.identifyDevice(TV_ID);
+  assert.equal(asked.length, 2);
+
+  await assert.rejects(service.identifyDevice("mac:28:d0:43:00:00:01"), /this PC/);
+  await assert.rejects(service.identifyDevice("mac:00:00:00:00:00:99"), /no longer known/);
+
+  const restarted = setup({ saved: saves[saves.length - 1] });
+  const again = await restarted.service.refresh();
+  assert.equal(
+    again.devices.find((d) => d.id === TV_ID)?.details?.name,
+    "[TV] Samsung Q60",
+    "kept across restarts"
+  );
+});
+
+test("one device is asked at a time; a failure is reported and frees the way", async () => {
+  let finish: () => void = () => {};
+  let fail = false;
+  const identifier: DeviceIdentifier = {
+    probe: () =>
+      new Promise((resolve, reject) => {
+        finish = () => (fail ? reject(new Error("socket error")) : resolve(TV_ANSWER));
+      }),
+  };
+  const { service, advance } = setup({ identifier });
+  await service.refresh();
+
+  const first = service.identifyDevice(TV_ID);
+  assert.equal(service.getState().identifying, TV_ID);
+  await assert.rejects(service.identifyDevice("mac:d8:78:7f:00:00:02"), /Already asking/);
+  finish();
+  await first;
+
+  advance(31_000);
+  fail = true;
+  const failing = service.identifyDevice("mac:d8:78:7f:00:00:02");
+  finish();
+  await assert.rejects(failing, /Couldn't ask/);
+  assert.equal(service.getState().identifying, null);
+});
+
+test("with watching off, or without an identifier, nothing is asked", async () => {
+  const off = setup({ enabled: false });
+  await assert.rejects(off.service.identifyDevice(TV_ID), /off/);
+  const none = setup();
+  await none.service.refresh();
+  await assert.rejects(none.service.identifyDevice(TV_ID), /isn't available/);
 });

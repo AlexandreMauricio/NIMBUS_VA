@@ -50,6 +50,7 @@ import { FileActivityStateStore } from "./activityStateStore";
 import { FileAppUsageStore } from "./appUsageStore";
 import { NetworkProvider, NetworkService, dnsHostnameResolver } from "../network";
 import { WindowsNetworkScanner } from "./network/windowsNetworkScanner";
+import { DeviceProber } from "./network/deviceProbe";
 import { FileNetworkStore, loadVendorLookup } from "./network/networkFiles";
 import {
   ActivityService,
@@ -528,6 +529,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:forget-network-device", (_event, id: unknown) =>
     networkService.forget(String(id ?? ""))
   );
+  // "Ask the device" — by device id only; the address comes from NIMBUS's
+  // own list, and must be private and on this PC's subnet.
+  ipcMain.handle("nimbus:identify-network-device", (_event, id: unknown) =>
+    networkService.identifyDevice(String(id ?? ""))
+  );
   ipcMain.handle("nimbus:update-network-settings", (_event, partial: unknown) => {
     settings.windowsClient.network = mergeKnown(settings.windowsClient.network, partial);
     saveSettings(settings);
@@ -992,6 +998,7 @@ export function startApp(): void {
   networkService = new NetworkService({
     scanner: new WindowsNetworkScanner(),
     resolver: dnsHostnameResolver(),
+    identifier: new DeviceProber(),
     store: new FileNetworkStore(),
     bus: contextEventBus,
     vendorFor: loadVendorLookup(),
