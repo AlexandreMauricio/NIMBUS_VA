@@ -16,6 +16,7 @@ import { MarketDataSource, RawQuote, StockProviderConfig } from "./types";
 const settings: StockProviderConfig = {
   enabled: true,
   newsEnabled: false,
+  baseCurrency: "USD",
   positions: [{ id: "p1", symbol: "AAPL", shares: 10, averageCost: 100 }],
 };
 

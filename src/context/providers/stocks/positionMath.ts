@@ -1,6 +1,23 @@
 import { PortfolioTotals, PositionView, StockPosition, StockQuote } from "./types";
 
 /**
+ * Quote currencies that are a hundredth of a major currency: London prices
+ * in pence (GBp / GBX), Johannesburg in cents (ZAc), Tel Aviv in agorot
+ * (ILA). Exchange rates are only quoted for the major unit.
+ */
+const MINOR_UNITS: Record<string, { currency: string; divisor: number }> = {
+  GBp: { currency: "GBP", divisor: 100 },
+  GBX: { currency: "GBP", divisor: 100 },
+  ZAc: { currency: "ZAR", divisor: 100 },
+  ILA: { currency: "ILS", divisor: 100 },
+};
+
+/** The major currency a quote currency belongs to, and how many quote units make one of it. */
+export function majorCurrency(currency: string): { currency: string; divisor: number } {
+  return MINOR_UNITS[currency] ?? { currency: currency.toUpperCase(), divisor: 1 };
+}
+
+/**
  * The estimates derived from one position and its latest quote. Pure — no
  * I/O, no clock beyond the `today` it is handed.
  *
@@ -112,4 +129,48 @@ export function computePortfolio(positions: PositionView[]): PortfolioTotals[] {
       dayChangePercent: previousValue > 0 ? (totals.dayChange / previousValue) * 100 : null,
     }))
     .sort((a, b) => b.marketValue - a.marketValue);
+}
+
+/**
+ * One total for the whole portfolio in `base`. `rates` maps each position
+ * currency to the base amount for one unit of it; the base currency itself
+ * (and its minor unit) needs no entry. A priced position whose currency has
+ * no rate is left out and its currency reported — it is never counted at
+ * an assumed rate.
+ */
+export function computeBaseTotals(
+  positions: PositionView[],
+  base: string,
+  rates: ReadonlyMap<string, number>
+): { totals: PortfolioTotals | null; unconverted: string[] } {
+  const rateFor = (currency: string | null): number | null => {
+    if (!currency) return null;
+    const known = rates.get(currency);
+    if (known !== undefined) return known;
+    const major = majorCurrency(currency);
+    return major.currency === base ? 1 / major.divisor : null;
+  };
+
+  const converted: PositionView[] = [];
+  const unconverted = new Set<string>();
+  for (const p of positions) {
+    if (p.marketValue === null) continue;
+    const rate = rateFor(p.currency);
+    if (rate === null) {
+      unconverted.add(p.currency ?? "");
+      continue;
+    }
+    const scale = (value: number | null) => (value === null ? null : value * rate);
+    converted.push({
+      ...p,
+      currency: base,
+      invested: p.invested * rate,
+      marketValue: p.marketValue * rate,
+      unrealizedGain: scale(p.unrealizedGain),
+      dayChange: scale(p.dayChange),
+    });
+  }
+
+  const [totals] = computePortfolio(converted);
+  return { totals: totals ?? null, unconverted: [...unconverted].sort() };
 }

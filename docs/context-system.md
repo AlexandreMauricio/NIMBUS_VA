@@ -25,7 +25,7 @@ AI/LLM is involved at this layer.
   | `EmailProvider` | Recent message metadata and importance ([email.md](email.md)) | `src/main/lifecycle.ts` |
   | `TaskProvider` | Active tasks bucketed by deadline ([tasks.md](tasks.md)) | `src/main/lifecycle.ts` |
   | `SpotifyContextProvider` | What's playing ([spotify.md](spotify.md)) | `src/main/lifecycle.ts` |
-  | `StockProvider` | Tracked positions, estimates and per-currency totals ([stocks.md](stocks.md)) | `src/main/lifecycle.ts` |
+  | `StockProvider` | Tracked positions, estimates, per-currency and base-currency totals ([stocks.md](stocks.md)) | `src/main/lifecycle.ts` |
 
   Providers that need no runtime settings are registered in
   `context/index.ts`; the ones that read live settings are registered in

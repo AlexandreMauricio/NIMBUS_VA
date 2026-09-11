@@ -57,6 +57,14 @@ interface StockTotalsView {
   dayChangePercent: number | null;
 }
 
+interface FxRateView {
+  currency: string;
+  rate: number;
+  pair: string;
+  stale: boolean;
+  marketTime: string | null;
+}
+
 interface StockContextView {
   retrievedAt: string;
   positions: StockPositionView[];
@@ -64,6 +72,11 @@ interface StockContextView {
   unpricedCount: number;
   anyStale: boolean;
   source: string;
+  // Optional: a snapshot from before base-currency totals existed has none.
+  baseCurrency?: string;
+  baseTotals?: StockTotalsView | null;
+  fxRates?: FxRateView[];
+  unconvertedCurrencies?: string[];
 }
 
 interface StockProviderResultView {
@@ -86,6 +99,7 @@ interface StockPositionInput {
 interface StockPreferencesView {
   enabled: boolean;
   newsEnabled: boolean;
+  baseCurrency: string;
   positions: StockPositionInput[];
 }
 
@@ -131,6 +145,9 @@ function money(value: number | null | undefined, currency: string | null, signed
   const number = new Intl.NumberFormat(undefined, { ...options, maximumFractionDigits: 2 }).format(value);
   return currency ? `${number} ${currency}` : number;
 }
+
+/** Base currencies offered in the picker; a saved code outside the list is added to it. */
+const BASE_CURRENCIES = ["EUR", "USD", "GBP", "CHF", "JPY", "CAD", "AUD", "SEK", "NOK", "DKK", "PLN"];
 
 function percent(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
@@ -201,6 +218,7 @@ export function initStocksTab(): void {
   const enabledInput = document.getElementById("stocksEnabled") as HTMLInputElement;
   const newsInput = document.getElementById("stocksNewsEnabled") as HTMLInputElement;
   const refreshBtn = document.getElementById("refreshStocksBtn") as HTMLButtonElement;
+  const baseSelect = document.getElementById("stocksBaseCurrency") as HTMLSelectElement;
 
   const formHeading = document.getElementById("positionFormHeading") as HTMLElement;
   const symbolInput = document.getElementById("positionSymbol") as HTMLInputElement;
@@ -212,7 +230,7 @@ export function initStocksTab(): void {
   const formError = document.getElementById("positionFormError") as HTMLElement;
   const saveBtn = document.getElementById("savePositionBtn") as HTMLButtonElement;
 
-  let prefs: StockPreferencesView = { enabled: true, newsEnabled: true, positions: [] };
+  let prefs: StockPreferencesView = { enabled: true, newsEnabled: true, baseCurrency: "EUR", positions: [] };
   let result: StockProviderResultView | undefined;
   let selectedId: string | null = null;
   let editingId: string | null = null;
@@ -233,6 +251,14 @@ export function initStocksTab(): void {
     return result?.data?.positions.find((p) => p.id === id) ?? null;
   }
 
+  /** Base currency and the rate into it for a position, or null when it is already in the base or has no rate. */
+  function conversionFor(view: StockPositionView | null): { base: string; rate: number } | null {
+    const data = result?.data;
+    if (!view?.currency || !data?.baseCurrency) return null;
+    const fx = data.fxRates?.find((r) => r.currency === view.currency);
+    return fx ? { base: data.baseCurrency, rate: fx.rate } : null;
+  }
+
   async function load(): Promise<void> {
     errorEl.hidden = true;
     try {
@@ -248,6 +274,12 @@ export function initStocksTab(): void {
   function render(): void {
     enabledInput.checked = prefs.enabled;
     newsInput.checked = prefs.newsEnabled;
+    const codes = BASE_CURRENCIES.includes(prefs.baseCurrency)
+      ? BASE_CURRENCIES
+      : [prefs.baseCurrency, ...BASE_CURRENCIES];
+    baseSelect.innerHTML = "";
+    for (const code of codes)
+      baseSelect.appendChild(new Option(code, code, false, code === prefs.baseCurrency));
     renderStatus();
     renderOverview();
     renderList();
@@ -274,6 +306,24 @@ export function initStocksTab(): void {
       }
       if (data.anyStale)
         notes.push("Some prices are from an earlier successful fetch and may be out of date.");
+      const rates = data.fxRates ?? [];
+      if (data.baseTotals && rates.length > 0) {
+        const list = rates
+          .map(
+            (r) =>
+              `1 ${r.currency} = ${r.rate.toFixed(4)} ${data.baseCurrency}${r.stale ? " (may be out of date)" : ""}`
+          )
+          .join(", ");
+        notes.push(
+          `Totals converted to ${data.baseCurrency} at today's rate: ${list}. Purchase costs use today's rate too, so the gain doesn't include currency moves since you bought.`
+        );
+      }
+      const unconverted = data.unconvertedCurrencies ?? [];
+      if (data.baseTotals && unconverted.length > 0) {
+        notes.push(
+          `No exchange rate for ${unconverted.map((c) => c || "an unknown currency").join(", ")} — those positions are shown separately, not in the ${data.baseCurrency} total.`
+        );
+      }
       if (data.unpricedCount > 0) {
         notes.push(
           `${data.unpricedCount} position${data.unpricedCount === 1 ? " has" : "s have"} no price — check the symbol.`
@@ -294,7 +344,14 @@ export function initStocksTab(): void {
 
   function renderOverview(): void {
     overviewEl.innerHTML = "";
-    const totals = result?.data?.totals ?? [];
+    const data = result?.data;
+    // The single base-currency total, plus any currency that couldn't be converted.
+    const totals = data?.baseTotals
+      ? [
+          data.baseTotals,
+          ...data.totals.filter((t) => (data.unconvertedCurrencies ?? []).includes(t.currency)),
+        ]
+      : (data?.totals ?? []);
     overviewEl.hidden = totals.length === 0 || !prefs.enabled;
     const several = totals.length > 1;
     for (const t of totals) {
@@ -325,10 +382,11 @@ export function initStocksTab(): void {
     }
   }
 
-  function numberCell(label: string, value: string, valueClass = ""): HTMLElement {
+  function numberCell(label: string, value: string, valueClass = "", note?: string): HTMLElement {
     const cell = el("span", "stock-num");
     cell.appendChild(el("span", "stock-num-label", label));
     cell.appendChild(el("span", valueClass, value));
+    if (note) cell.appendChild(el("span", "stock-num-note", note));
     return cell;
   }
 
@@ -355,7 +413,15 @@ export function initStocksTab(): void {
       row.appendChild(
         numberCell("Today", percent(view?.dayChangePercent), trendClass(view?.dayChangePercent))
       );
-      row.appendChild(numberCell("Value", money(view?.marketValue, currency)));
+      const fx = conversionFor(view);
+      row.appendChild(
+        numberCell(
+          "Value",
+          money(view?.marketValue, currency),
+          "",
+          fx && view?.marketValue != null ? `≈ ${money(view.marketValue * fx.rate, fx.base)}` : undefined
+        )
+      );
       row.appendChild(
         numberCell(
           "Total return",
@@ -456,6 +522,17 @@ export function initStocksTab(): void {
         trendClass(view?.dayChange)
       )
     );
+    const fx = conversionFor(view);
+    if (fx && view?.marketValue != null) {
+      estimate.appendChild(keyValue(`Value in ${fx.base}`, money(view.marketValue * fx.rate, fx.base)));
+      estimate.appendChild(
+        keyValue(
+          `Gain/loss in ${fx.base}`,
+          money((view.unrealizedGain ?? 0) * fx.rate, fx.base, true),
+          trendClass(view.unrealizedGain)
+        )
+      );
+    }
     grid.appendChild(estimate);
     detailEl.appendChild(grid);
 
@@ -647,6 +724,14 @@ export function initStocksTab(): void {
   enabledInput.addEventListener("change", async () => {
     try {
       prefs = await bridge().updateStockSettings({ enabled: enabledInput.checked });
+    } catch (err) {
+      showError(errorEl, errorText(err));
+    }
+    await load();
+  });
+  baseSelect.addEventListener("change", async () => {
+    try {
+      prefs = await bridge().updateStockSettings({ baseCurrency: baseSelect.value });
     } catch (err) {
       showError(errorEl, errorText(err));
     }

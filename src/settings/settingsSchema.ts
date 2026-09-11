@@ -162,6 +162,8 @@ export interface StockPreferences {
   enabled: boolean;
   /** Whether headlines are fetched for a position when it is opened. */
   newsEnabled: boolean;
+  /** Currency every position is converted into for the single portfolio total. Three-letter code. */
+  baseCurrency: string;
   positions: StockPosition[];
 }
 
@@ -230,6 +232,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
     stocks: {
       enabled: true,
       newsEnabled: true,
+      baseCurrency: "EUR",
       positions: [],
     },
   },

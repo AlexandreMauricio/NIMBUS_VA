@@ -437,8 +437,10 @@ function joinList(parts: string[]): string {
 
 /**
  * "Your portfolio is up 1.8% today." Built only from the stock context's
- * per-currency totals — the briefing knows nothing about quotes or
- * positions. Currencies are never mixed: with several, each is named.
+ * portfolio totals — the briefing knows nothing about quotes or positions.
+ * The single base-currency total is used when every position could be
+ * converted; otherwise it falls back to per-currency totals, each named,
+ * rather than a total that silently leaves some positions out.
  *
  * "Today" is claimed only when every price is from today's session; on a
  * weekend, or before the market opens, the latest move belongs to the
@@ -447,7 +449,9 @@ function joinList(parts: string[]): string {
  */
 function buildStocksItem(stocks: StockContext | null, now: Date): BriefingItem | null {
   if (!stocks) return null;
-  const totals = stocks.totals.filter((t) => t.dayChangePercent !== null);
+  const base = stocks.baseTotals ?? null;
+  const allConverted = base !== null && (stocks.unconvertedCurrencies ?? []).length === 0;
+  const totals = (allConverted ? [base] : stocks.totals).filter((t) => t.dayChangePercent !== null);
   if (totals.length === 0) return null;
 
   const timeZone = localTimeZone();

@@ -27,7 +27,8 @@ It is **template-based, not AI-generated**: no LLM is involved.
     a pile of newsletters reads the same as an empty inbox.
   - The **tasks** line spotlights an imminent task, otherwise combines
     overdue and due-today counts, naming a task where it helps.
-  - The **stocks** line reads only the portfolio's per-currency totals:
+  - The **stocks** line reads only the portfolio totals (the base-currency
+    total when every position converts, otherwise per currency):
     "Your portfolio is up 1.8% today.", or "…at the last close." when
     the prices are from an earlier session (see [stocks.md](stocks.md)).
 - **Prioritization, not AI**: content items are sorted by

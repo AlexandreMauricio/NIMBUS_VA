@@ -169,6 +169,7 @@ contextBridge.exposeInMainWorld("nimbus", {
   updateStockSettings: (partial: {
     enabled?: boolean;
     newsEnabled?: boolean;
+    baseCurrency?: string;
     positions?: StockPosition[];
   }): Promise<StockPreferences> => ipcRenderer.invoke("nimbus:update-stock-settings", partial),
   /** Asks for fresh prices on the next read; resolves false when the last refresh was under 30 s ago. */

@@ -6,6 +6,7 @@ test("stock tracking defaults: on, with news, and no positions", () => {
   assert.deepEqual(DEFAULT_SETTINGS.userPreferences.stocks, {
     enabled: true,
     newsEnabled: true,
+    baseCurrency: "EUR",
     positions: [],
   });
 });
@@ -15,7 +16,12 @@ test("a settings file from before stocks existed gains the stocks defaults", () 
     userPreferences: { weather: { locationMode: "auto", manualLocation: null } },
   });
 
-  assert.deepEqual(loaded.userPreferences.stocks, { enabled: true, newsEnabled: true, positions: [] });
+  assert.deepEqual(loaded.userPreferences.stocks, {
+    enabled: true,
+    newsEnabled: true,
+    baseCurrency: "EUR",
+    positions: [],
+  });
 });
 
 test("saved positions survive a load unchanged", () => {
@@ -34,7 +40,12 @@ test("saved positions survive a load unchanged", () => {
     userPreferences: { stocks: { enabled: false, newsEnabled: false, positions } },
   });
 
-  assert.deepEqual(loaded.userPreferences.stocks, { enabled: false, newsEnabled: false, positions });
+  assert.deepEqual(loaded.userPreferences.stocks, {
+    enabled: false,
+    newsEnabled: false,
+    baseCurrency: "EUR",
+    positions,
+  });
 });
 
 test("positions are plain user data: saved to settings.json, nothing sent to the secret store", () => {
@@ -52,4 +63,9 @@ test("loading never shares the default positions array between settings objects"
   a.userPreferences.stocks.positions.push({ id: "x", symbol: "X", shares: 1, averageCost: 1 });
 
   assert.deepEqual(applyDefaults({}).userPreferences.stocks.positions, []);
+});
+
+test("a saved base currency survives a load", () => {
+  const loaded = applyDefaults({ userPreferences: { stocks: { baseCurrency: "USD" } } });
+  assert.equal(loaded.userPreferences.stocks.baseCurrency, "USD");
 });

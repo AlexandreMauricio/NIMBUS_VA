@@ -16,6 +16,7 @@ import { TaskProvider, TaskWriteRequest } from "../context/providers/tasks";
 import {
   StockProvider,
   StockPosition,
+  normalizeCurrencyCode,
   normalizeSymbol,
   validateStockPositions,
 } from "../context/providers/stocks";
@@ -388,7 +389,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:get-stock-settings", () => settings.userPreferences.stocks);
   ipcMain.handle(
     "nimbus:update-stock-settings",
-    (_event, partial: { enabled?: unknown; newsEnabled?: unknown; positions?: unknown }) => {
+    (
+      _event,
+      partial: { enabled?: unknown; newsEnabled?: unknown; baseCurrency?: unknown; positions?: unknown }
+    ) => {
       const current = settings.userPreferences.stocks;
       let positions = current.positions;
       if (partial?.positions !== undefined) {
@@ -405,15 +409,23 @@ function registerIpcHandlers(): void {
           notes: p.notes?.trim() || undefined,
         }));
       }
+      let baseCurrency = current.baseCurrency;
+      if (partial?.baseCurrency !== undefined) {
+        const code = normalizeCurrencyCode(partial.baseCurrency);
+        if (!code) throw new Error("Base currency must be a three-letter code such as EUR.");
+        baseCurrency = code;
+      }
       settings.userPreferences.stocks = {
         enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
         newsEnabled: typeof partial?.newsEnabled === "boolean" ? partial.newsEnabled : current.newsEnabled,
+        baseCurrency,
         positions,
       };
       saveSettings(settings);
       logger.info("Stock settings updated", {
         enabled: settings.userPreferences.stocks.enabled,
         newsEnabled: settings.userPreferences.stocks.newsEnabled,
+        baseCurrency,
         positionCount: positions.length,
       });
       return settings.userPreferences.stocks;

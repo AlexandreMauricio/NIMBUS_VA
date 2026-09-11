@@ -28,6 +28,8 @@ export interface StockPosition {
 export interface StockProviderConfig {
   enabled: boolean;
   newsEnabled: boolean;
+  /** ISO 4217 code every position is converted into for the single portfolio total, e.g. "EUR". */
+  baseCurrency: string;
   positions: StockPosition[];
 }
 
@@ -81,9 +83,10 @@ export interface PositionView {
 }
 
 /**
- * Portfolio totals for one currency. Totals are never summed across
- * currencies — NIMBUS has no exchange rates, and adding euros to dollars
- * would produce a number that means nothing.
+ * Portfolio totals for one currency. The per-currency totals only ever sum
+ * positions that trade in that currency; the base-currency total
+ * (StockContext.baseTotals) sums everything after converting it at a
+ * retrieved exchange rate — never an assumed one.
  */
 export interface PortfolioTotals {
   currency: string;
@@ -107,6 +110,32 @@ export interface StockContext {
   anyStale: boolean;
   /** Where the prices came from, for attribution in the UI. */
   source: string;
+  /** The currency baseTotals are expressed in. */
+  baseCurrency: string;
+  /**
+   * Every priced position converted into baseCurrency and summed. Null when
+   * no position could be converted. Invested amounts are converted at the
+   * current rate too (NIMBUS has no historical rates), so the gain shown
+   * here excludes currency moves since purchase.
+   */
+  baseTotals: PortfolioTotals | null;
+  /** The rates used for baseTotals, one per position currency other than the base. */
+  fxRates: FxRate[];
+  /** Position currencies with no retrieved rate: those positions are left out of baseTotals. "" = unknown currency. */
+  unconvertedCurrencies: string[];
+}
+
+/** One conversion into the base currency, as retrieved. */
+export interface FxRate {
+  /** The position currency, as the quote reports it — may be a minor unit such as "GBp". */
+  currency: string;
+  /** Base-currency amount for 1 unit of `currency` (minor units already divided out). */
+  rate: number;
+  /** The market pair the rate came from, e.g. "USDEUR=X". */
+  pair: string;
+  /** True when the latest fetch of the pair failed and this is the last rate that succeeded. */
+  stale: boolean;
+  marketTime: string | null;
 }
 
 export interface StockNewsItem {
@@ -149,6 +178,13 @@ export function normalizeSymbol(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const symbol = value.trim().toUpperCase();
   return /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/.test(symbol) ? symbol : null;
+}
+
+/** An ISO 4217-style three-letter code, uppercased, or null. */
+export function normalizeCurrencyCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
 }
 
 export interface StockValidationResult {

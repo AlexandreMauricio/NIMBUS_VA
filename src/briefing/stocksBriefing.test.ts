@@ -62,6 +62,10 @@ function snapshotWith(stocks: Partial<StockContext>, status: "ok" | "error" = "o
     unpricedCount: 0,
     anyStale: false,
     source: "Test",
+    baseCurrency: "USD",
+    baseTotals: null,
+    fxRates: [],
+    unconvertedCurrencies: [],
     ...stocks,
   };
   return {
@@ -130,4 +134,31 @@ test("no line without a known day change, or without stock data", () => {
   assert.equal(stocksLine(snapshotWith({ totals: [totals({ dayChangePercent: null })] })), undefined);
   assert.equal(stocksLine(snapshotWith({ totals: [] })), undefined);
   assert.equal(stocksLine(snapshotWith({}, "error")), undefined);
+});
+
+test("with a base-currency total, the briefing gives one figure", () => {
+  assert.equal(
+    stocksLine(
+      snapshotWith({
+        totals: [totals(), totals({ currency: "EUR", dayChangePercent: -0.4 })],
+        baseCurrency: "EUR",
+        baseTotals: totals({ currency: "EUR", dayChangePercent: 0.9 }),
+      })
+    ),
+    "Your portfolio is up 0.9% today."
+  );
+});
+
+test("a base total missing some currencies falls back to naming each currency", () => {
+  assert.equal(
+    stocksLine(
+      snapshotWith({
+        totals: [totals(), totals({ currency: "EUR", dayChangePercent: -0.4 })],
+        baseCurrency: "EUR",
+        baseTotals: totals({ currency: "EUR", dayChangePercent: -0.4 }),
+        unconvertedCurrencies: ["USD"],
+      })
+    ),
+    "Your portfolio is up 1.8% in USD and down 0.4% in EUR today."
+  );
 });

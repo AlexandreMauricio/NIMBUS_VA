@@ -52,7 +52,7 @@ function setup(
     { id: "p2", symbol: "MSFT", shares: 2, averageCost: 300 },
   ]
 ) {
-  const settings: StockProviderConfig = { enabled: true, newsEnabled: true, positions };
+  const settings: StockProviderConfig = { enabled: true, newsEnabled: true, baseCurrency: "USD", positions };
   const clock = { now: new Date("2026-09-11T15:00:00Z") };
   const market = new FakeMarket();
   const news = new FakeNews();
@@ -271,4 +271,101 @@ test("with news switched off, nothing is fetched", async () => {
 
   assert.equal(result.status, "disabled");
   assert.equal(news.calls, 0);
+});
+
+// ---------------------------------------------------------- base currency
+
+function withCurrencies(market: FakeMarket, currencies: Record<string, string>) {
+  const original = market.fetchQuote.bind(market);
+  market.fetchQuote = async (symbol: string) => {
+    const quote = await original(symbol);
+    return { ...quote, currency: currencies[symbol] ?? quote.currency };
+  };
+}
+
+test("positions in other currencies are converted and summed into the base currency", async () => {
+  const { settings, market, provider } = setup([
+    { id: "p1", symbol: "AAPL", shares: 10, averageCost: 100 },
+    { id: "p2", symbol: "REP.MC", shares: 10, averageCost: 15 },
+  ]);
+  settings.baseCurrency = "EUR";
+  market.prices.set("REP.MC", 20);
+  market.prices.set("USDEUR=X", 0.5);
+  withCurrencies(market, { "REP.MC": "EUR" });
+
+  const context = await provider.getContext();
+
+  assert.equal(context.baseCurrency, "EUR");
+  assert.deepEqual(
+    context.fxRates.map((r) => [r.currency, r.rate, r.pair]),
+    [["USD", 0.5, "USDEUR=X"]]
+  );
+  // AAPL 10 × 150 USD = 750 EUR, plus REP.MC 10 × 20 EUR.
+  assert.equal(context.baseTotals?.marketValue, 750 + 200);
+  assert.equal(context.baseTotals?.invested, 500 + 150);
+  assert.deepEqual(context.unconvertedCurrencies, []);
+  assert.equal(context.totals.length, 2, "per-currency totals are still there");
+  assert.deepEqual(market.calls.sort(), ["AAPL", "REP.MC", "USDEUR=X"]);
+});
+
+test("pence are divided into pounds before converting", async () => {
+  const { settings, market, provider } = setup([{ id: "p1", symbol: "BP.L", shares: 100, averageCost: 400 }]);
+  settings.baseCurrency = "EUR";
+  market.prices.set("BP.L", 500);
+  market.prices.set("GBPEUR=X", 1.2);
+  withCurrencies(market, { "BP.L": "GBp" });
+
+  const context = await provider.getContext();
+
+  assert.equal(context.fxRates[0].pair, "GBPEUR=X");
+  assert.ok(Math.abs((context.baseTotals?.marketValue ?? 0) - 600) < 1e-9);
+});
+
+test("with no exchange rate, a currency is left out of the base total and named — never guessed", async () => {
+  const { settings, market, provider } = setup([
+    { id: "p1", symbol: "AAPL", shares: 10, averageCost: 100 },
+    { id: "p2", symbol: "REP.MC", shares: 10, averageCost: 15 },
+  ]);
+  settings.baseCurrency = "EUR";
+  market.prices.set("REP.MC", 20);
+  withCurrencies(market, { "REP.MC": "EUR" });
+
+  const context = await provider.getContext();
+
+  assert.deepEqual(context.unconvertedCurrencies, ["USD"]);
+  assert.equal(context.baseTotals?.marketValue, 200);
+  assert.deepEqual(context.fxRates, []);
+});
+
+test("a rate that fails after succeeding is kept and marked stale, and rates are cached like quotes", async () => {
+  const { settings, market, provider, advance } = setup([
+    { id: "p1", symbol: "AAPL", shares: 1, averageCost: 1 },
+  ]);
+  settings.baseCurrency = "EUR";
+  market.prices.set("USDEUR=X", 0.9);
+  await provider.getContext();
+  await provider.getContext();
+  assert.equal(market.calls.filter((c) => c === "USDEUR=X").length, 1);
+
+  market.failing.add("USDEUR=X");
+  advance(3 * 60_000);
+  const context = await provider.getContext();
+
+  assert.equal(context.fxRates[0].rate, 0.9);
+  assert.equal(context.fxRates[0].stale, true);
+  assert.equal(context.baseTotals?.marketValue, 150 * 0.9);
+});
+
+test("no rate is fetched when everything is already in the base currency", async () => {
+  const { market, provider } = setup();
+  const context = await provider.getContext();
+  assert.deepEqual(market.calls.sort(), ["AAPL", "MSFT"]);
+  assert.equal(context.baseTotals?.marketValue, 2300);
+});
+
+test("an invalid base currency in settings falls back to EUR", async () => {
+  const { settings, market, provider } = setup([{ id: "p1", symbol: "AAPL", shares: 1, averageCost: 1 }]);
+  settings.baseCurrency = "euros";
+  market.prices.set("USDEUR=X", 0.9);
+  assert.equal((await provider.getContext()).baseCurrency, "EUR");
 });

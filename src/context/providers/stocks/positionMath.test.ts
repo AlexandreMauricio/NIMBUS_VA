@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computePortfolio, computePosition } from "./positionMath";
+import { computeBaseTotals, computePortfolio, computePosition, majorCurrency } from "./positionMath";
 import { StockPosition, StockQuote } from "./types";
 
 const TODAY = "2026-09-11";
@@ -177,4 +177,53 @@ test("a position with an unknown day change still counts towards value", () => {
 test("an empty or wholly unpriced portfolio has no totals", () => {
   assert.deepEqual(computePortfolio([]), []);
   assert.deepEqual(computePortfolio([computePosition(position(), null, TODAY)]), []);
+});
+
+// ------------------------------------------------------------ base currency
+
+test("minor currency units map to their major currency", () => {
+  assert.deepEqual(majorCurrency("GBp"), { currency: "GBP", divisor: 100 });
+  assert.deepEqual(majorCurrency("GBX"), { currency: "GBP", divisor: 100 });
+  assert.deepEqual(majorCurrency("ZAc"), { currency: "ZAR", divisor: 100 });
+  assert.deepEqual(majorCurrency("USD"), { currency: "USD", divisor: 1 });
+});
+
+test("the base total converts every figure, including today's change", () => {
+  const usd = computePosition(position(), quote(), TODAY); // 1500 USD value, +100 today
+  const eur = computePosition(
+    position({ id: "p2", symbol: "REP.MC", averageCost: 15 }),
+    quote({ symbol: "REP.MC", price: 20, previousClose: 20, change: 0, changePercent: 0, currency: "EUR" }),
+    TODAY
+  );
+
+  const { totals, unconverted } = computeBaseTotals([usd, eur], "EUR", new Map([["USD", 0.5]]));
+
+  assert.deepEqual(unconverted, []);
+  assert.equal(totals?.currency, "EUR");
+  assert.equal(totals?.positions, 2);
+  close(totals!.marketValue, 750 + 200);
+  close(totals!.invested, 500 + 150);
+  close(totals!.unrealizedGain, 250 + 50);
+  close(totals!.dayChange, 50);
+  close(totals!.dayChangePercent, (50 / 900) * 100);
+});
+
+test("a currency with no rate is left out and reported; unpriced positions are ignored", () => {
+  const usd = computePosition(position(), quote(), TODAY);
+  const unpriced = computePosition(position({ id: "p3" }), null, TODAY);
+
+  const { totals, unconverted } = computeBaseTotals([usd, unpriced], "EUR", new Map());
+
+  assert.equal(totals, null);
+  assert.deepEqual(unconverted, ["USD"]);
+});
+
+test("a base-currency minor unit converts without a rate", () => {
+  const pence = computePosition(
+    position({ symbol: "BP.L", averageCost: 400 }),
+    quote({ price: 500, currency: "GBp" }),
+    TODAY
+  );
+  const { totals } = computeBaseTotals([pence], "GBP", new Map());
+  close(totals!.marketValue, 50);
 });

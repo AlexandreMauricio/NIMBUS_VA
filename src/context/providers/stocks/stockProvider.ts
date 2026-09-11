@@ -1,9 +1,10 @@
 import { ContextProvider } from "../../types";
 import { logger } from "../../../logging/logger";
 import { localCalendarDate, localTimeZone } from "../calendar/icsTimeUtils";
-import { computePortfolio, computePosition } from "./positionMath";
+import { computeBaseTotals, computePortfolio, computePosition, majorCurrency } from "./positionMath";
 import { YahooMarketDataSource, YahooNewsSource } from "./yahooFinance";
 import {
+  FxRate,
   MarketDataSource,
   NewsSource,
   RawQuote,
@@ -13,6 +14,7 @@ import {
   StockPosition,
   StockProviderConfig,
   StockQuote,
+  normalizeCurrencyCode,
   normalizeSymbol,
   validateStockPosition,
 } from "./types";
@@ -28,6 +30,8 @@ const MIN_REFRESH_INTERVAL_MS = 30 * 1000;
 const MAX_NEWS_ITEMS = 5;
 /** Symbols fetched at once, so a long list doesn't burst the source. */
 const FETCH_CONCURRENCY = 4;
+/** Used when settings carry no valid base currency. */
+const DEFAULT_BASE_CURRENCY = "EUR";
 
 interface QuoteEntry {
   /** The last quote that succeeded, if any — marked stale when a later fetch failed. */
@@ -49,6 +53,11 @@ interface QuoteEntry {
  * no path that invents a price. Only when no position has any price at all
  * does getContext() reject, which ContextService turns into its standard
  * error/stale result.
+ *
+ * Exchange rates for the base-currency total are market pairs too
+ * ("USDEUR=X"), so they go through the same quote cache, TTL and
+ * stale-on-failure handling as prices. A currency with no rate is left out
+ * of the base total and named, never converted at a guessed rate.
  *
  * News is not part of the context. It is fetched on demand for one symbol
  * (getNews), cached separately, and its failure never touches prices.
@@ -148,21 +157,14 @@ export class StockProvider implements ContextProvider<StockContext> {
   }
 
   private async build(): Promise<StockContext> {
-    const positions = this.validPositions(this.getSettings());
+    const settings = this.getSettings();
+    const positions = this.validPositions(settings);
     if (positions.length === 0) throw new Error("No stock positions are configured");
+    const base = normalizeCurrencyCode(settings.baseCurrency) ?? DEFAULT_BASE_CURRENCY;
 
     const symbols = [...new Set(positions.map((p) => p.symbol))];
     const nowMs = this.now().getTime();
-    const due = symbols.filter((s) => {
-      const entry = this.quotes.get(s);
-      return !entry || nowMs - entry.attemptedAtMs >= QUOTE_TTL_MS;
-    });
-
-    for (let i = 0; i < due.length; i += FETCH_CONCURRENCY) {
-      const batch = due.slice(i, i + FETCH_CONCURRENCY);
-      const results = await Promise.allSettled(batch.map((s) => this.marketData.fetchQuote(s)));
-      results.forEach((result, j) => this.recordQuote(batch[j], result, nowMs));
-    }
+    await this.fetchDue(symbols, nowMs);
 
     const quoteFor = (symbol: string) => this.quotes.get(symbol)?.quote ?? null;
     if (symbols.every((s) => quoteFor(s) === null)) {
@@ -172,6 +174,30 @@ export class StockProvider implements ContextProvider<StockContext> {
     const today = localCalendarDate(this.now().toISOString(), this.timeZone());
     const views = positions.map((p) => computePosition(p, quoteFor(p.symbol), today));
 
+    // One pair per position currency that isn't already the base.
+    const pairs = new Map<string, { pair: string; divisor: number }>();
+    for (const v of views) {
+      if (v.marketValue === null || !v.currency || pairs.has(v.currency)) continue;
+      const major = majorCurrency(v.currency);
+      if (major.currency === base || !/^[A-Z]{3}$/.test(major.currency)) continue;
+      pairs.set(v.currency, { pair: `${major.currency}${base}=X`, divisor: major.divisor });
+    }
+    await this.fetchDue([...new Set([...pairs.values()].map((p) => p.pair))], nowMs);
+
+    const fxRates: FxRate[] = [];
+    for (const [currency, { pair, divisor }] of pairs) {
+      const quote = quoteFor(pair);
+      if (!quote || !(quote.price > 0)) continue;
+      fxRates.push({
+        currency,
+        rate: quote.price / divisor,
+        pair,
+        stale: quote.stale,
+        marketTime: quote.marketTime,
+      });
+    }
+    const baseResult = computeBaseTotals(views, base, new Map(fxRates.map((r) => [r.currency, r.rate])));
+
     return {
       retrievedAt: this.now().toISOString(),
       positions: views,
@@ -179,7 +205,24 @@ export class StockProvider implements ContextProvider<StockContext> {
       unpricedCount: views.filter((v) => v.status === "unavailable").length,
       anyStale: views.some((v) => v.status === "stale"),
       source: this.marketData.name,
+      baseCurrency: base,
+      baseTotals: baseResult.totals,
+      fxRates,
+      unconvertedCurrencies: baseResult.unconverted,
     };
+  }
+
+  /** Fetches the symbols whose cached entry is older than the TTL, a few at a time. */
+  private async fetchDue(symbols: string[], nowMs: number): Promise<void> {
+    const due = symbols.filter((s) => {
+      const entry = this.quotes.get(s);
+      return !entry || nowMs - entry.attemptedAtMs >= QUOTE_TTL_MS;
+    });
+    for (let i = 0; i < due.length; i += FETCH_CONCURRENCY) {
+      const batch = due.slice(i, i + FETCH_CONCURRENCY);
+      const results = await Promise.allSettled(batch.map((s) => this.marketData.fetchQuote(s)));
+      results.forEach((result, j) => this.recordQuote(batch[j], result, nowMs));
+    }
   }
 
   private recordQuote(symbol: string, result: PromiseSettledResult<RawQuote>, nowMs: number): void {
