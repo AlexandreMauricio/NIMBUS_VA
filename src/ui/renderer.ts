@@ -364,6 +364,7 @@ interface RoutineCondition {
     | "activityIs"
     | "activityDuration"
     | "spotifyNotAlreadyPlaying"
+    | "spotifyIsPlaying"
     | "actionsNotAlreadyActive";
   startHour?: number;
   endHour?: number;
@@ -2165,6 +2166,7 @@ async function initRoutinesSettings(): Promise<void> {
     if (type === "activityIs") return { type: "activityIs", activity: knownActivities[0] ?? "" };
     if (type === "activityDuration") return { type: "activityDuration", minMinutes: 90 };
     if (type === "spotifyNotAlreadyPlaying") return { type: "spotifyNotAlreadyPlaying" };
+    if (type === "spotifyIsPlaying") return { type: "spotifyIsPlaying" };
     return null;
   }
 
@@ -2295,6 +2297,8 @@ async function initRoutinesSettings(): Promise<void> {
         controls.append(minutes, unit);
       } else if (condition.type === "spotifyNotAlreadyPlaying") {
         label.textContent = "Spotify is not already playing";
+      } else if (condition.type === "spotifyIsPlaying") {
+        label.textContent = "Spotify is playing";
       } else {
         label.textContent = `Unrecognized condition (${(condition as { type?: string }).type})`;
       }

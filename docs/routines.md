@@ -76,6 +76,7 @@ empty list always passes.
 | `activityIs` | The current activity is this one. Fails closed with no activity. |
 | `activityDuration` | The current activity has lasted at least N minutes. Fails closed with no activity. |
 | `spotifyNotAlreadyPlaying` | Nothing is playing on Spotify. Fails open if Spotify can't be checked. |
+| `spotifyIsPlaying` | Something *is* playing on Spotify. Mainly for the wind-down half, so "stop the music" isn't offered when no music is playing. Fails open if Spotify can't be checked. |
 | `actionsNotAlreadyActive` | This routine's own playlist (by exact URI) or timer isn't already running. Set with the **Skip if already active** switch. Fails open. |
 | `weekdaysOnly` | Monday–Friday. Legacy: still honoured for existing routines, not offered for new ones. |
 

@@ -108,6 +108,16 @@ export interface SpotifyNotAlreadyPlayingCondition {
 }
 
 /**
+ * The opposite: only while Spotify IS playing. Mainly for the wind-down
+ * half — "stop the music when I finish studying" should not ask to stop
+ * music that isn't playing. Fails open like its counterpart: when
+ * playback can't be checked at all, it doesn't block.
+ */
+export interface SpotifyIsPlayingCondition {
+  type: "spotifyIsPlaying";
+}
+
+/**
  * Only when the routine's own configured actions don't already appear to
  * be in effect — e.g. a routine that plays a specific playlist and
  * starts a timer won't re-suggest itself while that exact playlist is
@@ -154,6 +164,7 @@ export type RoutineCondition =
   | WeekdaysOnlyCondition
   | DaysOfWeekCondition
   | SpotifyNotAlreadyPlayingCondition
+  | SpotifyIsPlayingCondition
   | ActionsNotAlreadyActiveCondition
   | ActivityIsCondition
   | ActivityDurationCondition;
@@ -532,6 +543,7 @@ function validateCondition(condition: RoutineCondition): string | null {
       return null;
     case "weekdaysOnly":
     case "spotifyNotAlreadyPlaying":
+    case "spotifyIsPlaying":
     case "actionsNotAlreadyActive":
       return null;
     default:

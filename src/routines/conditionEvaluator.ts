@@ -108,6 +108,8 @@ function describeCondition(condition: RoutineCondition, passed: boolean): string
     }
     case "spotifyNotAlreadyPlaying":
       return passed ? "Spotify is not already playing" : "Spotify is already playing";
+    case "spotifyIsPlaying":
+      return passed ? "Spotify is playing" : "Spotify is not playing";
     case "activityIs":
       return passed
         ? `Current activity is ${condition.activity}`
@@ -154,6 +156,15 @@ async function evaluateCondition(condition: RoutineCondition, ctx: ConditionCont
         return !(await ctx.isSpotifyPlaying());
       } catch {
         return true; // fail open — a broken playback check shouldn't silently suppress every suggestion
+      }
+    }
+
+    case "spotifyIsPlaying": {
+      if (!ctx.isSpotifyPlaying) return true; // no signal available — same fail-open discipline as its counterpart
+      try {
+        return await ctx.isSpotifyPlaying();
+      } catch {
+        return true;
       }
     }
 

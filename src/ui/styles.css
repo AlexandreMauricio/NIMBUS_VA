@@ -125,6 +125,18 @@ dd {
   text-align: left;
 }
 
+/* Heading over a group of side links ("Admin"). Presentation only — the
+   links inside behave exactly like the ones above it. */
+.sidebar-group-label {
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 var(--space-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-500);
+}
+
 .side-link svg {
   flex-shrink: 0;
   opacity: 0.85;

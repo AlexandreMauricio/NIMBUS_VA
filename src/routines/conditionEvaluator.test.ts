@@ -68,6 +68,42 @@ test("spotifyNotAlreadyPlaying passes (fails open) when the playback check throw
   );
 });
 
+test("spotifyIsPlaying is the mirror of spotifyNotAlreadyPlaying", async () => {
+  const conditions: RoutineCondition[] = [{ type: "spotifyIsPlaying" }];
+  assert.equal(
+    await evaluateConditions(conditions, { now: new Date(), isSpotifyPlaying: async () => true }),
+    true
+  );
+  assert.equal(
+    await evaluateConditions(conditions, { now: new Date(), isSpotifyPlaying: async () => false }),
+    false,
+    "this is what stops a wind-down asking to stop music that isn't playing"
+  );
+});
+
+test("spotifyIsPlaying passes (fails open) with no signal, or when the check throws", async () => {
+  const conditions: RoutineCondition[] = [{ type: "spotifyIsPlaying" }];
+  assert.equal(await evaluateConditions(conditions, { now: new Date() }), true);
+  assert.equal(
+    await evaluateConditions(conditions, {
+      now: new Date(),
+      isSpotifyPlaying: async () => {
+        throw new Error("boom");
+      },
+    }),
+    true
+  );
+});
+
+test("a condition's explanation says which way round it is", async () => {
+  const playing = await evaluateConditionsDetailed([{ type: "spotifyIsPlaying" }], {
+    now: new Date(),
+    isSpotifyPlaying: async () => false,
+  });
+  assert.equal(playing.results[0].label, "Spotify is not playing");
+  assert.equal(playing.passed, false);
+});
+
 test("actionsNotAlreadyActive fails (blocks the routine) when the checker reports the actions are already active", async () => {
   const conditions: RoutineCondition[] = [{ type: "actionsNotAlreadyActive" }];
   assert.equal(

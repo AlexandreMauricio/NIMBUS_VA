@@ -296,10 +296,30 @@ in `package.json` and is shown in the sidebar. See
 
 ## Setup
 
+Needs [Node.js](https://nodejs.org) 20 or newer (which includes npm) and
+Git. There is no packaged installer yet, so NIMBUS runs from its source
+folder.
+
 ```bash
 npm install
 copy .env.example .env
 ```
+
+### On another PC
+
+```bash
+git clone https://github.com/AlexandreMauricio/NIMBUS_VA.git
+cd NIMBUS_VA
+npm install
+npm start
+```
+
+Everything you configure lives in that machine's own
+`%APPDATA%\nimbus\`, so a second PC starts empty: re-enter your calendar
+feeds, email and Todoist accounts, stock positions, routines and
+activities, and connect Spotify again (its Client ID goes in `.env`).
+Nothing syncs between machines. To update later, `git pull` then
+`npm install` (in case dependencies changed) and `npm start`.
 
 `.env` is optional for normal use; it supplies the log level, the
 environment name, the Spotify Client ID, and headless/dev defaults for

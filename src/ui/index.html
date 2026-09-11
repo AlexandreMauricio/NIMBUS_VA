@@ -54,6 +54,17 @@
             </svg>
             Stocks
           </button>
+          <button class="side-link" data-tab="routines">
+            <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">
+              <path
+                d="M221.62,133.86,152,164.53V80a8,8,0,0,0-16,0v84.53L66.38,133.86a8,8,0,1,0-6.76,14.5l72,32.36V232a8,8,0,0,0,16,0V180.72l72-32.36a8,8,0,1,0-6.76-14.5ZM128,24A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"
+              />
+            </svg>
+            Routines
+          </button>
+          <!-- Everything you set up or look under the hood at, kept apart
+               from the tabs used day to day. -->
+          <p class="sidebar-group-label">Admin</p>
           <button class="side-link" data-tab="network">
             <svg
               width="16"
@@ -94,14 +105,6 @@
               />
             </svg>
             Context
-          </button>
-          <button class="side-link" data-tab="routines">
-            <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">
-              <path
-                d="M221.62,133.86,152,164.53V80a8,8,0,0,0-16,0v84.53L66.38,133.86a8,8,0,1,0-6.76,14.5l72,32.36V232a8,8,0,0,0,16,0V180.72l72-32.36a8,8,0,1,0-6.76-14.5ZM128,24A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"
-              />
-            </svg>
-            Routines
           </button>
           <button class="side-link" data-tab="settings">
             <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">
@@ -1155,6 +1158,7 @@
                   <option value="activityIs">Current activity is…</option>
                   <option value="activityDuration">Current activity has lasted…</option>
                   <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
+                  <option value="spotifyIsPlaying">Spotify is playing</option>
                 </select>
                 <button class="btn btn-secondary" id="routineAddConditionBtn">Add condition</button>
               </div>
@@ -1234,6 +1238,7 @@
                   <option value="activityIs">Current activity is…</option>
                   <option value="activityDuration">Current activity has lasted…</option>
                   <option value="spotifyNotAlreadyPlaying">Spotify is not already playing</option>
+                  <option value="spotifyIsPlaying">Spotify is playing</option>
                 </select>
                 <button class="btn btn-secondary" id="routineAddStopConditionBtn">Add condition</button>
               </div>

@@ -18,6 +18,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.0 — 2026-09-11
+
+The milestone since 0.3.0: NIMBUS now watches the local network, remembers
+things across restarts, decides what deserves your attention, and tracks a
+portfolio in one currency with a tax helper.
+
+- **Routines**: new **Spotify is playing** condition, the counterpart of
+  "Spotify is not already playing". Put it on the wind-down half so a
+  "stop the music" suggestion only appears when something is actually
+  playing.
+- **Sidebar**: Network, Memory, Context and Settings are grouped under an
+  **Admin** heading, apart from the tabs used day to day.
+- Since 0.3.0: the Attention & Priority engine, persistent Memory, the
+  Network tab with "Ask the device", "Make it an activity?" for apps and
+  websites, collapsible Context boxes, and the stocks work (base currency,
+  dividends, closed positions, the IRS helper).
+
 ## 0.3.10 — 2026-09-11
 
 - Activities: "Make it an activity?" now covers websites too. A separate
