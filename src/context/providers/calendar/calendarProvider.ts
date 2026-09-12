@@ -10,6 +10,14 @@ const DEFAULT_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes — calendars don't c
 const NEAR_EVENT_CACHE_TTL_MS = 2 * 60 * 1000; // refresh sooner once something is imminent
 const IMMINENT_WINDOW_MS = 60 * 60 * 1000; // "imminent" = within an hour
 const LOOKAHEAD_DAYS = 7; // how far ahead "laterEvents" looks
+/**
+ * How far ahead the Calendar tab's list looks. Separate from
+ * LOOKAHEAD_DAYS on purpose: the briefing and Attention reason about the
+ * coming week, and must not start counting next month's events, but a
+ * calendar you open to look at should show what's actually coming.
+ */
+const UPCOMING_DAYS = 90;
+const MAX_UPCOMING_EVENTS = 100;
 
 export interface CalendarFeedConfig {
   id: string;
@@ -186,6 +194,15 @@ function buildContext(events: CalendarEvent[], timezone: string, now: Date): Cal
     })
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 
+  const upcomingEndDate = addDaysToDateString(todayDate, UPCOMING_DAYS);
+  const upcomingEvents = events
+    .filter((event) => {
+      const eventDate = localCalendarDate(event.startsAt, timezone);
+      return eventDate > todayDate && eventDate <= upcomingEndDate;
+    })
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .slice(0, MAX_UPCOMING_EVENTS);
+
   const nowMs = now.getTime();
   const nextEvent =
     [...todayEvents, ...laterEvents]
@@ -197,6 +214,7 @@ function buildContext(events: CalendarEvent[], timezone: string, now: Date): Cal
     timezone,
     todayEvents,
     laterEvents,
+    upcomingEvents,
     nextEvent,
   };
 }

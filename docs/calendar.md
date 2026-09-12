@@ -60,9 +60,20 @@ code isolated behind it.
 ## Where it shows up
 
 - The **briefing's** calendar line (see [briefing.md](briefing.md)).
-- The **Calendar tab** — today's and upcoming events, rendered from the
-  calendar provider's result in the context snapshot, with a Refresh
-  button. It does not poll.
+- The **Calendar tab** — today's events (ones already over are dimmed
+  and marked "Ended") and **the next 90 days** (at most 100 events),
+  rendered from the calendar provider's result in the context snapshot,
+  with a Refresh button. It does not poll.
+- The briefing and Attention look only at **the coming week**
+  (`laterEvents`), deliberately: a meeting next month is not today's
+  news. The tab's longer list is `upcomingEvents`.
+
+**A new event takes a while to appear.** NIMBUS re-reads a feed every 15
+minutes (2 when something is about to start), but the feed itself is
+published by your calendar provider on its own schedule — Google's
+"secret address in iCal format" can lag behind the calendar by several
+hours. If an event is in Google Calendar but not in NIMBUS after a
+Refresh, the feed hasn't caught up yet.
 
 ## Tests
 

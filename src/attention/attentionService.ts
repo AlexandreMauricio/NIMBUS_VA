@@ -85,6 +85,8 @@ export class AttentionService {
     string,
     { key: string; expiresAtMs: number; kind: string; followUp: AttentionFollowUp | null }
   >();
+  /** Questions already answered from the feed — each is answered once. */
+  private readonly answeredItems = new Set<string>();
   private readonly answerListeners = new Set<(answer: AttentionAnswer) => void>();
   private snapshot: ContextSnapshot | null = null;
   private snapshotAtMs = -Infinity;
@@ -169,6 +171,35 @@ export class AttentionService {
       this.engine.dismiss(own.key, this.now());
       this.emitAnswer(own, "dismissed");
     }
+    return true;
+  }
+
+  /**
+   * Answers one of Attention's questions from where it was posted instead
+   * of from a popup — the Home feed.
+   *
+   * A question that isn't pressing enough to interrupt ("make it an
+   * activity?" for an app you didn't just open) goes to the feed rather
+   * than a popup. Before this, that line could be read but never
+   * answered: it just sat there.
+   *
+   * Only items that ask something (carry a follow-up) can be answered
+   * here, and each only once. Anything else — or an item that is no
+   * longer current, such as one from before a restart — returns false.
+   */
+  answerItem(itemId: string, outcome: "accepted" | "dismissed"): boolean {
+    if (this.answeredItems.has(itemId)) return false;
+    const item = this.engine.lastEvaluation()?.items.find((candidate) => candidate.id === itemId);
+    if (!item || !item.followUp) return false;
+
+    this.answeredItems.add(itemId);
+    // A popup for the same item may be open too; it must not answer again.
+    for (const [suggestionId, own] of this.own) {
+      if (own.key === itemId) this.own.delete(suggestionId);
+    }
+    if (outcome === "accepted") this.engine.acknowledge(itemId, this.now());
+    else this.engine.dismiss(itemId, this.now());
+    this.emitAnswer({ key: item.id, kind: item.kind, followUp: item.followUp }, outcome);
     return true;
   }
 

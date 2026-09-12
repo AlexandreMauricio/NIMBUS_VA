@@ -21,8 +21,13 @@ export interface CalendarContext {
   timezone: string;
   /** Events overlapping today's local calendar date, sorted by start time. */
   todayEvents: CalendarEvent[];
-  /** Future events beyond today, within a bounded lookahead window, sorted by start time. */
+  /** Future events beyond today, within the coming week, sorted by start time. What the briefing and Attention reason about. */
   laterEvents: CalendarEvent[];
+  /**
+   * Future events beyond today for the next 90 days (at most 100), for
+   * the Calendar tab. Optional so fixtures written before it still type.
+   */
+  upcomingEvents?: CalendarEvent[];
   /** The single soonest event (today or later) that hasn't started yet, or null. */
   nextEvent: CalendarEvent | null;
 }

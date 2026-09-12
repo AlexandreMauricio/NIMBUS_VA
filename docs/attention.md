@@ -133,6 +133,13 @@ remembering "Not now" — so the navigation lives in the client, and
 nothing is created or run by Attention. A popup that runs out isn't an
 answer.
 
+A question that isn't pressing enough to interrupt goes to the **Home
+feed** instead of a popup, and carries its two answers there as buttons
+(`AttentionService.answerItem`, over `nimbus:answer-attention-item`). It
+takes the same `onAnswer` path as the popup, and each item can be answered
+once. A feed line from before a restart is no longer current — its buttons
+say so.
+
 ## Debug view
 
 The **Context** tab has a fold-away *Attention* box: every current item with

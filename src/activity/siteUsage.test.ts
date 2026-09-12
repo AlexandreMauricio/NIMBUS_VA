@@ -170,3 +170,17 @@ test("Attention asks about a website with its own key and a website follow-up", 
     source: "website",
   });
 });
+
+test("tabs that aren't a site - an address, search results, a new tab, NIMBUS - are ignored", () => {
+  for (const title of [
+    "youtube.com/watch?v=sMTsmIdumgI - Google Chrome",
+    "https://example.com/page - Google Chrome",
+    "Novo separador - Google Chrome",
+    "cats - Pesquisa Google - Google Chrome",
+    "cats - Google Search - Google Chrome",
+    "Routines - NIMBUS - Google Chrome",
+  ]) {
+    assert.equal(siteFromTitle(title), null, title);
+  }
+  assert.equal(siteFromTitle("Some video - YouTube - Google Chrome"), "YouTube", "real sites still count");
+});

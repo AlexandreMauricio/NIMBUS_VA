@@ -352,6 +352,9 @@ contextBridge.exposeInMainWorld("nimbus", {
   getActiveSuggestions: (): Promise<AssistantEvent[]> => ipcRenderer.invoke("nimbus:get-active-suggestions"),
   /** The Attention debug view: current items, scores, decisions and why. Read-only. */
   getAttention: (): Promise<AttentionDebugState> => ipcRenderer.invoke("nimbus:get-attention"),
+  /** Answers one of Attention's questions from the feed. False if it's no longer current. */
+  answerAttentionItem: (itemId: string, outcome: "accepted" | "dismissed"): Promise<boolean> =>
+    ipcRenderer.invoke("nimbus:answer-attention-item", itemId, outcome),
   updateAttentionSettings: (partial: Partial<AttentionSettings>): Promise<AttentionSettings> =>
     ipcRenderer.invoke("nimbus:update-attention-settings", partial),
   acceptSuggestion: (suggestionId: string): Promise<PublicActionResult[]> =>

@@ -913,6 +913,12 @@ function registerIpcHandlers(): void {
   // The Attention debug view (Context tab): every current item, its score,
   // decision and why. Read-only.
   ipcMain.handle("nimbus:get-attention", () => attentionService.getDebugState());
+  // Answering a question from the Home feed. Routed through the same
+  // onAnswer path as the popup, so "Make it an activity" opens the editor
+  // and "Not now" is remembered either way.
+  ipcMain.handle("nimbus:answer-attention-item", (_event, itemId: unknown, outcome: unknown) =>
+    attentionService.answerItem(String(itemId ?? ""), outcome === "accepted" ? "accepted" : "dismissed")
+  );
   ipcMain.handle(
     "nimbus:update-attention-settings",
     (_event, partial: { enabled?: unknown; popups?: unknown }) => {
@@ -1357,6 +1363,15 @@ export function startApp(): void {
           createdAt: new Date().toISOString(),
           title: item.title,
           body: `${item.description} (${explainItem(item)})`,
+          // A question posted to the feed carries its answers, so it can
+          // be answered there instead of sitting unanswerable.
+          ...(item.followUp && item.labels
+            ? {
+                attentionItemId: item.id,
+                primaryLabel: item.labels.primary,
+                secondaryLabel: item.labels.secondary,
+              }
+            : {}),
         }),
       currentPopup: () => {
         const current = getCurrentPopupSuggestion();

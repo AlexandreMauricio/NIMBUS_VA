@@ -156,6 +156,13 @@ and when it was last opened:
   out is counted under whatever comes last, which usually never recurs
   enough to be offered.
 
+Some things are never counted, because nobody does them: Windows and
+runtime helpers that happen to own a window (`svchost.exe`,
+`msedgewebview2.exe` and similar), **NIMBUS itself** — its window, its
+installer and uninstaller, anything describing itself as NIMBUS — and tabs
+that aren't a site: a tab still titled with its address, a new tab in any
+of several languages, and search results pages.
+
 A program or site used on 3 of the last 7 days, or for 5 hours in them,
 that isn't already an activity is offered to the Attention engine, which
 decides how to ask: a **popup** when you've used it a lot and have just
@@ -163,6 +170,8 @@ opened it, a **Home feed line** otherwise (see [attention.md](attention.md)).
 A site counts as already covered when a website activity would match its
 name.
 
+- Asked in a **popup** or on a **Home feed line** — the feed line has the
+  same two buttons.
 - **Make it an activity** opens this form with the program (or, for a
   site, a **Website** activity matching its name) filled in; nothing is
   saved until you save it. If you don't, it may ask again in a week.

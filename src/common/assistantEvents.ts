@@ -35,6 +35,14 @@ export interface AssistantNotification extends AssistantEventBase {
   type: "notification";
   title: string;
   body: string;
+  /**
+   * Set when the notice is one of Attention's questions ("make it an
+   * activity?"): the item to answer, and its two answers, so the feed can
+   * offer them as buttons. Absent for a plain notice.
+   */
+  attentionItemId?: string;
+  primaryLabel?: string;
+  secondaryLabel?: string;
 }
 
 /** A summarized bundle of information (e.g. a future daily/status briefing). */

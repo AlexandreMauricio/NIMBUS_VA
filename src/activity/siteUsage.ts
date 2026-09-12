@@ -75,6 +75,20 @@ const NOT_A_SITE = new Set([
   "new tab",
   "nova guia",
   "nova aba",
+  "novo separador",
+  "nueva pestaña",
+  "nouvel onglet",
+  "neuer tab",
+  "nuova scheda",
+  // Search results pages are a search engine, not something you do.
+  "google search",
+  "pesquisa google",
+  "pesquisa do google",
+  "búsqueda de google",
+  "bing",
+  "duckduckgo",
+  // NIMBUS never suggests itself.
+  "nimbus",
   "new private tab",
   "inprivate",
   "private browsing",
@@ -103,6 +117,9 @@ export function siteFromTitle(title: string): string | null {
   const last = (parts[parts.length - 1] ?? "").replace(/^\(\d+\+?\)\s*/, "").trim();
   if (last.length < 2 || last.length > MAX_NAME_LENGTH) return null;
   if (last.includes("@")) return null;
+  // A tab still loading is titled with its address ("youtube.com/watch?v=…"):
+  // that is a URL, and NIMBUS keeps no addresses.
+  if (/^[a-z]+:\/\//i.test(last) || /^[\w-]+(\.[\w-]+)+\//.test(last)) return null;
   if (/^[\d\s.,:%()+-]+$/.test(last)) return null;
   if (NOT_A_SITE.has(last.toLowerCase())) return null;
   return last;

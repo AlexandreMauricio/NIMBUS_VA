@@ -18,6 +18,24 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.8 — 2026-09-12
+
+- **Calendar**: the Calendar tab's "Upcoming" now looks **90 days** ahead
+  (up to 100 events) instead of 7, so an event next month appears. The
+  briefing and Attention still reason about the coming week only. Events
+  from earlier today stay in "Today" but are dimmed and marked "Ended".
+  The guide now explains that a calendar's own iCal feed can lag behind
+  the calendar by hours (Google's especially).
+- **"Make it an activity?" in the Home feed can be answered.** A question
+  not pressing enough for a popup was posted to the feed as plain text,
+  with no way to answer it. It now carries its two buttons, which take
+  the same path as the popup's.
+- **The usage tallies ignore what nobody does**: Windows helpers such as
+  `svchost.exe` and `msedgewebview2.exe`, NIMBUS itself (window,
+  installer, uninstaller), and tabs that aren't a site — a loading tab
+  titled with its address, new tabs in several languages, and search
+  results pages. All of these showed up in a real tally.
+
 ## 0.4.7 — 2026-09-12
 
 - A build in a folder where `npm install` has not been run now says so —

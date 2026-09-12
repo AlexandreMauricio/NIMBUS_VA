@@ -386,3 +386,41 @@ test("cache TTL shrinks (refreshes sooner) once the next known event is imminent
 
   assert.equal(fetchCount, 2, "should have refreshed because the next event is imminent");
 });
+
+test("the Calendar tab's list reaches months ahead, while the briefing's stays on the coming week", async () => {
+  const now = new Date("2026-07-15T12:00:00.000Z");
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:next-week",
+    "SUMMARY:Soon",
+    "DTSTART:20260718T140000Z",
+    "END:VEVENT",
+    "BEGIN:VEVENT",
+    "UID:next-month",
+    "SUMMARY:A month away",
+    "DTSTART:20260815T140000Z",
+    "END:VEVENT",
+    "BEGIN:VEVENT",
+    "UID:next-year",
+    "SUMMARY:Too far",
+    "DTSTART:20270715T140000Z",
+    "END:VEVENT"
+  );
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
+
+  const ctx = await provider.getContext();
+  assert.deepEqual(
+    ctx.laterEvents.map((event) => event.id),
+    ["next-week"],
+    "the briefing and Attention still only see the coming week"
+  );
+  assert.deepEqual(
+    (ctx.upcomingEvents ?? []).map((event) => event.id),
+    ["next-week", "next-month"],
+    "the tab shows next month too, but not a year out"
+  );
+});

@@ -300,7 +300,7 @@ test("Attention runs nothing: only a routine suggestion accepted through Routine
 
 // ------------------------------------------------------------- questions
 
-function questionSetup() {
+function questionSetup(options: { justOpened?: boolean } = {}) {
   const clock = { now: new Date("2026-09-11T10:00:00Z") };
   const presenter = new FakePresenter();
   const apps: AttentionFrequentApp[] = [
@@ -309,7 +309,7 @@ function questionSetup() {
       name: "Halo Infinite",
       daysUsed: 5,
       minutesUsed: 480,
-      justOpened: true,
+      justOpened: options.justOpened ?? true,
     },
   ];
   const service = new AttentionService({
@@ -359,4 +359,32 @@ test('"Not now" comes back as a dismissal; a popup that just runs out isn\'t an 
   ignored.clock.now = new Date(Date.parse(asked.expiresAt));
   ignored.service.dismissSuggestion(asked.id);
   assert.deepEqual(ignored.answers, []);
+});
+
+test("a question posted to the feed can be answered from there, exactly once", async () => {
+  const { service, presenter, answers } = questionSetup({ justOpened: false });
+  await service.tick();
+
+  assert.equal(presenter.shown.length, 0, "not pressing enough to interrupt");
+  const notice = presenter.notices.find((item) => item.kind === "frequentApp");
+  assert.ok(notice, "posted to the feed instead");
+  assert.ok(notice.labels, "and it carries its two answers");
+
+  assert.equal(service.answerItem(notice.id, "accepted"), true);
+  assert.deepEqual(answers, [
+    {
+      itemId: "frequentApp:haloinfinite.exe",
+      kind: "frequentApp",
+      followUp: { type: "createActivity", application: "haloinfinite.exe", name: "Halo Infinite" },
+      outcome: "accepted",
+    },
+  ]);
+
+  assert.equal(service.answerItem(notice.id, "accepted"), false, "answered once, not twice");
+  assert.equal(
+    service.answerItem("frequentApp:gone.exe", "dismissed"),
+    false,
+    "unknown items can't be answered"
+  );
+  assert.equal(answers.length, 1);
 });

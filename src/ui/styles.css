@@ -606,6 +606,19 @@ button.btn {
   border-bottom: none;
 }
 
+/* A question in the feed: its answers sit under the text. */
+.feed-question-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.feed-question-outcome {
+  font-size: 12px;
+  color: var(--color-neutral-400);
+}
+
 /* ---------- Settings rows ---------- */
 
 .setting-row {
@@ -1175,6 +1188,11 @@ button.btn {
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
   padding: 0.65rem 0.9rem;
+}
+
+/* An event from earlier today: kept, but quieter. */
+.calendar-event-ended {
+  opacity: 0.55;
 }
 
 .calendar-event-time {

@@ -91,7 +91,31 @@ export const IGNORED_APPS: ReadonlySet<string> = new Set([
   "firefox.exe",
   "brave.exe",
   "opera.exe",
+  // Windows and runtime helpers that sometimes own a window but are never
+  // something you do: they showed up in real tallies.
+  "svchost.exe",
+  "msedgewebview2.exe",
+  "runtimebroker.exe",
+  "conhost.exe",
+  "openconsole.exe",
+  "dwm.exe",
+  "ctfmon.exe",
+  "sihost.exe",
+  "taskhostw.exe",
+  "taskmgr.exe",
+  "rundll32.exe",
+  "dllhost.exe",
+  "werfault.exe",
 ]);
+
+/**
+ * NIMBUS never suggests itself: its own window, its installer
+ * ("NIMBUS-Setup-0.4.6.exe") or uninstaller, whatever the executable is
+ * called, and anything describing itself as NIMBUS.
+ */
+export function isNimbusItself(executable: string, description: string | null): boolean {
+  return executable.startsWith("nimbus") || description?.trim().toLowerCase() === "nimbus";
+}
 
 function emptyRecord(): AppRecord {
   return { name: null, dayMinutes: {}, lastOpenedAt: null, declines: 0, snoozedUntil: null, never: false };
@@ -143,6 +167,7 @@ export class AppUsageTracker {
     for (const app of windowed) {
       const executable = app.executable.toLowerCase();
       if (!executable || IGNORED_APPS.has(executable) || current.has(executable)) continue;
+      if (isNimbusItself(executable, app.description)) continue;
       current.add(executable);
       let record = this.state.apps[executable];
       if (!record) {

@@ -164,6 +164,7 @@ interface CalendarContext {
   timezone: string;
   todayEvents: CalendarEvent[];
   laterEvents: CalendarEvent[];
+  upcomingEvents?: CalendarEvent[];
   nextEvent: CalendarEvent | null;
 }
 
@@ -504,6 +505,7 @@ interface NimbusApi {
   acceptSuggestion: (suggestionId: string) => Promise<ActionResult[]>;
   dismissSuggestion: (suggestionId: string) => Promise<void>;
   getAttention: () => Promise<AttentionDebugView>;
+  answerAttentionItem: (itemId: string, outcome: "accepted" | "dismissed") => Promise<boolean>;
   updateAttentionSettings: (partial: { enabled?: boolean; popups?: boolean }) => Promise<unknown>;
   onAssistantEvent: (callback: (event: AssistantEvent) => void) => () => void;
   onNowPlayingChanged: (callback: () => void) => () => void;
@@ -3908,7 +3910,8 @@ function renderEventList(
   container: HTMLElement,
   events: CalendarEvent[],
   timezone: string,
-  showDate: boolean
+  showDate: boolean,
+  now: Date = new Date()
 ): void {
   if (events.length === 0) {
     const empty = document.createElement("p");
@@ -3924,6 +3927,10 @@ function renderEventList(
   for (const event of events) {
     const row = document.createElement("div");
     row.className = "calendar-event-row";
+    // Today's list keeps events that are over - they did happen today -
+    // but says so, so a morning meeting doesn't read as still to come.
+    const ended = !event.isAllDay && new Date(event.endsAt).getTime() <= now.getTime();
+    if (ended) row.classList.add("calendar-event-ended");
 
     const time = document.createElement("span");
     time.className = "calendar-event-time";
@@ -3946,6 +3953,7 @@ function renderEventList(
     if (showDate && !event.isAllDay) metaParts.push(formatEventTime(event.startsAt, timezone));
     if (event.location) metaParts.push(event.location);
     if (event.calendarName) metaParts.push(event.calendarName);
+    if (ended) metaParts.unshift("Ended");
     if (metaParts.length > 0) {
       const meta = document.createElement("span");
       meta.className = "calendar-event-meta";
@@ -3998,7 +4006,9 @@ function renderCalendarTab(result: ContextProviderResult | undefined): void {
   laterTitle.className = "calendar-section-title";
   laterTitle.textContent = "Upcoming";
   laterSection.appendChild(laterTitle);
-  renderEventList(laterSection, data.laterEvents, data.timezone, true);
+  // The next 90 days. `laterEvents` (one week) is what the briefing uses;
+  // it is the fallback only for a snapshot taken before the longer list.
+  renderEventList(laterSection, data.upcomingEvents ?? data.laterEvents, data.timezone, true);
   container.appendChild(laterSection);
 
   if (result.stale) {
@@ -4023,6 +4033,52 @@ function initCalendarTab(): void {
   document.getElementById("refreshCalendarBtn")?.addEventListener("click", loadCalendarTab);
 }
 
+/**
+ * One of Attention's questions, posted to the feed because it wasn't
+ * pressing enough for a popup — with its two answers as buttons. Answering
+ * goes through the same path as the popup's buttons.
+ */
+function renderFeedQuestion(item: HTMLElement, event: AssistantEvent): void {
+  item.classList.add("feed-question");
+  const itemId = String(event.attentionItemId);
+
+  const text = document.createElement("div");
+  text.textContent = `${String(event.title)}: ${String(event.body)}`;
+  item.appendChild(text);
+
+  const actions = document.createElement("div");
+  actions.className = "feed-question-actions";
+  const outcomeNote = document.createElement("span");
+  outcomeNote.className = "feed-question-outcome";
+
+  const answer = async (outcome: "accepted" | "dismissed", label: string): Promise<void> => {
+    actions.querySelectorAll("button").forEach((button) => (button.disabled = true));
+    let answered = false;
+    try {
+      answered = await window.nimbus.answerAttentionItem(itemId, outcome);
+    } catch (err) {
+      console.error("Failed to answer", err);
+    }
+    actions.replaceChildren(outcomeNote);
+    outcomeNote.textContent = answered ? label : "No longer waiting for an answer";
+  };
+
+  const primary = document.createElement("button");
+  primary.className = "btn btn-secondary";
+  primary.type = "button";
+  primary.textContent = String(event.primaryLabel ?? "Yes");
+  primary.addEventListener("click", () => void answer("accepted", "Done"));
+
+  const secondary = document.createElement("button");
+  secondary.className = "btn btn-ghost";
+  secondary.type = "button";
+  secondary.textContent = String(event.secondaryLabel ?? "Not now");
+  secondary.addEventListener("click", () => void answer("dismissed", `Answered: ${secondary.textContent}`));
+
+  actions.append(primary, secondary);
+  item.appendChild(actions);
+}
+
 function initAssistantFeed(): void {
   const feed = document.getElementById("feed")!;
   const countTag = document.getElementById("activityCount")!;
@@ -4041,6 +4097,8 @@ function initAssistantFeed(): void {
     // shows up as instead of a suggestion — see Routine.autoRun.
     if (event.type === "suggestion") {
       item.textContent = `Suggested: ${event.title}`;
+    } else if (event.type === "notification" && typeof event.attentionItemId === "string") {
+      renderFeedQuestion(item, event);
     } else if (event.type === "notification") {
       item.textContent = `${event.title}: ${event.body}`;
     } else {

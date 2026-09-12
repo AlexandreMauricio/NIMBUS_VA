@@ -184,3 +184,21 @@ test("answers and usage survive a restart; days older than two weeks are dropped
   old.tracker.flush();
   assert.equal(old.saves[old.saves.length - 1].apps["old.exe"], undefined);
 });
+
+test("Windows helpers and NIMBUS itself - even its installer - are never recorded", () => {
+  const { tracker, advance } = setup();
+  const noise = [
+    { executable: "svchost.exe", description: "Host Process for Windows Services" },
+    { executable: "msedgewebview2.exe", description: "Microsoft Edge WebView2" },
+    { executable: "nimbus.exe", description: "NIMBUS" },
+    { executable: "nimbus-setup-0.4.6.exe", description: "NIMBUS" },
+    { executable: "renamedcopy.exe", description: "NIMBUS" },
+    { executable: "haloinfinite.exe", description: "Halo Infinite" },
+  ];
+  tracker.observe(noise);
+  advance(60_000);
+  tracker.observe(noise);
+
+  const recorded = Object.keys((tracker as unknown as { state: AppUsageState }).state.apps);
+  assert.deepEqual(recorded, ["haloinfinite.exe"]);
+});
