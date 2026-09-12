@@ -18,6 +18,22 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.6 — 2026-09-12
+
+- **Electron 33 → 44.** Electron 33 is end-of-life and `npm audit`
+  reported three advisories against it, which pushed towards
+  `npm audit fix --force` — a command that installs breaking major
+  versions and had silently put one machine on a different Electron from
+  the one the tests run against. `npm audit` now reports nothing, so the
+  normal `npm install` is all anyone needs.
+- Renderer console logging moved to Electron's details object; the
+  positional arguments it replaced are deprecated.
+- The packaged build was run end to end on 44: window and tray created,
+  settings and credentials read from the same `%APPDATA%
+imbus\`, the
+  briefing generated from live providers, and the login item registered
+  as a packaged app.
+
 ## 0.4.5 — 2026-09-12
 
 - **NIMBUS can be installed.** `npm run package` builds

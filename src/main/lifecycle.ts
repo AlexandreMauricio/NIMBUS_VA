@@ -162,8 +162,15 @@ function createMainWindow(show: boolean): void {
     event.preventDefault();
   });
 
-  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    logger.debug("Renderer console", { level, message, line, sourceId });
+  // The details object, not the positional arguments Electron deprecated
+  // alongside it.
+  mainWindow.webContents.on("console-message", (details) => {
+    logger.debug("Renderer console", {
+      level: details.level,
+      message: details.message,
+      line: details.lineNumber,
+      source: details.sourceId,
+    });
   });
 
   // Debounced rather than saved on every resize event (which fires
