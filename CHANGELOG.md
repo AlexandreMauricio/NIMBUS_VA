@@ -18,6 +18,21 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.5 — 2026-09-12
+
+- **NIMBUS can be installed.** `npm run package` builds
+  `release\NIMBUS-Setup-<version>.exe` with electron-builder: a per-user
+  install (no admin prompt), Start-menu and desktop shortcuts, a real
+  `NIMBUS.exe`, and no terminal window. Data stays in `%APPDATA%\nimbus\`,
+  so installing, updating or uninstalling never touches it. Unsigned, so
+  SmartScreen warns on first run.
+- An installed build now finds an optional `.env` beside its executable,
+  at `%APPDATA%\nimbus\.env`, or via `NIMBUS_ENV_FILE` — its code lives
+  inside `app.asar`, where the old project-root lookup could never find
+  one, which would have left a packaged NIMBUS unable to take a Spotify
+  Client ID.
+- A 256px app icon, used by the installer, the shortcuts and the window.
+
 ## 0.4.4 — 2026-09-12
 
 - Fix, following 0.4.3: the app path in the login item was quoted here as

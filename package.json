@@ -1,6 +1,6 @@
 {
   "name": "nimbus",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "NIMBUS - Navigation & Intelligent Monitoring Base for User Systems. Personal desktop assistant foundation.",
   "main": "dist/main/main.js",
   "private": true,
@@ -16,17 +16,20 @@
     "format": "prettier --write \"src/**/*.{ts,css,html}\"",
     "format:check": "prettier --check \"src/**/*.{ts,css,html}\"",
     "test:credentials": "npm run build && node scripts/credential-persistence.test.js",
-    "check": "npm run lint && npm run format:check && npm test && npm run test:credentials"
+    "check": "npm run lint && npm run format:check && npm test && npm run test:credentials",
+    "package": "npm run build && electron-builder --win",
+    "package:dir": "npm run build && electron-builder --win --dir"
   },
   "engines": {
     "node": ">=20.6.0"
   },
-  "author": "",
+  "author": "Alexandre Mauricio",
   "license": "UNLICENSED",
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/node": "^22.10.0",
     "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "prettier": "^3.9.6",
@@ -36,5 +39,36 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "imapflow": "^2.0.0"
+  },
+  "build": {
+    "appId": "com.alexandremauricio.nimbus",
+    "productName": "NIMBUS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/assets/icon-256.png",
+      "artifactName": "NIMBUS-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NIMBUS"
+    }
   }
 }

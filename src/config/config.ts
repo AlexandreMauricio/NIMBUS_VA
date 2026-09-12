@@ -10,9 +10,38 @@ import * as fs from "fs";
  * which live in the settings module instead.
  */
 
-const envPath = path.resolve(__dirname, "..", "..", ".env");
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+/**
+ * Where a .env may live, most specific first:
+ *
+ * - `NIMBUS_ENV_FILE`, for an explicit path;
+ * - the project root, which is how a run from source has always worked;
+ * - beside the executable, which is where an installed NIMBUS can be
+ *   given one (a per-user install owns its folder, so no admin needed);
+ * - `%APPDATA%\nimbus\.env`, beside the settings NIMBUS already writes,
+ *   which survives updating or reinstalling.
+ *
+ * The last two exist because an installed build runs from inside
+ * `app.asar`: the project-root path then resolves to somewhere nobody can
+ * put a file, and without them a packaged NIMBUS could never be given a
+ * Spotify Client ID.
+ */
+function envFileCandidates(): string[] {
+  const appData = process.env.APPDATA;
+  return [
+    process.env.NIMBUS_ENV_FILE,
+    path.resolve(__dirname, "..", "..", ".env"),
+    path.resolve(path.dirname(process.execPath), ".env"),
+    appData ? path.join(appData, "nimbus", ".env") : undefined,
+  ].filter((candidate): candidate is string => typeof candidate === "string" && candidate.length > 0);
+}
+
+// The first that exists wins; dotenv never overwrites a real environment
+// variable, so an explicitly set one still takes precedence.
+for (const candidate of envFileCandidates()) {
+  if (fs.existsSync(candidate)) {
+    dotenv.config({ path: candidate });
+    break;
+  }
 }
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
