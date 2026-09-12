@@ -6,6 +6,7 @@ import {
   activitySignals,
   calendarSignals,
   calendarUrgency,
+  normalizeReminderMinutes,
   collectSignals,
   emailSignals,
   endOfLocalDay,
@@ -47,12 +48,47 @@ function calendar(events: Partial<CalendarEvent>[]): CalendarContext {
   };
 }
 
-test("calendar urgency steps up as an event approaches", () => {
-  assert.equal(calendarUrgency(60), 35);
-  assert.equal(calendarUrgency(30), 55);
+test("calendar urgency: high from the reminder lead time, higher near the start", () => {
+  // Default reminder: an hour before.
+  assert.equal(calendarUrgency(61), 35, "before the reminder: a feed line at most");
+  assert.equal(calendarUrgency(60), 70, "the reminder itself pops up");
+  assert.equal(calendarUrgency(30), 70);
   assert.equal(calendarUrgency(15), 85);
-  assert.equal(calendarUrgency(5), 100);
+  assert.equal(calendarUrgency(5), 100, "and once more, urgently, just before");
   assert.equal(calendarUrgency(-3), 100);
+
+  // A shorter lead time keeps the hour before as a quiet feed line.
+  assert.equal(calendarUrgency(45, 30), 35);
+  assert.equal(calendarUrgency(30, 30), 70);
+});
+
+test("THE MISSED MASSAGE: a 9:30 appointment pops up at 8:30, while you're still at the desk", () => {
+  const nineThirty = new Date("2026-09-12T09:30:00Z");
+  const eightThirty = new Date(nineThirty.getTime() - 60 * 60_000);
+  const [atEightThirty] = calendarSignals(
+    calendar([{ id: "massage", title: "Massagem", startsAt: nineThirty.toISOString() }]),
+    eightThirty
+  );
+  assert.ok(atEightThirty, "an hour before is inside the reminder window");
+  // 0.4 × 70 + 0.35 × 70 + 0.25 × 70 = 70: high priority, which interrupts.
+  assert.equal(atEightThirty.urgency, 70);
+  assert.ok(atEightThirty.reasons.includes("Your reminder: 60 minutes before"));
+
+  // A two-hour reminder reaches further: nothing at 8:30 is missed then either.
+  const twoHoursBefore = new Date(nineThirty.getTime() - 120 * 60_000);
+  assert.equal(
+    calendarSignals(calendar([{ id: "massage", startsAt: nineThirty.toISOString() }]), twoHoursBefore, 120)[0]
+      ?.urgency,
+    70
+  );
+});
+
+test("reminder minutes are clamped, and junk falls back to an hour", () => {
+  assert.equal(normalizeReminderMinutes(90), 90);
+  assert.equal(normalizeReminderMinutes(1), 10);
+  assert.equal(normalizeReminderMinutes(10_000), 240);
+  assert.equal(normalizeReminderMinutes(undefined), 60);
+  assert.equal(normalizeReminderMinutes("soon"), 60);
 });
 
 test("an event within the hour becomes one signal with a stable key", () => {

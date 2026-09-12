@@ -18,6 +18,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.10 — 2026-09-12
+
+- **Calendar reminders pop up in time to leave.** An event's reminder used
+  to pop up 15 minutes before it — fine for a call at your desk, too late
+  for an appointment you travel to: a 9:30 massage popped up at 9:15, and
+  the only earlier sign was a Home feed line at 8:30. Reminders now pop up
+  at a lead time you choose (Context → Attention → *Calendar reminders*,
+  default **an hour**, 15 minutes to 4 hours), and once more five minutes
+  before. From the lead time on they are high priority and ignore the
+  busy rule, so a game or a running timer can't silence them.
+
 ## 0.4.9 — 2026-09-12
 
 - Attention's decisions to interrupt are now logged at info level

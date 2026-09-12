@@ -63,14 +63,36 @@ function formatMinutes(minutes: number): string {
 
 // ------------------------------------------------------------------ calendar
 
-/** How far ahead an event starts being worth attention. */
+/** How far ahead an event starts being worth attention, at the least. */
 export const CALENDAR_LOOKAHEAD_MINUTES = 60;
 
-/** Urgency by minutes until the start: a step table, so the rule reads the way it's explained. */
-export function calendarUrgency(minutesUntilStart: number): number {
+/** Reminder lead times: the default, the range allowed, and what the picker offers. */
+export const DEFAULT_REMINDER_MINUTES = 60;
+export const MIN_REMINDER_MINUTES = 10;
+export const MAX_REMINDER_MINUTES = 240;
+export const REMINDER_CHOICES = [15, 30, 45, 60, 90, 120, 180, 240];
+
+/** A saved or requested lead time, as whole minutes within range. */
+export function normalizeReminderMinutes(value: unknown): number {
+  const minutes =
+    typeof value === "number" && Number.isFinite(value) ? Math.round(value) : DEFAULT_REMINDER_MINUTES;
+  return Math.min(MAX_REMINDER_MINUTES, Math.max(MIN_REMINDER_MINUTES, minutes));
+}
+
+/**
+ * Urgency by minutes until the start. Inside the reminder lead time it is
+ * 70 — enough to be high priority and pop up, and at the busy-rule
+ * threshold, so a reminder isn't silenced because you're gaming or a
+ * timer is running. It rises to 85 in the last 15 minutes and 100 in the
+ * last 5, when it pops up once more as urgent.
+ */
+export function calendarUrgency(
+  minutesUntilStart: number,
+  reminderMinutes: number = DEFAULT_REMINDER_MINUTES
+): number {
   if (minutesUntilStart <= 5) return 100;
   if (minutesUntilStart <= 15) return 85;
-  if (minutesUntilStart <= 30) return 55;
+  if (minutesUntilStart <= reminderMinutes) return 70;
   return 35;
 }
 
@@ -80,8 +102,13 @@ export function calendarUrgency(minutesUntilStart: number): number {
  * calendar, today. With the urgency table that makes it normal an hour
  * out, high at 15 minutes, urgent at 5.
  */
-export function calendarSignals(calendar: CalendarContext | null, now: Date): AttentionSignal[] {
+export function calendarSignals(
+  calendar: CalendarContext | null,
+  now: Date,
+  reminderMinutes: number = DEFAULT_REMINDER_MINUTES
+): AttentionSignal[] {
   if (!calendar) return [];
+  const lookahead = Math.max(CALENDAR_LOOKAHEAD_MINUTES, reminderMinutes);
   const signals: AttentionSignal[] = [];
   const seen = new Set<string>();
   for (const event of [...calendar.todayEvents, ...calendar.laterEvents]) {
@@ -93,7 +120,7 @@ export function calendarSignals(calendar: CalendarContext | null, now: Date): At
     seen.add(key);
 
     const minutes = (startMs - now.getTime()) / MINUTE;
-    if (minutes > CALENDAR_LOOKAHEAD_MINUTES || minutes < -5) continue;
+    if (minutes > lookahead || minutes < -5) continue;
     const whole = Math.max(0, Math.ceil(minutes));
     signals.push({
       key,
@@ -102,11 +129,13 @@ export function calendarSignals(calendar: CalendarContext | null, now: Date): At
       title: minutes <= 0 ? `${event.title} is starting` : `${event.title} in ${whole} min`,
       description: event.location ?? event.calendarName ?? "On your calendar",
       importance: 70,
-      urgency: calendarUrgency(minutes),
+      urgency: calendarUrgency(minutes, reminderMinutes),
       relevance: 70,
       reasons: [
         minutes <= 0 ? "Started just now" : `Starts in ${plural(whole, "minute")}`,
-        "Time-sensitive calendar event",
+        minutes > 15 && minutes <= reminderMinutes
+          ? `Your reminder: ${reminderMinutes} minutes before`
+          : "Time-sensitive calendar event",
       ],
       occursAt: event.startsAt,
       expiresAt: new Date(startMs + 5 * MINUTE).toISOString(),
@@ -407,10 +436,15 @@ export function collectSignals(
   snapshot: ContextSnapshot | null,
   activity: AttentionActivity | null,
   now: Date,
-  timeZone: string
+  timeZone: string,
+  options: { reminderMinutes?: number } = {}
 ): AttentionSignal[] {
   return [
-    ...calendarSignals(readOk<CalendarContext>(snapshot, "calendar"), now),
+    ...calendarSignals(
+      readOk<CalendarContext>(snapshot, "calendar"),
+      now,
+      normalizeReminderMinutes(options.reminderMinutes)
+    ),
     ...taskSignals(readOk<TaskContext>(snapshot, "tasks"), now, timeZone),
     ...weatherSignals(readOk<WeatherContext>(snapshot, "weather"), now, timeZone),
     ...emailSignals(readOk<EmailContext>(snapshot, "email"), now),

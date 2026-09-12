@@ -45,6 +45,7 @@ import { BriefingService } from "../briefing";
 import { ContextEventBus } from "../events";
 import { RoutineService, validateRoutine, Routine } from "../routines";
 import { AttentionService, explainItem } from "../attention";
+import { normalizeReminderMinutes } from "../attention/signals";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
@@ -921,11 +922,14 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(
     "nimbus:update-attention-settings",
-    (_event, partial: { enabled?: unknown; popups?: unknown }) => {
+    (_event, partial: { enabled?: unknown; popups?: unknown; reminderMinutes?: unknown }) => {
       const current = settings.userPreferences.attention;
       settings.userPreferences.attention = {
         enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
         popups: typeof partial?.popups === "boolean" ? partial.popups : current.popups,
+        reminderMinutes: normalizeReminderMinutes(
+          partial?.reminderMinutes !== undefined ? partial.reminderMinutes : current.reminderMinutes
+        ),
       };
       saveSettings(settings);
       logger.info("Attention settings updated", { ...settings.userPreferences.attention });

@@ -5,7 +5,7 @@ import { CurrentActivity } from "../activity/types";
 import { ContextSnapshot } from "../context/types";
 import { localTimeZone } from "../context/providers/calendar/icsTimeUtils";
 import { AttentionEngine } from "./attentionEngine";
-import { collectSignals, frequentAppSignals, suggestionSignal } from "./signals";
+import { collectSignals, frequentAppSignals, normalizeReminderMinutes, suggestionSignal } from "./signals";
 import {
   AttentionActivity,
   AttentionAnswer,
@@ -54,6 +54,7 @@ export interface AttentionServiceDeps {
 export interface AttentionDebugState {
   enabled: boolean;
   popups: boolean;
+  reminderMinutes: number;
   evaluatedAt: string | null;
   busy: boolean;
   busyReason: string | null;
@@ -222,6 +223,7 @@ export class AttentionService {
     return {
       enabled: settings.enabled,
       popups: settings.popups,
+      reminderMinutes: normalizeReminderMinutes(settings.reminderMinutes),
       evaluatedAt: last?.evaluatedAt ?? null,
       busy: last?.busy ?? false,
       busyReason: last?.busyReason ?? null,
@@ -299,7 +301,9 @@ export class AttentionService {
 
     const situation: AttentionSituation = { now, activity, timerRunning, popup: this.popupSituation(nowMs) };
     const signals = [
-      ...collectSignals(this.snapshot, activity, now, this.timeZone()),
+      ...collectSignals(this.snapshot, activity, now, this.timeZone(), {
+        reminderMinutes: settings.reminderMinutes,
+      }),
       ...frequentAppSignals(this.frequentApps(), now),
       ...[...this.offered.values()].map(suggestionSignal),
     ];

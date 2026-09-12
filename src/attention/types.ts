@@ -147,6 +147,13 @@ export interface AttentionSettings {
   enabled: boolean;
   /** Off: Attention's own items only go to the feed. Routine suggestions still pop up. */
   popups: boolean;
+  /**
+   * How many minutes before a calendar event its reminder pops up. A
+   * reminder is for leaving on time, not for the moment itself — a 9:30
+   * appointment needs the nudge while you're still at the desk. Absent
+   * means the default (60).
+   */
+  reminderMinutes?: number;
 }
 
 export const DEFAULT_ATTENTION_SETTINGS: AttentionSettings = { enabled: true, popups: true };

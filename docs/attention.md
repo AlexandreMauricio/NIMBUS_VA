@@ -38,7 +38,7 @@ urgency and relevance (0–100), reasons in words, and an expiry.
 
 | Source | Signal | Importance | Urgency | Relevance | Key / expiry |
 | --- | --- | --- | --- | --- | --- |
-| Calendar | Timed event starting within 60 min (or started ≤ 5 min ago) | 70 | 35 (≤ 60 min), 55 (≤ 30), 85 (≤ 15), 100 (≤ 5) | 70 | per event and start; 5 min after the start |
+| Calendar | Timed event starting within the reminder lead time or 60 min, whichever is longer (or started ≤ 5 min ago) | 70 | 35 before the reminder, **70 from the reminder** (default 60 min before), 85 (≤ 15), 100 (≤ 5) | 70 | per event and start; 5 min after the start |
 | Tasks | Task with a due *time* in the next 2 h | 60 (70 if high priority) | 55, 70 (≤ 60 min), 90 (≤ 15 min) | 60 | per task; at the due time |
 | Tasks | Overdue tasks (one summary) | 55 | 60 | 60 | per day; end of day |
 | Tasks | Tasks due today (one summary) | 55 | 45 | 55 | per day; end of day |
@@ -70,7 +70,8 @@ Examples:
 | --- | --- | --- |
 | Meeting in 12 min | 34 + 24.5 + 17.5 = 76 | High — pops up |
 | Same meeting in 4 min | 40 + 24.5 + 17.5 = 82 | Urgent — pops up again if not answered |
-| Meeting in 45 min | 14 + 24.5 + 17.5 = 56 | Normal — Home feed |
+| Meeting in 45 min (reminder: 60 min) | 28 + 24.5 + 17.5 = 70 | High — pops up |
+| Meeting in 45 min (reminder: 30 min) | 14 + 24.5 + 17.5 = 56 | Normal — Home feed |
 | Rain 80% | 16 + 12.25 + 20 = 48 | Normal |
 | Rain 80% while studying | 48 − 15 = 33 | Low — kept quiet until you're free |
 | 3 h of gaming (busy with it) | 16 + 14 + 15 − 15 + 10 = 40 | Normal — never high by itself |
@@ -139,6 +140,20 @@ feed** instead of a popup, and carries its two answers there as buttons
 takes the same `onAnswer` path as the popup, and each item can be answered
 once. A feed line from before a restart is no longer current — its buttons
 say so.
+
+## Calendar reminders
+
+A reminder is for **leaving on time**, not for the moment itself. The
+first version popped up 15 minutes before an event, which is right for a
+call at your desk and useless for a 9:30 appointment you have to travel
+to — by 9:15 you're out the door, and the only earlier signal was a Home
+feed line.
+
+Now an event's reminder pops up at the **reminder lead time** (Context →
+Attention → *Calendar reminders*, default **an hour before**, 15 minutes to
+4 hours). Its urgency is 70 from then on, which makes it high priority and
+exempt from the busy rule, so gaming or a running timer doesn't silence
+it. It pops up once more, as urgent, 5 minutes before the start.
 
 ## Debug view
 

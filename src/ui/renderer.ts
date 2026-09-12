@@ -506,7 +506,11 @@ interface NimbusApi {
   dismissSuggestion: (suggestionId: string) => Promise<void>;
   getAttention: () => Promise<AttentionDebugView>;
   answerAttentionItem: (itemId: string, outcome: "accepted" | "dismissed") => Promise<boolean>;
-  updateAttentionSettings: (partial: { enabled?: boolean; popups?: boolean }) => Promise<unknown>;
+  updateAttentionSettings: (partial: {
+    enabled?: boolean;
+    popups?: boolean;
+    reminderMinutes?: number;
+  }) => Promise<unknown>;
   onAssistantEvent: (callback: (event: AssistantEvent) => void) => () => void;
   onNowPlayingChanged: (callback: () => void) => () => void;
   getBriefing: () => Promise<Briefing | null>;
@@ -3782,6 +3786,7 @@ interface AttentionItemView {
 interface AttentionDebugView {
   enabled: boolean;
   popups: boolean;
+  reminderMinutes: number;
   evaluatedAt: string | null;
   busy: boolean;
   busyReason: string | null;
@@ -3801,6 +3806,9 @@ const ATTENTION_DECISIONS: Record<string, string> = {
 function renderAttention(state: AttentionDebugView): void {
   (document.getElementById("attentionEnabled") as HTMLInputElement).checked = state.enabled;
   (document.getElementById("attentionPopups") as HTMLInputElement).checked = state.popups;
+  (document.getElementById("attentionReminderMinutes") as HTMLSelectElement).value = String(
+    state.reminderMinutes
+  );
   document.getElementById("attentionBadge")!.textContent = !state.enabled
     ? "off"
     : `${state.items.length} item${state.items.length === 1 ? "" : "s"}`;
@@ -3904,6 +3912,12 @@ function initContext(): void {
       await loadAttention();
     });
   }
+  document.getElementById("attentionReminderMinutes")?.addEventListener("change", async (event) => {
+    await window.nimbus.updateAttentionSettings({
+      reminderMinutes: Number((event.target as HTMLSelectElement).value),
+    });
+    await loadAttention();
+  });
 }
 
 function renderEventList(

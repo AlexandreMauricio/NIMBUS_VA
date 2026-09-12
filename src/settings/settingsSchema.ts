@@ -291,7 +291,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       graceMinutes: DEFAULT_ACTIVITY_GRACE_MINUTES,
       suggestFrequentApps: false,
     },
-    attention: { enabled: true, popups: true },
+    attention: { enabled: true, popups: true, reminderMinutes: 60 },
     memory: { learning: true },
     stocks: {
       enabled: true,
