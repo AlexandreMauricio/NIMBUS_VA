@@ -18,6 +18,16 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.9 — 2026-09-12
+
+- Attention's decisions to interrupt are now logged at info level
+  ("Attention popup shown", with the item, priority, score and how long it
+  stays), as are Home feed posts, and the popup window logs when it is
+  actually put on screen. A reported missing reminder was replayed through
+  the real calendar provider and Attention service and did pop up at
+  T-15 and T-5 minutes; without these lines the log could not show whether
+  the app was running or the popup simply went unseen.
+
 ## 0.4.8 — 2026-09-12
 
 - **Calendar**: the Calendar tab's "Upcoming" now looks **90 days** ahead

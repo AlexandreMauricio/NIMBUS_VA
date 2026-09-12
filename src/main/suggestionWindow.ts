@@ -94,7 +94,13 @@ export function showSuggestionPopup(suggestion: AssistantSuggestion): void {
     popupWindow.showInactive();
   }
 
-  logger.debug("Suggestion popup shown", { suggestionId: suggestion.id, routineId: suggestion.routineId });
+  // Info, not debug: the one place that proves a popup window was actually
+  // put on screen, as opposed to only decided on.
+  logger.info("Suggestion popup window shown", {
+    suggestionId: suggestion.id,
+    origin: suggestion.origin ?? "routine",
+    routineId: suggestion.routineId,
+  });
 }
 
 export function getCurrentPopupSuggestion(): AssistantSuggestion | null {

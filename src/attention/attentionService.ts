@@ -330,6 +330,7 @@ export class AttentionService {
       return;
     }
     if (item.channel !== "popup") {
+      logger.info("Attention posted to the Home feed", { item: item.id, priority: item.priority });
       this.safely(() => this.deps.presenter.postNotice(item));
       return;
     }
@@ -351,6 +352,14 @@ export class AttentionService {
       reason: explainItem(item),
     };
     this.own.set(suggestion.id, { key: item.id, expiresAtMs, kind: item.kind, followUp: item.followUp });
+    // Logged at info so "I never got a popup" can be answered from the log:
+    // whether Attention decided to interrupt, when, and for how long.
+    logger.info("Attention popup shown", {
+      item: item.id,
+      priority: item.priority,
+      score: item.score,
+      until: suggestion.expiresAt,
+    });
     this.safely(() => this.deps.presenter.showSuggestion(suggestion));
   }
 
