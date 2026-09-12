@@ -18,6 +18,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.4 — 2026-09-12
+
+- Fix, following 0.4.3: the app path in the login item was quoted here as
+  well as by Electron, so the quotes became part of the argument and
+  Windows reported "Unable to find Electron app at
+  C:\WINDOWS\system32\...". The path is now passed raw, which is what
+  Electron expects — it quotes the command line it writes. Switch **Start
+  with Windows** off and on again to rewrite the entry.
+
 ## 0.4.3 — 2026-09-12
 
 - Fix: **Start with Windows** launched Electron's own welcome window

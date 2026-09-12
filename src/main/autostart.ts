@@ -22,8 +22,10 @@ export interface LoginItemRegistration {
  *
  * A packaged build needs neither: its own .exe is the app.
  *
- * The app path is quoted because the registry value is a single command
- * line and a real path may contain spaces.
+ * The path is passed raw: Electron builds the registry command line and
+ * quotes what needs quoting. Quoting it here put the quote characters
+ * *inside* the argument, and Electron then resolved that against its
+ * working directory (C:\WINDOWS\system32) instead of opening the app.
  */
 export function loginItemRegistration(
   enabled: boolean,
@@ -35,7 +37,7 @@ export function loginItemRegistration(
   return {
     openAtLogin: enabled,
     path: context.execPath,
-    args: enabled ? [`"${context.appPath}"`, AUTOSTART_FLAG] : [],
+    args: enabled ? [context.appPath, AUTOSTART_FLAG] : [],
   };
 }
 

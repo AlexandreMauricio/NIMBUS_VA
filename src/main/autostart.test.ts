@@ -16,16 +16,20 @@ test("THE REGRESSION: running from source, the login item carries the app path",
 
   assert.equal(registration.openAtLogin, true);
   assert.equal(registration.path, ELECTRON_EXE);
-  assert.deepEqual(registration.args, [`"${APP_DIR}"`, AUTOSTART_FLAG]);
+  assert.deepEqual(registration.args, [APP_DIR, AUTOSTART_FLAG]);
 });
 
-test("the app path is quoted, since a real one may contain spaces", () => {
+test("THE SECOND REGRESSION: the path is passed raw, never quoted here", () => {
+  // Electron quotes the command line it writes. Quoting it again made the
+  // quotes part of the argument, which Electron then resolved against
+  // C:\WINDOWS\system32 - "Unable to find Electron app at ...".
   const { args } = loginItemRegistration(true, {
     packaged: false,
     execPath: ELECTRON_EXE,
     appPath: APP_DIR,
   });
-  assert.ok(args[0].startsWith('"') && args[0].endsWith('"'), args[0]);
+  assert.equal(args[0], APP_DIR);
+  assert.ok(!args[0].includes('"'), args[0]);
 });
 
 test("a packaged build registers itself, with no path to pass", () => {
