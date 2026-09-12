@@ -308,9 +308,20 @@ newer (which includes npm) and Git.
 
 ### Install it (no Node needed on that PC)
 
+In the project folder, install the dependencies once, then build the
+installer:
+
+```bash
+npm install
+```
+
 ```bash
 npm run package
 ```
+
+Every copy of the project needs its own `npm install` — a freshly
+extracted ZIP or a new clone has no `node_modules`, and the build stops
+with a message saying so.
 
 Writes `release\NIMBUS-Setup-<version>.exe` — a per-user installer (no
 admin prompt), with Start-menu and desktop shortcuts. Copy it to any

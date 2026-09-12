@@ -1,11 +1,11 @@
 {
   "name": "nimbus",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "NIMBUS - Navigation & Intelligent Monitoring Base for User Systems. Personal desktop assistant foundation.",
   "main": "dist/main/main.js",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json && npm run bundle-ui && npm run copy-assets",
+    "build": "node scripts/check-deps.js && tsc -p tsconfig.json && npm run bundle-ui && npm run copy-assets",
     "bundle-ui": "node scripts/bundle-ui.js",
     "copy-assets": "node scripts/copy-assets.js",
     "start": "npm run build && electron .",

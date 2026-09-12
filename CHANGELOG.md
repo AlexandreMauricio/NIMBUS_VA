@@ -18,6 +18,13 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.7 — 2026-09-12
+
+- A build in a folder where `npm install` has not been run now says so —
+  "dependencies are not installed in this folder", with the folder and
+  what to run — instead of `'tsc' is not recognized as an internal or
+  external command`, which named the wrong problem.
+
 ## 0.4.6 — 2026-09-12
 
 - **Electron 33 → 44.** Electron 33 is end-of-life and `npm audit`
