@@ -432,6 +432,7 @@ export function initBooksTab(): void {
   filterKind.addEventListener("change", () => void load());
   filterStatus.addEventListener("change", () => void load());
 
+  document.querySelector('.side-link[data-tab="books"]')?.addEventListener("click", () => void load());
   bridge().onBooksChanged(() => void load());
   void load();
 }

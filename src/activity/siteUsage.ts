@@ -272,6 +272,11 @@ export class SiteUsageTracker {
     this.save(this.now().getTime());
   }
 
+  /** Away from the PC: the time until you're back isn't counted (see AppUsageTracker.pause). */
+  pause(): void {
+    this.lastObservedAtMs = null;
+  }
+
   flush(): void {
     if (this.dirty) this.save(this.now().getTime());
   }

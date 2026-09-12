@@ -115,7 +115,7 @@ export class RoutineService {
      */
     private readonly conditionSignals?: Pick<
       ConditionContext,
-      "getPlaybackContextUri" | "getTimerStatus" | "isDeviceOnline"
+      "getPlaybackContextUri" | "getTimerStatus" | "isDeviceOnline" | "getPresenceState"
     >
   ) {
     if (stateStore) {

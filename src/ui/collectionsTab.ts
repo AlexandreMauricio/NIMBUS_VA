@@ -316,33 +316,7 @@ export function initCollectionsTab(): void {
   filterGame.addEventListener("change", () => void load());
   filterStatus.addEventListener("change", () => void load());
 
-  // Cards and Comics & manga share the tab; which one shows is remembered.
-  const cardsView = document.getElementById("collectionCardsView") as HTMLElement;
-  const booksView = document.getElementById("collectionBooksView") as HTMLElement;
-  const cardsBtn = document.getElementById("collectionViewCards") as HTMLButtonElement;
-  const booksBtn = document.getElementById("collectionViewBooks") as HTMLButtonElement;
-  const showView = (view: "cards" | "books"): void => {
-    cardsView.hidden = view !== "cards";
-    booksView.hidden = view !== "books";
-    cardsBtn.className = view === "cards" ? "btn btn-secondary" : "btn btn-ghost";
-    booksBtn.className = view === "books" ? "btn btn-secondary" : "btn btn-ghost";
-    try {
-      localStorage.setItem("nimbus.collections.view", view);
-    } catch {
-      // A convenience only.
-    }
-  };
-  cardsBtn.addEventListener("click", () => showView("cards"));
-  booksBtn.addEventListener("click", () => showView("books"));
-  let savedView: string | null = null;
-  try {
-    savedView = localStorage.getItem("nimbus.collections.view");
-  } catch {
-    savedView = null;
-  }
-  showView(savedView === "books" ? "books" : "cards");
-
-  document.querySelector('.side-link[data-tab="collections"]')?.addEventListener("click", () => void load());
+  document.querySelector('.side-link[data-tab="cards"]')?.addEventListener("click", () => void load());
   bridge().onCollectionChanged(() => void load());
   void load();
 }

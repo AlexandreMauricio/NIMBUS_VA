@@ -271,6 +271,15 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:update-collection-card", id, changes),
   removeCollectionCard: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("nimbus:remove-collection-card", id),
+  /** Presence: at the PC, home, away. The phone is chosen by Network tab device id. */
+  getPresence: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-presence"),
+  setPresencePhone: (deviceId: string | null): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:set-presence-phone", deviceId),
+  onPresenceChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:presence-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:presence-changed", listener);
+  },
   /** Comics and manga. GCD lookups take a series name or a volume id — never a URL. */
   getBooks: (filter: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-books", filter),

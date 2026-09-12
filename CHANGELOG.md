@@ -18,6 +18,20 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.2 — 2026-09-13
+
+- **Collections is a sidebar group**, like Admin, with **Cards** and
+  **Books** as their own tabs — room for decks to come.
+- **Presence**: NIMBUS judges whether you're at the PC (input in the last
+  5 minutes), home but away from it, or out. Idle time comes from the OS;
+  "home" versus "out" comes from your phone on the network, chosen in
+  Settings → Presence, and only counts as gone after 45 minutes unseen,
+  since phones drop off Wi-Fi while asleep. Changes are logged.
+- **App and site time only counts while you're at the PC.** Left open
+  while you're out, an app no longer piles up hours towards "Make it an
+  activity?", and coming back doesn't count as opening it again.
+- New routine condition: **You are at the PC / away from the PC / out**.
+
 ## 0.5.1 — 2026-09-13
 
 - **Comics & manga** in the Collections tab. A book carries the issue

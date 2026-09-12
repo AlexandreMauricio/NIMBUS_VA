@@ -88,6 +88,7 @@ case in the evaluator.
 | **Spotify** | is playing, is not playing | — | Fails open if Spotify can't be checked. |
 | **Spotify playlist** | is, is not | a playlist | Compares what playback reports as its context, by URI. Nothing playing answers "is not"; an uncheckable Spotify fails closed. |
 | **Timer** | is running, is paused, is not running | — | NIMBUS's own timer. Fails closed if the timer can't be read. |
+| **You** | are at the PC, are away from the PC, are out | — | From presence: at the PC is input in the last 5 minutes; out is idle *and* your phone (Settings → Presence) unseen on the network for 45 minutes. Fails closed without a signal. |
 | **Device** | is on the network, is not on the network | a device | Presence from the Network tab, by MAC. NIMBUS's own observation, **not** a security check; phones drop off while asleep. A device it has never seen, or network watching being off, fails closed both ways. |
 
 Two conditions aren't rows in that list:

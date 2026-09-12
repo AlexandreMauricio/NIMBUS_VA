@@ -406,3 +406,20 @@ test("explanations say which way round the newer conditions came out", async () 
     ["Time is not after 22:00", "No timer is running", "Phone is on the network"]
   );
 });
+
+test("presence conditions read where you are, and fail closed without a signal", async () => {
+  const at = (state: "atPc" | "home" | "away" | "idle") => ({
+    now: new Date(),
+    getPresenceState: () => state,
+  });
+  const atPc: RoutineCondition[] = [{ type: "presenceIs", status: "atPc" }];
+  const notAtPc: RoutineCondition[] = [{ type: "presenceIs", status: "notAtPc" }];
+  const out: RoutineCondition[] = [{ type: "presenceIs", status: "out" }];
+
+  assert.equal(await evaluateConditions(atPc, at("atPc")), true);
+  assert.equal(await evaluateConditions(notAtPc, at("home")), true, "home but idle is away from the PC");
+  assert.equal(await evaluateConditions(notAtPc, at("idle")), true);
+  assert.equal(await evaluateConditions(out, at("home")), false, "home isn't out");
+  assert.equal(await evaluateConditions(out, at("away")), true);
+  assert.equal(await evaluateConditions(atPc, { now: new Date() }), false, "no signal: fails closed");
+});

@@ -64,6 +64,9 @@ test("a built condition reads back as the same field, operator and value", () =>
     ["timer", "isRunning", null],
     ["timer", "isPaused", null],
     ["timer", "isNotRunning", null],
+    ["presence", "isAtPc", null],
+    ["presence", "isNotAtPc", null],
+    ["presence", "isOut", null],
     ["device", "isHome", { id: "mac:aa:bb", name: "Phone" }],
     ["device", "isAway", { id: "mac:cc:dd", name: "Laptop" }],
   ];

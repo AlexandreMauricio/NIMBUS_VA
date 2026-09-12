@@ -236,6 +236,15 @@ export class AppUsageTracker {
     this.save(this.now().getTime());
   }
 
+  /**
+   * You're away from the PC: the time until you're back isn't counted.
+   * What's open stays known, so returning doesn't read as opening it again
+   * (which would make a "you just opened it" question pop up).
+   */
+  pause(): void {
+    this.lastObservedAtMs = null;
+  }
+
   /** Writes anything not yet saved — called on shutdown. */
   flush(): void {
     if (this.dirty) this.save(this.now().getTime());

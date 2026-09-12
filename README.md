@@ -55,9 +55,14 @@ which modules are portable "Core" versus Windows-specific.
 - **Calendar tab** — today's events (finished ones marked) and the next
   90 days from your feeds.
 - **Weather tab** — now, and a card per day for the week ahead.
-- **Sidebar** — everyday tabs on top; Weather, Routines, Network, Memory,
-  Context and Settings in a foldable **Admin** group, which opens itself
-  when one of its tabs is opened from elsewhere.
+- **Sidebar** — everyday tabs on top, then two foldable groups:
+  **Collections** (Cards, Books) and **Admin** (Weather, Routines, Network,
+  Memory, Context, Settings). A group opens itself when one of its tabs is
+  opened from elsewhere.
+- **Presence** — at the PC, home but away from it, or out: from keyboard
+  and mouse idle time, and your phone on the network if you choose it
+  (Settings → Presence). App and site time is only counted while you're
+  at the PC, and routines can check where you are.
 - **Tasks tab** — the full active Todoist list (list/grid, sorting) with
   create, edit, complete and delete, written straight to Todoist.
 - **Stocks tab** — positions you enter by hand, grouped into holdings,

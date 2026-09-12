@@ -150,6 +150,16 @@ export interface TimeIsCondition {
 }
 
 /**
+ * Where you are, from presence (src/presence/): at the PC (recent input),
+ * away from the PC (no input for a few minutes — home or out), or out
+ * (idle and your phone gone from the network past its grace period).
+ */
+export interface PresenceIsCondition {
+  type: "presenceIs";
+  status: "atPc" | "notAtPc" | "out";
+}
+
+/**
  * Only when a device NIMBUS knows from the Network tab is (or is not) on
  * the local network - "when my phone is home".
  *
@@ -226,6 +236,7 @@ export type RoutineCondition =
   | TimerStatusIsCondition
   | TimeIsCondition
   | DeviceOnlineCondition
+  | PresenceIsCondition
   | ActionsNotAlreadyActiveCondition
   | ActivityIsCondition
   | ActivityDurationCondition;
@@ -629,6 +640,11 @@ function validateCondition(condition: RoutineCondition): string | null {
     case "deviceOnline":
       if (typeof condition.deviceId !== "string" || condition.deviceId.trim().length === 0) {
         return "A device condition needs a device.";
+      }
+      return null;
+    case "presenceIs":
+      if (!["atPc", "notAtPc", "out"].includes(condition.status)) {
+        return "A presence condition needs a status of atPc, notAtPc or out.";
       }
       return null;
     case "weekdaysOnly":

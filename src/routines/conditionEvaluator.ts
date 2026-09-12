@@ -49,6 +49,8 @@ export interface ConditionContext {
    * off), which fails closed both ways - see DeviceOnlineCondition.
    */
   isDeviceOnline?: (deviceId: string) => boolean | undefined;
+  /** Where you are (src/presence/). Absent means "can't tell": the presence conditions fail closed. */
+  getPresenceState?: () => "atPc" | "home" | "away" | "idle";
 }
 
 /** One condition's outcome, with a description fit to show the user verbatim. */
@@ -156,6 +158,10 @@ function describeCondition(condition: RoutineCondition, passed: boolean): string
     case "timerStatusIs":
       if (condition.status === "none") return passed ? "No timer is running" : "A timer is running";
       return passed ? `The timer is ${condition.status}` : `The timer is not ${condition.status}`;
+    case "presenceIs": {
+      const wanted = { atPc: "at the PC", notAtPc: "away from the PC", out: "out" }[condition.status];
+      return passed ? `You are ${wanted}` : `You are not ${wanted}`;
+    }
     case "deviceOnline": {
       const name = condition.deviceName || "That device";
       const wanted = condition.negate === true ? "not on the network" : "on the network";
@@ -257,6 +263,19 @@ async function evaluateCondition(condition: RoutineCondition, ctx: ConditionCont
       } catch {
         return false;
       }
+    }
+
+    case "presenceIs": {
+      if (!ctx.getPresenceState) return false; // can't tell - fail closed
+      let state: "atPc" | "home" | "away" | "idle";
+      try {
+        state = ctx.getPresenceState();
+      } catch {
+        return false;
+      }
+      if (condition.status === "atPc") return state === "atPc";
+      if (condition.status === "notAtPc") return state !== "atPc";
+      return state === "away";
     }
 
     case "deviceOnline": {

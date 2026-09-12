@@ -117,6 +117,16 @@ export const CONDITION_FIELDS: readonly ConditionField[] = [
     ],
   },
   {
+    id: "presence",
+    label: "You",
+    note: "From keyboard and mouse activity, and your phone if you chose one in Settings.",
+    operators: [
+      { id: "isAtPc", label: "are at the PC", value: "none" },
+      { id: "isNotAtPc", label: "are away from the PC", value: "none" },
+      { id: "isOut", label: "are out", value: "none" },
+    ],
+  },
+  {
     id: "device",
     label: "Device",
     note: "A device from the Network tab. Needs network watching on.",
@@ -245,6 +255,12 @@ export function buildCondition(
       return { type: "timerStatusIs", status: "paused" };
     case "timer.isNotRunning":
       return { type: "timerStatusIs", status: "none" };
+    case "presence.isAtPc":
+      return { type: "presenceIs", status: "atPc" };
+    case "presence.isNotAtPc":
+      return { type: "presenceIs", status: "notAtPc" };
+    case "presence.isOut":
+      return { type: "presenceIs", status: "out" };
     case "device.isHome":
     case "device.isAway": {
       const device = idAndName(v);
@@ -322,6 +338,12 @@ export function readCondition(condition: ConditionLike | null | undefined): Cond
       return row(
         "timer",
         c.status === "paused" ? "isPaused" : c.status === "none" ? "isNotRunning" : "isRunning",
+        null
+      );
+    case "presenceIs":
+      return row(
+        "presence",
+        c.status === "out" ? "isOut" : c.status === "notAtPc" ? "isNotAtPc" : "isAtPc",
         null
       );
     case "deviceOnline":

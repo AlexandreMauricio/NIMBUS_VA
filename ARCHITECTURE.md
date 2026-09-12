@@ -141,6 +141,12 @@ src/
                                    routine answers, new network devices —
                                    called only from lifecycle wiring
 
+  presence/                 [1] Core — Presence
+    presence.ts                  At the PC / home / away / idle, from idle
+                                   seconds and when the chosen phone was last
+                                   on the network (45 min grace) — pure
+                                   judgement plus a small service
+
   collections/              [1] Core — Collections (trading cards first)
     types.ts                     Games, catalog cards, collection entries
     collectionService.ts         Entries: add (merging repeats), update,
@@ -269,6 +275,7 @@ renderer can only call what its preload exposes.
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
 | Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings` |
+| Presence | `nimbus:get-presence`, `nimbus:set-presence-phone` (a Network tab device id, checked against the list) |
 | Books | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book` |
 | Collections | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card` |
 | Memory | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings` |
@@ -284,7 +291,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:presence-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:

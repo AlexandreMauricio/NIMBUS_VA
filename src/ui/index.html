@@ -54,21 +54,57 @@
             </svg>
             Stocks
           </button>
-          <button class="side-link" data-tab="collections">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 256 256"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="16"
-              stroke-linejoin="round"
-            >
-              <rect x="40" y="56" width="120" height="160" rx="12" />
-              <path d="M104 40h100a12 12 0 0 1 12 12v140" />
-            </svg>
-            Collections
-          </button>
+          <!-- The things collected and played outside the computer. -->
+          <div class="sidebar-group" data-group="collections">
+            <button class="sidebar-group-toggle" type="button" aria-expanded="true">
+              <span>Collections</span>
+              <svg
+                class="sidebar-group-chevron"
+                width="12"
+                height="12"
+                viewBox="0 0 256 256"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="24"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M64 96l64 64 64-64" />
+              </svg>
+            </button>
+            <div class="sidebar-group-links">
+              <button class="side-link" data-tab="cards">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 256 256"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="16"
+                  stroke-linejoin="round"
+                >
+                  <rect x="40" y="56" width="120" height="160" rx="12" />
+                  <path d="M104 40h100a12 12 0 0 1 12 12v140" />
+                </svg>
+                Cards
+              </button>
+              <button class="side-link" data-tab="books">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 256 256"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="16"
+                  stroke-linejoin="round"
+                >
+                  <path d="M40 48h56v160H40zM96 48h48v160H96z" />
+                  <path d="M152 60l46-12 34 152-46 12z" />
+                </svg>
+                Books
+              </button>
+            </div>
+          </div>
           <!-- Everything you set up, check on, or look under the hood at, kept
                apart from the tabs used day to day. Folds away: the list grows. -->
           <div class="sidebar-group" data-group="admin">
@@ -640,15 +676,11 @@
           </div>
         </section>
 
-        <section id="tab-collections" class="panel">
+        <section id="tab-cards" class="panel">
           <div class="panel-header">
             <div>
-              <h6 class="kicker">Collections</h6>
+              <h6 class="kicker">Cards</h6>
               <p class="panel-subtitle" id="collectionSummary">Loading&hellip;</p>
-            </div>
-            <div class="routines-view-toggle">
-              <button class="btn btn-secondary" id="collectionViewCards" type="button">Cards</button>
-              <button class="btn btn-ghost" id="collectionViewBooks" type="button">Comics &amp; manga</button>
             </div>
           </div>
           <div id="collectionCardsView">
@@ -698,8 +730,16 @@
             <div id="collectionList"></div>
             <p class="feed-empty" id="collectionEmpty" hidden>No cards yet. Search above to add some.</p>
           </div>
+        </section>
 
-          <div id="collectionBooksView" hidden>
+        <section id="tab-books" class="panel">
+          <div class="panel-header">
+            <div>
+              <h6 class="kicker">Books</h6>
+              <p class="panel-subtitle">Comics collected editions and manga</p>
+            </div>
+          </div>
+          <div id="collectionBooksView">
             <p class="setting-note">
               Comics collected editions and manga volumes — and what they add up to: which issues you have
               once, twice, or not at all. Look a volume up in the Grand Comics Database to fill in its details
@@ -1585,6 +1625,23 @@
               <input type="checkbox" id="startMinimized" />
               <span class="track"></span>
             </span>
+          </label>
+
+          <h6 class="kicker">Presence</h6>
+          <p class="setting-note" id="presenceStatus">Checking&hellip;</p>
+          <label class="setting-row">
+            <span>
+              <span class="setting-title">Your phone</span>
+              <span class="setting-desc">
+                With your phone chosen, NIMBUS can tell "home, away from the PC" from "out". Phones drop off
+                Wi-Fi while asleep, so it only counts as gone after 45 minutes unseen. Without it, NIMBUS
+                still knows whether you're at the PC from keyboard and mouse use — and only counts app time
+                while you are. Needs network watching on.
+              </span>
+            </span>
+            <select id="presencePhone" class="select">
+              <option value="">No phone</option>
+            </select>
           </label>
 
           <h6 class="kicker">Display</h6>

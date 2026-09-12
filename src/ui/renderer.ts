@@ -27,6 +27,7 @@ import { initCollectionsTab } from "./collectionsTab";
 import { initBooksTab } from "./booksTab";
 import { initWeatherTab } from "./weatherTab";
 import { initSidebarGroups } from "./sidebarGroups";
+import { initPresenceSettings } from "./presenceSettings";
 
 /**
  * Renderer script for the placeholder UI. Talks to the main process
@@ -4150,6 +4151,7 @@ initCollectionsTab();
 initBooksTab();
 initWeatherTab();
 initSidebarGroups();
+initPresenceSettings();
 initContext();
 initAssistantFeed();
 

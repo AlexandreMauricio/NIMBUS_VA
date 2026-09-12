@@ -202,3 +202,29 @@ test("Windows helpers and NIMBUS itself - even its installer - are never recorde
   const recorded = Object.keys((tracker as unknown as { state: AppUsageState }).state.apps);
   assert.deepEqual(recorded, ["haloinfinite.exe"]);
 });
+
+test("while you're away from the PC nothing is counted, and coming back isn't 'just opened'", () => {
+  const { tracker, advance } = setup();
+  const halo = [{ executable: "haloinfinite.exe", description: "Halo Infinite" }];
+  tracker.observe(halo);
+  advance(60_000);
+  tracker.observe(halo);
+
+  // Away for three hours, with the game left open.
+  for (let i = 0; i < 180; i++) {
+    tracker.pause();
+    advance(60_000);
+  }
+  tracker.observe(halo);
+  advance(60_000);
+  tracker.observe(halo);
+
+  const record = (tracker as unknown as { state: AppUsageState }).state.apps["haloinfinite.exe"];
+  const minutes = Object.values(record.dayMinutes).reduce((sum, m) => sum + m, 0);
+  assert.equal(Math.round(minutes), 2, "one minute before, one after — not three hours");
+  assert.equal(
+    Date.parse(record.lastOpenedAt!),
+    Date.parse("2026-09-11T10:00:00Z"),
+    "still the original opening"
+  );
+});

@@ -156,6 +156,11 @@ and when it was last opened:
   out is counted under whatever comes last, which usually never recurs
   enough to be offered.
 
+**Only time you're at the PC counts.** Presence (`src/presence/`) reads
+how long since your last key or mouse input; after 5 minutes idle the
+tallies pause, so an app left open while you're out doesn't become "5 hours
+of it this week". Coming back doesn't count as opening it again.
+
 Some things are never counted, because nobody does them: Windows and
 runtime helpers that happen to own a window (`svchost.exe`,
 `msedgewebview2.exe` and similar), **NIMBUS itself** — its window, its

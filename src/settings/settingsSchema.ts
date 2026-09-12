@@ -43,6 +43,11 @@ export interface WindowsClientSettings {
 export interface NetworkClientSettings {
   /** Read Windows' neighbor list every two minutes, and allow "Scan network". */
   enabled: boolean;
+  /**
+   * The device (a Network tab id, "mac:…") that is your phone — how
+   * presence tells "home, away from the PC" from "out". Null: none chosen.
+   */
+  phoneDeviceId: string | null;
 }
 
 export interface StartupSettings {
@@ -256,7 +261,7 @@ export const DEFAULT_SETTINGS: NimbusSettings = {
       launchWithWindows: false,
       startMinimized: false,
     },
-    network: { enabled: true },
+    network: { enabled: true, phoneDeviceId: null },
     zoomPercent: DEFAULT_ZOOM_PERCENT,
   },
   userPreferences: {

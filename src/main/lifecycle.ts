@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, powerMonitor, shell } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { randomUUID } from "crypto";
 import * as path from "path";
@@ -58,6 +58,7 @@ import { DeviceProber } from "./network/deviceProbe";
 import { FileNetworkStore, loadVendorLookup } from "./network/networkFiles";
 import { MemoryService, recordActivityEnded, recordNewNetworkDevice, recordRoutineDecision } from "../memory";
 import { FileMemoryStore } from "./memoryStore";
+import { PresenceService } from "../presence/presence";
 import {
   CatalogService,
   CollectionService,
@@ -108,6 +109,7 @@ let appUsage: AppUsageTracker | null = null;
 let siteUsage: SiteUsageTracker | null = null;
 let networkService: NetworkService;
 let memoryService: MemoryService;
+let presenceService: PresenceService | null = null;
 let collectionService: CollectionService;
 let catalogService: CatalogService;
 let bookService: BookService;
@@ -682,6 +684,24 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle("nimbus:remove-book", (_event, id: unknown) => bookService.remove(String(id ?? "")));
 
+  // Presence: the current judgement, and the devices you can choose as your
+  // phone. The choice is a Network tab device id — checked against the list.
+  ipcMain.handle("nimbus:get-presence", () => ({
+    ...(presenceService?.update() ?? null),
+    phoneDeviceId: settings.windowsClient.network.phoneDeviceId,
+    devices: networkService
+      .getState()
+      .devices.filter((device) => !device.isSelf && !device.isGateway)
+      .map((device) => ({ id: device.id, name: device.displayName, randomizedMac: device.randomizedMac })),
+  }));
+  ipcMain.handle("nimbus:set-presence-phone", (_event, deviceId: unknown) => {
+    const known = networkService.getState().devices.some((device) => device.id === deviceId);
+    settings.windowsClient.network.phoneDeviceId = typeof deviceId === "string" && known ? deviceId : null;
+    saveSettings(settings);
+    logger.info("Presence phone chosen", { chosen: settings.windowsClient.network.phoneDeviceId !== null });
+    return presenceService?.update() ?? null;
+  });
+
   ipcMain.handle("nimbus:list-memories", (_event, filter: unknown) => {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
     return memoryService.list({
@@ -1129,8 +1149,16 @@ function syncActivityMonitor(): void {
       undefined,
       undefined,
       (snapshot) => {
-        appUsage?.observe(snapshot.windowedApps ?? []);
-        siteUsage?.observe(snapshot.browserWindows);
+        // Only time you're actually at the PC counts: an app left open
+        // while you're out shouldn't become "5 hours of it this week".
+        const present = presenceService?.update().state ?? "atPc";
+        if (present === "atPc") {
+          appUsage?.observe(snapshot.windowedApps ?? []);
+          siteUsage?.observe(snapshot.browserWindows);
+        } else {
+          appUsage?.pause();
+          siteUsage?.pause();
+        }
       }
     );
     activityMonitor.start();
@@ -1213,6 +1241,25 @@ export function startApp(): void {
     },
   });
   contextService.register(new NetworkProvider(networkService));
+
+  // Presence (src/presence/): idle time from the OS, and — when you've
+  // chosen one — when your phone was last on the network. Re-judged by
+  // the desktop monitor's polls and every 20 s regardless.
+  presenceService = new PresenceService(
+    () => powerMonitor.getSystemIdleTime(),
+    () => {
+      const phoneId = settings.windowsClient.network.phoneDeviceId;
+      if (!phoneId) return { chosen: false, lastSeen: null };
+      if (!settings.windowsClient.network.enabled) return { chosen: true, lastSeen: null };
+      const phone = networkService.getState().devices.find((device) => device.id === phoneId);
+      return { chosen: true, lastSeen: phone?.lastSeen ?? null };
+    }
+  );
+  presenceService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:presence-changed");
+  });
+  const presenceTimer = setInterval(() => presenceService?.update(), 20_000);
+  (presenceTimer as { unref?: () => void }).unref?.();
 
   // Persistent memory (src/memory/): the user's own memories, learned
   // patterns and observations, each in its own file under userData/memory.
@@ -1436,6 +1483,7 @@ export function startApp(): void {
       },
       // undefined means NIMBUS has no idea: network watching is off, or
       // it has never seen that device.
+      getPresenceState: () => presenceService?.get().state ?? "atPc",
       isDeviceOnline: (deviceId: string) => {
         if (!settings.windowsClient.network.enabled) return undefined;
         return networkService.getState().devices.find((device) => device.id === deviceId)?.online;
