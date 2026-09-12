@@ -141,6 +141,16 @@ src/
                                    routine answers, new network devices —
                                    called only from lifecycle wiring
 
+  collections/              [1] Core — Collections (trading cards first)
+    types.ts                     Games, catalog cards, collection entries
+    collectionService.ts         Entries: add (merging repeats), update,
+                                   remove, list, stats; per-entry validation
+    catalogService.ts            Searches the catalogs: validation, pacing,
+                                   cache, and resolve() — the only way a
+                                   card enters the collection
+    catalogs/                    [3] scryfall, tcgdex, ygoprodeck, lorcast,
+                                   optcg — each a pure mapper plus a fetch
+
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
                                    Pure functions/classes over ContextSnapshot
@@ -191,6 +201,7 @@ src/
                                    (app-usage.json)
     siteUsageStore.ts             The opt-in website tally
                                    (site-usage.json)
+    collectionStore.ts            The card collection (collection.json)
     memoryStore.ts                Memory, one file per tier
                                    (memory/*.json)
     network/
@@ -252,6 +263,7 @@ renderer can only call what its preload exposes.
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
 | Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings` |
+| Collections | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card` |
 | Memory | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
 
@@ -265,7 +277,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:
@@ -301,6 +313,7 @@ written atomically (temp file, fsync, rename):
 | `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
 | `site-usage.json` | `siteUsageStore.ts` | Opt-in: per website (the name at the end of its tab title), minutes per day (two weeks) and your answers |
 | `memory/explicit.json`, `memory/learned.json`, `memory/observed.json` | `memoryStore.ts` | Memory, one tier per file: `{version: 1, items}`. Validated item by item on load; an unparseable file is renamed `<tier>.unreadable-<time>.json` |
+| `collection.json` | `collectionStore.ts` | The card collection: `{version: 1, cards}`, validated per entry; an unparseable file is renamed `collection.unreadable-<time>.json` |
 | `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
 
 **Credential lifecycle.** `loadSettings()` runs before Electron is ready

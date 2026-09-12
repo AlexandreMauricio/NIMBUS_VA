@@ -59,6 +59,17 @@ import { FileNetworkStore, loadVendorLookup } from "./network/networkFiles";
 import { MemoryService, recordActivityEnded, recordNewNetworkDevice, recordRoutineDecision } from "../memory";
 import { FileMemoryStore } from "./memoryStore";
 import {
+  CatalogService,
+  CollectionService,
+  LorcastCatalog,
+  OptcgCatalog,
+  ScryfallCatalog,
+  TcgdexCatalog,
+  YgoprodeckCatalog,
+  isTcgGame,
+} from "../collections";
+import { FileCollectionStore } from "./collectionStore";
+import {
   ActivityService,
   ActivityMapping,
   AppUsageTracker,
@@ -95,6 +106,8 @@ let appUsage: AppUsageTracker | null = null;
 let siteUsage: SiteUsageTracker | null = null;
 let networkService: NetworkService;
 let memoryService: MemoryService;
+let collectionService: CollectionService;
+let catalogService: CatalogService;
 
 /** A routine suggestion the user answered — reinforces that routine's acceptance pattern. */
 function rememberRoutineDecision(
@@ -608,6 +621,40 @@ function registerIpcHandlers(): void {
   // Memory (src/memory/). The renderer can list, save its own memories,
   // switch any off, keep (promote) or forget — never write a learned or
   // observed item itself; those come only from the wiring below.
+  // Collections (src/collections/). A search sends only a game id and the
+  // text typed. Adding takes a game and a catalog id: the card's data comes
+  // from a result the main process fetched itself, never from the renderer.
+  ipcMain.handle("nimbus:get-collection", (_event, filter: unknown) => {
+    const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
+    return {
+      games: catalogService.games(),
+      cards: collectionService.list({
+        game: isTcgGame(f.game) ? f.game : undefined,
+        status: f.status === "owned" || f.status === "wishlist" ? f.status : undefined,
+        text: typeof f.text === "string" ? f.text.slice(0, 100) : undefined,
+      }),
+      stats: collectionService.stats(),
+    };
+  });
+  ipcMain.handle("nimbus:search-card-catalog", (_event, game: unknown, query: unknown) =>
+    catalogService.search(game, query)
+  );
+  ipcMain.handle("nimbus:add-to-collection", (_event, game: unknown, sourceId: unknown, options: unknown) => {
+    const card = catalogService.resolve(game, sourceId);
+    if (!card) throw new Error("Search for the card again, then add it.");
+    const o = options && typeof options === "object" ? (options as Record<string, unknown>) : {};
+    return collectionService.add(card, {
+      status: o.status === "wishlist" ? "wishlist" : "owned",
+      foil: o.foil === true,
+    });
+  });
+  ipcMain.handle("nimbus:update-collection-card", (_event, id: unknown, changes: unknown) =>
+    collectionService.update(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:remove-collection-card", (_event, id: unknown) =>
+    collectionService.remove(String(id ?? ""))
+  );
+
   ipcMain.handle("nimbus:list-memories", (_event, filter: unknown) => {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
     return memoryService.list({
@@ -1144,6 +1191,21 @@ export function startApp(): void {
   // patterns and observations, each in its own file under userData/memory.
   // Only this wiring translates what other services already publish into
   // memory — no provider or service writes to it. See docs/memory.md.
+  // Collections (src/collections/): your cards, and the card databases that
+  // look them up. The catalogs are read-only and need no account; only the
+  // text of a search is sent to them, never anything from the collection.
+  catalogService = new CatalogService([
+    new ScryfallCatalog(),
+    new TcgdexCatalog(),
+    new YgoprodeckCatalog(),
+    new LorcastCatalog(),
+    new OptcgCatalog(),
+  ]);
+  collectionService = new CollectionService(new FileCollectionStore());
+  collectionService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:collection-changed");
+  });
+
   memoryService = new MemoryService(
     new FileMemoryStore(path.join(app.getPath("userData"), "memory")),
     undefined,

@@ -23,6 +23,7 @@ import {
   readCondition,
 } from "../routines/conditionCatalog";
 import { initMemoryTab } from "./memoryTab";
+import { initCollectionsTab } from "./collectionsTab";
 
 /**
  * Renderer script for the placeholder UI. Talks to the main process
@@ -4142,6 +4143,7 @@ initCalendarTab();
 initStocksTab();
 initNetworkTab();
 initMemoryTab();
+initCollectionsTab();
 initContext();
 initAssistantFeed();
 

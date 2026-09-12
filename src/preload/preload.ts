@@ -257,6 +257,25 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.on("nimbus:memory-changed", listener);
     return () => ipcRenderer.removeListener("nimbus:memory-changed", listener);
   },
+  /** Card collections. Adding takes a game and catalog id only — never card data from the page. */
+  getCollection: (filter: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:get-collection", filter),
+  searchCardCatalog: (game: string, query: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:search-card-catalog", game, query),
+  addToCollection: (
+    game: string,
+    sourceId: string,
+    options: { status: string; foil: boolean }
+  ): Promise<unknown> => ipcRenderer.invoke("nimbus:add-to-collection", game, sourceId, options),
+  updateCollectionCard: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-collection-card", id, changes),
+  removeCollectionCard: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("nimbus:remove-collection-card", id),
+  onCollectionChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:collection-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:collection-changed", listener);
+  },
 
   getSpotifySettings: (): Promise<PublicSpotifySettings> => ipcRenderer.invoke("nimbus:get-spotify-settings"),
   updateSpotifySettings: (partial: {

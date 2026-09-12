@@ -18,6 +18,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.11 — 2026-09-12
+
+- **Collections**: a new tab for trading cards. Search a game's card
+  database by name and add a printing to what you own or your wishlist,
+  with quantity, foil and the database's market price. Five games, each
+  from a free database needing no key: **Magic** (Scryfall), **Pokémon**
+  (TCGdex), **Yu-Gi-Oh!** (YGOPRODeck), **Lorcana** (Lorcast) and **One
+  Piece** (OPTCG API). Every source was checked live while building;
+  pokemontcg.io was passed over after it returned a 502.
+- Only the search text leaves the PC; the collection is
+  `collection.json`. Cards are added by game and catalog id, with their
+  data taken from the main process's own search, so the page can't insert
+  cards or image addresses of its own. Card image hosts are listed by
+  name in the Content Security Policy.
+- Verified end to end in the running app over the DevTools protocol:
+  search, images, add, the collection list, and a forged add refused.
+
 ## 0.4.10 — 2026-09-12
 
 - **Calendar reminders pop up in time to leave.** An event's reminder used
