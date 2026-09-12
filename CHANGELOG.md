@@ -54,8 +54,7 @@ Dates are the day the work landed.
 - Renderer console logging moved to Electron's details object; the
   positional arguments it replaced are deprecated.
 - The packaged build was run end to end on 44: window and tray created,
-  settings and credentials read from the same `%APPDATA%
-imbus\`, the
+  settings and credentials read from the same `%APPDATA%\nimbus\`, the
   briefing generated from live providers, and the login item registered
   as a packaged app.
 
