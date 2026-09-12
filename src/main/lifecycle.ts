@@ -69,6 +69,8 @@ import {
   isTcgGame,
 } from "../collections";
 import { FileCollectionStore } from "./collectionStore";
+import { BOOK_FORMATS, BookService, GcdCatalog } from "../collections";
+import { FileBookStore } from "./bookStore";
 import {
   ActivityService,
   ActivityMapping,
@@ -108,6 +110,8 @@ let networkService: NetworkService;
 let memoryService: MemoryService;
 let collectionService: CollectionService;
 let catalogService: CatalogService;
+let bookService: BookService;
+let gcdCatalog: GcdCatalog;
 
 /** A routine suggestion the user answered — reinforces that routine's acceptance pattern. */
 function rememberRoutineDecision(
@@ -654,6 +658,29 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:remove-collection-card", (_event, id: unknown) =>
     collectionService.remove(String(id ?? ""))
   );
+
+  // Books (src/collections/books/): comics collected editions and manga.
+  // GCD lookups take a series name or a numeric volume id only; the URL is
+  // built in the main process.
+  ipcMain.handle("nimbus:get-books", (_event, filter: unknown) => {
+    const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
+    return {
+      books: bookService.list({
+        kind: f.kind === "comic" || f.kind === "manga" ? f.kind : undefined,
+        status: f.status === "owned" || f.status === "wishlist" ? f.status : undefined,
+        text: typeof f.text === "string" ? f.text.slice(0, 100) : undefined,
+      }),
+      coverage: bookService.coverage(),
+      formats: BOOK_FORMATS,
+    };
+  });
+  ipcMain.handle("nimbus:search-comic-series", (_event, name: unknown) => gcdCatalog.searchSeries(name));
+  ipcMain.handle("nimbus:get-comic-volume", (_event, issueId: unknown) => gcdCatalog.getVolume(issueId));
+  ipcMain.handle("nimbus:add-book", (_event, input: unknown) => bookService.add(input));
+  ipcMain.handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
+    bookService.update(String(id ?? ""), input)
+  );
+  ipcMain.handle("nimbus:remove-book", (_event, id: unknown) => bookService.remove(String(id ?? "")));
 
   ipcMain.handle("nimbus:list-memories", (_event, filter: unknown) => {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
@@ -1202,6 +1229,14 @@ export function startApp(): void {
     new OptcgCatalog(),
   ]);
   collectionService = new CollectionService(new FileCollectionStore());
+  // The comics and manga shelf, and the Grand Comics Database it can look
+  // volumes up in (read-only, no account; only the series name or volume
+  // id is sent).
+  bookService = new BookService(new FileBookStore());
+  gcdCatalog = new GcdCatalog();
+  bookService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
+  });
   collectionService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:collection-changed");
   });

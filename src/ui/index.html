@@ -646,52 +646,183 @@
               <h6 class="kicker">Collections</h6>
               <p class="panel-subtitle" id="collectionSummary">Loading&hellip;</p>
             </div>
+            <div class="routines-view-toggle">
+              <button class="btn btn-secondary" id="collectionViewCards" type="button">Cards</button>
+              <button class="btn btn-ghost" id="collectionViewBooks" type="button">Comics &amp; manga</button>
+            </div>
           </div>
-          <p class="setting-note">
-            Your trading cards. Search a game's card database, then add a printing to what you own or to your
-            wishlist. Only the text you search for is sent to that database — your collection stays on this
-            PC. Prices are the database's own market figures, for reference.
-          </p>
+          <div id="collectionCardsView">
+            <p class="setting-note">
+              Your trading cards. Search a game's card database, then add a printing to what you own or to
+              your wishlist. Only the text you search for is sent to that database — your collection stays on
+              this PC. Prices are the database's own market figures, for reference.
+            </p>
 
-          <div class="collection-search">
-            <select id="collectionSearchGame" class="select" title="Game"></select>
-            <input
-              type="search"
-              id="collectionSearchQuery"
-              class="input"
-              placeholder="Card name, e.g. Lightning Bolt"
-              maxlength="100"
-            />
-            <button class="btn btn-secondary" id="collectionSearchBtn" type="button">Search</button>
-            <label class="collection-foil">
-              <input type="checkbox" id="collectionAddFoil" />
-              Add as foil
-            </label>
-          </div>
-          <p class="setting-note" id="collectionSearchStatus" hidden></p>
-          <div id="collectionResults" class="collection-results"></div>
+            <div class="collection-search">
+              <select id="collectionSearchGame" class="select" title="Game"></select>
+              <input
+                type="search"
+                id="collectionSearchQuery"
+                class="input"
+                placeholder="Card name, e.g. Lightning Bolt"
+                maxlength="100"
+              />
+              <button class="btn btn-secondary" id="collectionSearchBtn" type="button">Search</button>
+              <label class="collection-foil">
+                <input type="checkbox" id="collectionAddFoil" />
+                Add as foil
+              </label>
+            </div>
+            <p class="setting-note" id="collectionSearchStatus" hidden></p>
+            <div id="collectionResults" class="collection-results"></div>
 
-          <h6 class="kicker collection-heading">My collection</h6>
-          <div class="collection-filters">
-            <select id="collectionFilterGame" class="select" title="Game">
-              <option value="">All games</option>
-            </select>
-            <select id="collectionFilterStatus" class="select" title="Status">
-              <option value="">Owned and wishlist</option>
-              <option value="owned">Owned</option>
-              <option value="wishlist">Wishlist</option>
-            </select>
-            <input
-              type="search"
-              id="collectionFilterText"
-              class="input"
-              placeholder="Filter by name or set"
-              maxlength="100"
-            />
+            <h6 class="kicker collection-heading">My collection</h6>
+            <div class="collection-filters">
+              <select id="collectionFilterGame" class="select" title="Game">
+                <option value="">All games</option>
+              </select>
+              <select id="collectionFilterStatus" class="select" title="Status">
+                <option value="">Owned and wishlist</option>
+                <option value="owned">Owned</option>
+                <option value="wishlist">Wishlist</option>
+              </select>
+              <input
+                type="search"
+                id="collectionFilterText"
+                class="input"
+                placeholder="Filter by name or set"
+                maxlength="100"
+              />
+            </div>
+            <p class="form-error" id="collectionError" role="alert" hidden></p>
+            <div id="collectionList"></div>
+            <p class="feed-empty" id="collectionEmpty" hidden>No cards yet. Search above to add some.</p>
           </div>
-          <p class="form-error" id="collectionError" role="alert" hidden></p>
-          <div id="collectionList"></div>
-          <p class="feed-empty" id="collectionEmpty" hidden>No cards yet. Search above to add some.</p>
+
+          <div id="collectionBooksView" hidden>
+            <p class="setting-note">
+              Comics collected editions and manga volumes — and what they add up to: which issues you have
+              once, twice, or not at all. Look a volume up in the Grand Comics Database to fill in its details
+              (it often lists what an Epic Collection or Masterworks collects, less often an omnibus), or add
+              it by hand. Only the series name is sent to GCD.
+            </p>
+            <div class="collection-search">
+              <input
+                type="search"
+                id="bookSeriesQuery"
+                class="input"
+                placeholder="Series, e.g. Thor Epic Collection"
+                maxlength="100"
+              />
+              <button class="btn btn-secondary" id="bookSeriesSearchBtn" type="button">Find on GCD</button>
+              <button class="btn btn-ghost" id="bookAddManualBtn" type="button">Add by hand</button>
+            </div>
+            <p class="setting-note" id="bookSearchStatus" hidden></p>
+            <div id="bookSeriesResults" class="book-picks"></div>
+            <div id="bookVolumeResults" class="book-picks"></div>
+
+            <div id="bookForm" class="memory-form" hidden>
+              <h6 class="kicker" id="bookFormHeading">Add a book</h6>
+              <p class="settings-warning" id="bookFormNotice" hidden></p>
+              <div class="memory-form-grid">
+                <label class="network-field">
+                  Kind
+                  <select id="bookKind" class="select">
+                    <option value="comic">Comic</option>
+                    <option value="manga">Manga</option>
+                  </select>
+                </label>
+                <label class="network-field">
+                  Title
+                  <input
+                    type="text"
+                    id="bookTitle"
+                    class="input"
+                    maxlength="200"
+                    placeholder="Thor Epic Collection"
+                  />
+                </label>
+                <label class="network-field">
+                  Volume
+                  <input type="text" id="bookVolume" class="input" maxlength="100" placeholder="1" />
+                </label>
+                <label class="network-field">
+                  Format
+                  <select id="bookFormat" class="select"></select>
+                </label>
+                <label class="network-field">
+                  Publisher
+                  <input
+                    type="text"
+                    id="bookPublisher"
+                    class="input"
+                    maxlength="100"
+                    placeholder="Marvel, Devir"
+                  />
+                </label>
+                <label class="network-field">
+                  ISBN
+                  <input type="text" id="bookIsbn" class="input" maxlength="20" />
+                </label>
+                <label class="network-field">
+                  Status
+                  <select id="bookStatus" class="select">
+                    <option value="owned">Owned</option>
+                    <option value="wishlist">Wishlist</option>
+                  </select>
+                </label>
+              </div>
+              <label class="network-field">
+                What it collects
+                <textarea
+                  id="bookRuns"
+                  class="input book-runs"
+                  rows="3"
+                  placeholder="Journey Into Mystery (1952) #83-109; Thor (1966) #126-130; Annual #2 — or for manga: One Piece #1-45"
+                ></textarea>
+              </label>
+              <p class="setting-note" id="bookRunsPreview"></p>
+              <label class="network-field">
+                Notes
+                <input type="text" id="bookNotes" class="input" maxlength="1000" />
+              </label>
+              <p class="form-error" id="bookFormError" role="alert" hidden></p>
+              <div class="memory-actions">
+                <button class="btn btn-primary" id="bookSaveBtn" type="button">Save</button>
+                <button class="btn btn-ghost" id="bookCancelBtn" type="button">Cancel</button>
+              </div>
+            </div>
+
+            <h6 class="kicker collection-heading">Coverage</h6>
+            <div id="bookCoverage"></div>
+            <p class="feed-empty" id="bookCoverageEmpty" hidden>
+              Add books with what they collect to see what your shelf covers.
+            </p>
+
+            <h6 class="kicker collection-heading">My books</h6>
+            <div class="collection-filters">
+              <select id="bookFilterKind" class="select" title="Kind">
+                <option value="">Comics and manga</option>
+                <option value="comic">Comics</option>
+                <option value="manga">Manga</option>
+              </select>
+              <select id="bookFilterStatus" class="select" title="Status">
+                <option value="">Owned and wishlist</option>
+                <option value="owned">Owned</option>
+                <option value="wishlist">Wishlist</option>
+              </select>
+              <input
+                type="search"
+                id="bookFilterText"
+                class="input"
+                placeholder="Filter by title or series"
+                maxlength="100"
+              />
+            </div>
+            <p class="form-error" id="bookError" role="alert" hidden></p>
+            <div id="bookList"></div>
+            <p class="feed-empty" id="bookEmpty" hidden>No books yet.</p>
+          </div>
         </section>
 
         <section id="tab-network" class="panel">

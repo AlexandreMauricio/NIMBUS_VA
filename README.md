@@ -72,8 +72,11 @@ which modules are portable "Core" versus Windows-specific.
   Pokémon (TCGdex), Yu-Gi-Oh! (YGOPRODeck), Lorcana (Lorcast) and One Piece
   (OPTCG API) by name, then add a printing to what you own or your
   wishlist, with quantity, foil and the database's market price. Only
-  your search text is sent out; the collection stays on this PC. See
-  [docs/collections.md](docs/collections.md).
+  your search text is sent out; the collection stays on this PC. Its
+  **Comics & manga** view keeps collected editions and manga volumes with
+  the issues they collect, looked up in the Grand Comics Database or typed
+  in, and shows coverage per series: held once, held twice, partial, and
+  the gaps. See [docs/collections.md](docs/collections.md).
 - **Network tab** — the devices on your local network (this PC, the
   router, everything else) with name, IP, MAC, manufacturer (with the IEEE
   list), online state and first/last seen; nickname them and mark the ones
@@ -452,6 +455,7 @@ Everything is written under Electron's per-user data directory
 | `site-usage.json` | Opt-in: websites by the name at the end of their tab title (never whole titles or addresses), minutes per day for two weeks, and your answers | Plain JSON, atomic write |
 | `memory\explicit.json`, `memory\learned.json`, `memory\observed.json` | What NIMBUS remembers, one file per tier (see [docs/memory.md](docs/memory.md)) | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `collection.json` | Your card collection: printings, quantities, foil, status, notes | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `books.json` | Comics collected editions and manga volumes, with the issue runs each collects | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `logs\nimbus.log` | The application log | Plain text; never contains credentials |
 
 If OS-level encryption is unavailable, credentials are not persisted at

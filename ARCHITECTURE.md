@@ -150,6 +150,11 @@ src/
                                    card enters the collection
     catalogs/                    [3] scryfall, tcgdex, ygoprodeck, lorcast,
                                    optcg — each a pure mapper plus a fetch
+    books/                       Comics collected editions and manga:
+                                   runs.ts (the "Collects …" parser, shared
+                                   with the renderer), coverage.ts (pure),
+                                   bookService.ts, gcd.ts [3] (Grand Comics
+                                   Database)
 
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
@@ -202,6 +207,7 @@ src/
     siteUsageStore.ts             The opt-in website tally
                                    (site-usage.json)
     collectionStore.ts            The card collection (collection.json)
+    bookStore.ts                  The comics and manga shelf (books.json)
     memoryStore.ts                Memory, one file per tier
                                    (memory/*.json)
     network/
@@ -263,6 +269,7 @@ renderer can only call what its preload exposes.
 | Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
 | Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings` |
+| Books | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book` |
 | Collections | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card` |
 | Memory | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings` |
 | Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
@@ -277,7 +284,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:
@@ -313,6 +320,7 @@ written atomically (temp file, fsync, rename):
 | `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
 | `site-usage.json` | `siteUsageStore.ts` | Opt-in: per website (the name at the end of its tab title), minutes per day (two weeks) and your answers |
 | `memory/explicit.json`, `memory/learned.json`, `memory/observed.json` | `memoryStore.ts` | Memory, one tier per file: `{version: 1, items}`. Validated item by item on load; an unparseable file is renamed `<tier>.unreadable-<time>.json` |
+| `books.json` | `bookStore.ts` | The comics and manga shelf: `{version: 1, books}`, each with its issue runs; validated per book and per run |
 | `collection.json` | `collectionStore.ts` | The card collection: `{version: 1, cards}`, validated per entry; an unparseable file is renamed `collection.unreadable-<time>.json` |
 | `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
 

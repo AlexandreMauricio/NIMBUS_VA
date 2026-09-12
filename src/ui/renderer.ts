@@ -24,6 +24,7 @@ import {
 } from "../routines/conditionCatalog";
 import { initMemoryTab } from "./memoryTab";
 import { initCollectionsTab } from "./collectionsTab";
+import { initBooksTab } from "./booksTab";
 import { initWeatherTab } from "./weatherTab";
 import { initSidebarGroups } from "./sidebarGroups";
 
@@ -4146,6 +4147,7 @@ initStocksTab();
 initNetworkTab();
 initMemoryTab();
 initCollectionsTab();
+initBooksTab();
 initWeatherTab();
 initSidebarGroups();
 initContext();

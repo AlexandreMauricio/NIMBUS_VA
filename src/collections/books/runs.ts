@@ -1,0 +1,157 @@
+import { IssueRun, MAX_ISSUE_NUMBER, MAX_RUNS_PER_BOOK } from "./types";
+
+/**
+ * Reads "what a book collects" out of text — both the notes a database
+ * keeps ("Collects Journey Into Mystery (1952) #110-125, Annual #1, Thor
+ * (1966) #126-130, and material from Not Brand Echh #3") and what you type
+ * yourself in the same shape ("Thor (1966) #1-45; Thor Annual #1").
+ *
+ * Deterministic and forgiving: parts it can't read are skipped and
+ * reported, never guessed at, so a half-understood note fills in what it
+ * can and you complete the rest.
+ */
+export interface ParsedRuns {
+  runs: IssueRun[];
+  /** Pieces that looked like contents but couldn't be read. */
+  unread: string[];
+}
+
+/** Splits on separators that are outside parentheses: "(Marvel, 1966 series)" stays whole. */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(") depth++;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    if (depth === 0 && (ch === ";" || ch === ",")) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    if (depth === 0 && text.slice(i, i + 5).toLowerCase() === " and ") {
+      parts.push(current);
+      current = "";
+      i += 4;
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+  return parts.map((part) => part.trim()).filter(Boolean);
+}
+
+/** "#1-17", "#15", "#1–3", "#83 - 100" → [from, to]. */
+function readNumbers(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const match of text.matchAll(/(\d+)\s*(?:[-–—]\s*(\d+))?/g)) {
+    const from = Number(match[1]);
+    const to = match[2] !== undefined ? Number(match[2]) : from;
+    if (from >= 0 && to >= from && to <= MAX_ISSUE_NUMBER) ranges.push([from, to]);
+  }
+  return ranges;
+}
+
+/** "The Amazing Spider-Man (Marvel, 1963 series)" → name and year; "Thor (1966)" too. */
+function readSeries(raw: string): { series: string; year: number | null } {
+  let year: number | null = null;
+  const withoutParens = raw.replace(/\(([^)]*)\)/g, (_all, inside: string) => {
+    const found = inside.match(/\b(1[89]\d\d|20\d\d)\b/);
+    if (found && year === null) year = Number(found[1]);
+    return " ";
+  });
+  const series = withoutParens.replace(/\s+/g, " ").trim();
+  return { series, year };
+}
+
+/** Just the contents part of a note: from "Collects"/"Reprints", to the end of that sentence. */
+function contentsOf(text: string): string {
+  const match = text.match(/\b(?:collects|collecting|reprints|reprinting|contains)\b[:\s]*([\s\S]*)/i);
+  let body = match ? match[1] : text;
+  // Stop at the end of the sentence that holds the contents: a period
+  // followed by a line break or a capitalised word that isn't a series name.
+  const lineEnd = body.search(/\r?\n/);
+  if (lineEnd !== -1) body = body.slice(0, lineEnd);
+  return body.replace(/\.\s*$/, "").trim();
+}
+
+export function parseRuns(text: string): ParsedRuns {
+  const runs: IssueRun[] = [];
+  const unread: string[] = [];
+  if (typeof text !== "string" || !text.trim()) return { runs, unread };
+
+  let previous: { series: string; year: number | null } | null = null;
+
+  for (let part of splitTopLevel(contentsOf(text))) {
+    let partial = false;
+    part = part.replace(/^and\s+/i, "");
+    if (/^(?:some\s+)?material\s+from\s+/i.test(part)) {
+      partial = true;
+      part = part.replace(/^(?:some\s+)?material\s+from\s+/i, "");
+    }
+
+    const hash = part.indexOf("#");
+    if (hash === -1) {
+      // "(1966-1968)" left over after the numbers, and similar, isn't contents.
+      if (/\d/.test(part) && !/^\(?\s*\d{4}\s*[-–]\s*\d{4}\s*\)?$/.test(part)) unread.push(part);
+      continue;
+    }
+
+    const namePart = part.slice(0, hash).trim();
+    const numbers = readNumbers(part.slice(hash + 1).replace(/\(\s*\d{4}\s*[-–]\s*\d{4}\s*\)/g, ""));
+    if (numbers.length === 0) {
+      unread.push(part);
+      continue;
+    }
+
+    let series: { series: string; year: number | null };
+    if (!namePart) {
+      // "#5-8" after "Thor #1-4": the same series again.
+      if (!previous) {
+        unread.push(part);
+        continue;
+      }
+      series = previous;
+    } else if (/^annual$/i.test(namePart) && previous) {
+      // "Annual #1" after "Thor (1966) #126-130": that series' annual.
+      series = { series: `${previous.series.replace(/\s+Annual$/i, "")} Annual`, year: previous.year };
+    } else {
+      series = readSeries(namePart);
+      if (!series.series) {
+        unread.push(part);
+        continue;
+      }
+    }
+    // The series exactly as named, so "#140-145" continues "Thor Annual";
+    // "Annual #2" strips a trailing "Annual" itself before adding one.
+    previous = { series: series.series, year: series.year };
+
+    for (const [from, to] of numbers) {
+      runs.push({ series: series.series, year: series.year, from, to, partial });
+      if (runs.length >= MAX_RUNS_PER_BOOK) return { runs, unread };
+    }
+  }
+  return { runs, unread };
+}
+
+/** How a run is written back for editing — and it parses back to itself. */
+export function formatRun(run: IssueRun): string {
+  const name = run.year ? `${run.series} (${run.year})` : run.series;
+  const numbers = run.from === run.to ? `#${run.from}` : `#${run.from}-${run.to}`;
+  return `${run.partial ? "material from " : ""}${name} ${numbers}`;
+}
+
+export function formatRuns(runs: IssueRun[]): string {
+  return runs.map(formatRun).join("; ");
+}
+
+/** The identity two runs are compared by: the name, loosely, and the year when known. */
+export function seriesKey(series: string, year: number | null): string {
+  const name = series
+    .toLowerCase()
+    .replace(/^the\s+/, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return year ? `${name} (${year})` : name;
+}

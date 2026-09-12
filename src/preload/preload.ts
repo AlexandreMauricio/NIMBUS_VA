@@ -271,6 +271,22 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:update-collection-card", id, changes),
   removeCollectionCard: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("nimbus:remove-collection-card", id),
+  /** Comics and manga. GCD lookups take a series name or a volume id — never a URL. */
+  getBooks: (filter: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:get-books", filter),
+  searchComicSeries: (name: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:search-comic-series", name),
+  getComicVolume: (issueId: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:get-comic-volume", issueId),
+  addBook: (input: Record<string, unknown>): Promise<unknown> => ipcRenderer.invoke("nimbus:add-book", input),
+  updateBook: (id: string, input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-book", id, input),
+  removeBook: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:remove-book", id),
+  onBooksChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:books-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:books-changed", listener);
+  },
   onCollectionChanged: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on("nimbus:collection-changed", listener);

@@ -6,3 +6,8 @@ export { YgoprodeckCatalog, mapYgoprodeck } from "./catalogs/ygoprodeck";
 export { TcgdexCatalog, mapTcgdex } from "./catalogs/tcgdex";
 export { LorcastCatalog, mapLorcast } from "./catalogs/lorcast";
 export { OptcgCatalog, mapOptcg } from "./catalogs/optcg";
+export * from "./books/types";
+export { BookService, parseBook } from "./books/bookService";
+export { GcdCatalog } from "./books/gcd";
+export { computeCoverage } from "./books/coverage";
+export { parseRuns, formatRuns } from "./books/runs";

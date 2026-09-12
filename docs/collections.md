@@ -47,11 +47,46 @@ load, and only `https://` image addresses are kept.
 Card images load straight from each catalog's image host, and those hosts
 are listed by name in the page's Content Security Policy.
 
+## Comics & manga
+
+The **Comics & manga** view of the same tab. What matters about a collected
+edition is **which issues it collects**: an Epic Collection and an Omnibus
+overlap, a Masterworks fills a gap neither covers. So every book carries
+**runs** — "Journey Into Mystery (1952) #110-125; Thor (1966) #126-130" — and
+**coverage** is worked out across the whole shelf
+([coverage.ts](../src/collections/books/coverage.ts)): each series, the
+issues you hold once, twice (*duplicate*), in part (*partial*, from
+"reprints material from"), and the gaps between — with any wishlist book
+that would fill one. A run with no year joins the one series of that name
+the shelf knows a year for; the same name with two years is two series.
+
+Manga uses the same model one level up: "One Piece #1-45" is volumes 1–45,
+and the first gap is the next volume to buy.
+
+**Looking a book up — the Grand Comics Database** (comics.org, free, no
+key). Search a series, pick a volume, and the form fills in its title,
+ISBN and publisher, and — **when GCD's note says** — what it collects.
+Checked while building: Epic Collections and Masterworks usually carry a
+"Collects …" note; many omnibuses don't, and then the form says so and you
+type the runs. Metron and Comic Vine were also checked and both need an
+account; Google Books' anonymous quota was exhausted; Open Library had
+nothing for Devir's Portuguese manga, which is typed in by hand. GCD is a
+volunteer project: requests are spaced a second apart and kept for a day,
+and only the series name or a numeric volume id is sent.
+
+**Typing runs.** `Series (year) #from-to`, separated by `;` or `,`.
+`Annual #1` after a series means that series' annual; a bare `#140-145`
+continues the series before it; `material from X #3` marks a partial
+reprint. The form previews exactly how it reads, and says what it
+couldn't read instead of guessing
+([runs.ts](../src/collections/books/runs.ts), the same parser the main
+process saves with).
+
+The shelf is `books.json`, validated book by book on load.
+
 ## Not yet
 
-- Comics (Comic Vine) and manga (ISBN lookup, for Devir PT-PT volumes) —
-  the next catalogs. Their volume and issue-range data needs its own entry
-  shape, not a card's.
+- Card pages and deck building for the card games.
 - Set completion ("78 of 102"), decks, and card language or condition.
 - Pokémon rarity and prices, which TCGdex only gives per card, at one
   request each.

@@ -18,6 +18,27 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.1 — 2026-09-13
+
+- **Comics & manga** in the Collections tab. A book carries the issue
+  runs it collects, and the shelf shows **coverage per series**: issues
+  held once, held twice, only in part, and the gaps — with the wishlist
+  book that would fill each. Built around a real shelf: Thor Epic
+  Collection 1 overlapping Omnibus 1, Omnibuses 2–3 completing the run.
+- **Looked up in the Grand Comics Database** (free, no key): pick a series
+  and volume, and the title, ISBN and — when GCD's note lists them — the
+  contents fill themselves in. Checked live: Epic Collections and
+  Masterworks usually list contents, many omnibuses don't, and then you
+  type them. Metron and Comic Vine need accounts, Google Books was out of
+  anonymous quota, and Open Library had nothing for Devir PT-PT manga,
+  which is entered by hand — volumes as runs, so the first gap is the next
+  volume to buy.
+- Contents are typed as `Series (year) #from-to; Annual #1`, previewed
+  live with the parser the main process saves with, and anything
+  unreadable is shown rather than guessed. Stored in `books.json`.
+- Verified end to end in the running app: GCD search, a volume filled in
+  from its note, a hand-typed omnibus, and the overlap shown as duplicates.
+
 ## 0.5.0 — 2026-09-13
 
 The milestone since 0.4.0: NIMBUS installs like a normal app, reminds you
