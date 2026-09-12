@@ -324,8 +324,31 @@ Everything you configure lives in that machine's own
 `%APPDATA%\nimbus\`, so a second PC starts empty: re-enter your calendar
 feeds, email and Todoist accounts, stock positions, routines and
 activities, and connect Spotify again (its Client ID goes in `.env`).
-Nothing syncs between machines. To update later, `git pull` then
-`npm install` (in case dependencies changed) and `npm start`.
+Nothing syncs between machines.
+
+### Updating
+
+**Your data is not in the app folder.** Settings, stock positions,
+routines, activities, memory, network devices and credentials all live in
+`%APPDATA%\nimbus\`, so replacing the code never touches them.
+
+From a clone:
+
+```bash
+git pull
+npm install
+npm start
+```
+
+From a downloaded ZIP: extract the new one **next to** the old folder
+(don't overwrite it while NIMBUS is running), then in the new folder run
+`npm install` and `npm start`. It picks up everything you had. Keep the
+old folder until the new one starts cleanly, then delete it — and copy
+your `.env` across if you made one.
+
+Two things worth knowing: quit NIMBUS from the tray before updating, and
+if **Start with Windows** is on, switch it off and on again after moving
+to a new folder — the login item points at the folder it was set from.
 
 `.env` is optional for normal use; it supplies the log level, the
 environment name, the Spotify Client ID, and headless/dev defaults for

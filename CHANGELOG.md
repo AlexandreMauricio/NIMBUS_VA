@@ -18,6 +18,18 @@ Dates are the day the work landed.
 
 ---
 
+## 0.4.3 — 2026-09-12
+
+- Fix: **Start with Windows** launched Electron's own welcome window
+  instead of NIMBUS when running from source. The login item registered
+  the Electron executable with no app path, so Windows started Electron
+  with nothing to run. It now registers the app directory alongside the
+  executable (a packaged build still needs only its own .exe). If the
+  broken entry is already there, switch the setting off and on again.
+- README: how to update from a clone or a ZIP without losing anything —
+  settings, positions, routines and memory live in `%APPDATA%\nimbus\`,
+  not in the app folder.
+
 ## 0.4.2 — 2026-09-12
 
 - **Routine conditions are now built as field → operator → value**, with
