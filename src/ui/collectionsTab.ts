@@ -56,6 +56,8 @@ interface CollectionsBridge {
   onCollectionChanged(callback: () => void): () => void;
 }
 
+import { openCardPage } from "./cardPage";
+
 function bridge(): CollectionsBridge {
   return (window as unknown as { nimbus: CollectionsBridge }).nimbus;
 }
@@ -179,7 +181,10 @@ export function initCollectionsTab(): void {
     empty.hidden = cards.length > 0;
     for (const card of cards) {
       const row = make("div", "collection-row");
-      row.appendChild(cardImage(card, "collection-thumb"));
+      const thumb = cardImage(card, "collection-thumb card-page-link");
+      thumb.title = "Open the card's page";
+      thumb.addEventListener("click", () => void openCardPage(card.game, card.sourceId));
+      row.appendChild(thumb);
 
       const body = make("div", "collection-row-body");
       const head = make("div", "collection-row-head");
@@ -248,7 +253,10 @@ export function initCollectionsTab(): void {
     results.replaceChildren();
     for (const card of cards) {
       const tile = make("div", "collection-result");
-      tile.appendChild(cardImage(card, "collection-result-image"));
+      const image = cardImage(card, "collection-result-image card-page-link");
+      image.title = "Open the card's page";
+      image.addEventListener("click", () => void openCardPage(card.game, card.sourceId));
+      tile.appendChild(image);
       tile.appendChild(make("div", "collection-name", card.name));
       const detail = [describePrinting(card), formatPrice(card.price)].filter(Boolean).join(" · ");
       if (detail) tile.appendChild(make("div", "collection-meta", detail));

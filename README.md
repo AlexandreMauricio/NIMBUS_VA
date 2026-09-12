@@ -14,7 +14,7 @@ edit, complete, delete) from its Tasks tab and shows your calendar in its
 Calendar tab. With the opt-in desktop activity monitor switched on, it
 notices configured applications, browser window titles and Explorer
 folders, recognises **activities** you have defined ("Study", "Gaming") and
-times them as sessions, and runs user-defined **routines**: it *suggests*
+times them as sessions, and runs user-defined **routines**: it _suggests_
 actions in a small popup (or runs them automatically, if you opt a routine
 into that) — playing Spotify or other media, launching and arranging
 apps, setting the system volume, starting a timer or a Pomodoro
@@ -56,7 +56,7 @@ which modules are portable "Core" versus Windows-specific.
   90 days from your feeds.
 - **Weather tab** — now, and a card per day for the week ahead.
 - **Sidebar** — everyday tabs on top, then two foldable groups:
-  **Collections** (Cards, Books) and **Admin** (Weather, Routines, Network,
+  **Collections** (Cards, Books, Decks) and **Admin** (Weather, Routines, Network,
   Memory, Context, Settings). A group opens itself when one of its tabs is
   opened from elsewhere.
 - **Presence** — at the PC, home but away from it, or out: from keyboard
@@ -271,7 +271,7 @@ NIMBUS behaves like a background assistant, not an ordinary window-based app:
 
 ## The assistant-event seam
 
-`src/ui` never needs to know *how* a message, notification or suggestion
+`src/ui` never needs to know _how_ a message, notification or suggestion
 was produced — only that it received one:
 
 - [src/common/assistantEvents.ts](src/common/assistantEvents.ts) — the
@@ -292,23 +292,23 @@ window, whose order Attention decides.
 Reference material for each subsystem — read it when you are working on
 that subsystem.
 
-| Guide | What it covers |
-| --- | --- |
-| [The Context system](docs/context-system.md) | Context providers, the aggregator, failure isolation, and Context events |
-| [The Action system](docs/action-system.md) | ActionProviders, the validate/execute contract, and the Context-vs-Action split |
-| [The Briefing system](docs/briefing.md) | How a context snapshot becomes the briefing the Home tab shows |
-| [Activity & Sessions](docs/activity.md) | Activity mappings, session lifecycle, and how routines read it |
-| [Attention & Priority](docs/attention.md) | What deserves attention now: signals, scoring, conflicts, and the debug view |
-| [Context-aware routines](docs/routines.md) | Triggers, conditions, suggestions, timers, desktop monitoring, and its privacy boundary |
-| [Weather](docs/weather.md) | Location resolution and the Open-Meteo integration |
-| [Calendar](docs/calendar.md) | ICS feeds, the Calendar tab, and the parser's limits |
-| [Email](docs/email.md) | IMAP setup, app passwords, and what NIMBUS does and does not read |
-| [Tasks](docs/tasks.md) | Todoist setup and the read/write Tasks tab |
-| [Spotify](docs/spotify.md) | Registering a Spotify app, the PKCE flow, and playback control |
-| [Network](docs/network.md) | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
-| [Collections](docs/collections.md) | Trading card collections: the catalog per game, entries, and the add-by-id boundary |
-| [Memory](docs/memory.md) | The three memory tiers, trust and expiry, what is recorded, and the Memory tab |
-| [Stocks](docs/stocks.md) | Tracked positions, the estimates, market data and news, and their limits |
+| Guide                                        | What it covers                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [The Context system](docs/context-system.md) | Context providers, the aggregator, failure isolation, and Context events                       |
+| [The Action system](docs/action-system.md)   | ActionProviders, the validate/execute contract, and the Context-vs-Action split                |
+| [The Briefing system](docs/briefing.md)      | How a context snapshot becomes the briefing the Home tab shows                                 |
+| [Activity & Sessions](docs/activity.md)      | Activity mappings, session lifecycle, and how routines read it                                 |
+| [Attention & Priority](docs/attention.md)    | What deserves attention now: signals, scoring, conflicts, and the debug view                   |
+| [Context-aware routines](docs/routines.md)   | Triggers, conditions, suggestions, timers, desktop monitoring, and its privacy boundary        |
+| [Weather](docs/weather.md)                   | Location resolution and the Open-Meteo integration                                             |
+| [Calendar](docs/calendar.md)                 | ICS feeds, the Calendar tab, and the parser's limits                                           |
+| [Email](docs/email.md)                       | IMAP setup, app passwords, and what NIMBUS does and does not read                              |
+| [Tasks](docs/tasks.md)                       | Todoist setup and the read/write Tasks tab                                                     |
+| [Spotify](docs/spotify.md)                   | Registering a Spotify app, the PKCE flow, and playback control                                 |
+| [Network](docs/network.md)                   | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
+| [Collections](docs/collections.md)           | Trading card collections: the catalog per game, entries, and the add-by-id boundary            |
+| [Memory](docs/memory.md)                     | The three memory tiers, trust and expiry, what is recorded, and the Memory tab                 |
+| [Stocks](docs/stocks.md)                     | Tracked positions, the estimates, market data and news, and their limits                       |
 
 Architecture-level decisions — what counts as portable Core versus
 Windows-specific, the IPC surface, and what is persisted where — live in
@@ -447,21 +447,22 @@ directory). There is no separate check for Markdown.
 Everything is written under Electron's per-user data directory
 (Windows: `%APPDATA%\nimbus\`):
 
-| File | Contents | Protection |
-| --- | --- | --- |
-| `settings.json` | Window/startup settings and all user preferences, including calendar feed addresses, stock positions and closed positions | Plain JSON, atomic write |
-| `secrets.json` | IMAP passwords and Todoist API tokens, keyed by account | Encrypted (DPAPI via `safeStorage`), atomic write |
-| `spotify-tokens.json` | Spotify access/refresh tokens | Encrypted (DPAPI via `safeStorage`), atomic write |
-| `routine-state.json` | Routine cooldown timestamps and wind-downs still owed | Plain JSON, atomic write |
-| `activity-history.json` | Up to 200 activity sessions | Plain JSON, atomic write |
-| `network-devices.json` | Devices seen on your local network: MAC, nickname, recognized, names, first/last seen, recent IPs | Plain JSON, atomic write |
-| `oui.csv` | Optional: the IEEE manufacturer list, if you put it there — NIMBUS only reads it | Your file |
-| `app-usage.json` | Opt-in: programs with a window, minutes per day for two weeks, and your "make it an activity?" answers | Plain JSON, atomic write |
-| `site-usage.json` | Opt-in: websites by the name at the end of their tab title (never whole titles or addresses), minutes per day for two weeks, and your answers | Plain JSON, atomic write |
-| `memory\explicit.json`, `memory\learned.json`, `memory\observed.json` | What NIMBUS remembers, one file per tier (see [docs/memory.md](docs/memory.md)) | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
-| `collection.json` | Your card collection: printings, quantities, foil, status, notes | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
-| `books.json` | Comics collected editions and manga volumes, with the issue runs each collects | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
-| `logs\nimbus.log` | The application log | Plain text; never contains credentials |
+| File                                                                  | Contents                                                                                                                                      | Protection                                                                 |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `settings.json`                                                       | Window/startup settings and all user preferences, including calendar feed addresses, stock positions and closed positions                     | Plain JSON, atomic write                                                   |
+| `secrets.json`                                                        | IMAP passwords and Todoist API tokens, keyed by account                                                                                       | Encrypted (DPAPI via `safeStorage`), atomic write                          |
+| `spotify-tokens.json`                                                 | Spotify access/refresh tokens                                                                                                                 | Encrypted (DPAPI via `safeStorage`), atomic write                          |
+| `routine-state.json`                                                  | Routine cooldown timestamps and wind-downs still owed                                                                                         | Plain JSON, atomic write                                                   |
+| `activity-history.json`                                               | Up to 200 activity sessions                                                                                                                   | Plain JSON, atomic write                                                   |
+| `network-devices.json`                                                | Devices seen on your local network: MAC, nickname, recognized, names, first/last seen, recent IPs                                             | Plain JSON, atomic write                                                   |
+| `oui.csv`                                                             | Optional: the IEEE manufacturer list, if you put it there — NIMBUS only reads it                                                              | Your file                                                                  |
+| `app-usage.json`                                                      | Opt-in: programs with a window, minutes per day for two weeks, and your "make it an activity?" answers                                        | Plain JSON, atomic write                                                   |
+| `site-usage.json`                                                     | Opt-in: websites by the name at the end of their tab title (never whole titles or addresses), minutes per day for two weeks, and your answers | Plain JSON, atomic write                                                   |
+| `memory\explicit.json`, `memory\learned.json`, `memory\observed.json` | What NIMBUS remembers, one file per tier (see [docs/memory.md](docs/memory.md))                                                               | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `collection.json`                                                     | Your card collection: printings, quantities, foil, status, notes                                                                              | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `decks.json`                                                          | Your decks per game and format                                                                                                                | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `books.json`                                                          | Comics collected editions and manga volumes, with the issue runs each collects                                                                | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `logs\nimbus.log`                                                     | The application log                                                                                                                           | Plain text; never contains credentials                                     |
 
 If OS-level encryption is unavailable, credentials are not persisted at
 all rather than written in plaintext.

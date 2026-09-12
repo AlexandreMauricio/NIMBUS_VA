@@ -25,6 +25,8 @@ import {
 import { initMemoryTab } from "./memoryTab";
 import { initCollectionsTab } from "./collectionsTab";
 import { initBooksTab } from "./booksTab";
+import { initDecksTab } from "./decksTab";
+import { initCardPage } from "./cardPage";
 import { initWeatherTab } from "./weatherTab";
 import { initSidebarGroups } from "./sidebarGroups";
 import { initPresenceSettings } from "./presenceSettings";
@@ -4149,6 +4151,8 @@ initNetworkTab();
 initMemoryTab();
 initCollectionsTab();
 initBooksTab();
+initDecksTab();
+initCardPage();
 initWeatherTab();
 initSidebarGroups();
 initPresenceSettings();

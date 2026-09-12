@@ -280,6 +280,29 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.on("nimbus:presence-changed", listener);
     return () => ipcRenderer.removeListener("nimbus:presence-changed", listener);
   },
+  /** Card pages and decks. Cards are named by game and catalog id only. */
+  getCardDetail: (game: string, sourceId: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:get-card-detail", game, sourceId),
+  getDecks: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-decks"),
+  getDeck: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:get-deck", id),
+  createDeck: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:create-deck", input),
+  updateDeck: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-deck", id, changes),
+  removeDeck: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:remove-deck", id),
+  addDeckCard: (id: string, sourceId: string, zone: string | null): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:add-deck-card", id, sourceId, zone),
+  setDeckCardQuantity: (id: string, sourceId: string, zone: string, quantity: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:set-deck-card-quantity", id, sourceId, zone, quantity),
+  moveDeckCard: (id: string, sourceId: string, from: string, to: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:move-deck-card", id, sourceId, from, to),
+  importDecklist: (id: string, text: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:import-decklist", id, text),
+  onDecksChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:decks-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:decks-changed", listener);
+  },
   /** Comics and manga. GCD lookups take a series name or a volume id — never a URL. */
   getBooks: (filter: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-books", filter),

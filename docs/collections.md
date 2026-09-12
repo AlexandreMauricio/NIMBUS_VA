@@ -13,13 +13,13 @@ shown in the **Collections** tab.
 - **Your collection** lives in `%APPDATA%\nimbus\collection.json` and is
   never sent anywhere.
 
-| Game | Catalog | Key | Notes |
-| --- | --- | --- | --- |
-| Magic: The Gathering | [Scryfall](https://scryfall.com/docs/api) | No | Every printing; prices prefer Cardmarket EUR, then USD |
-| Pokémon TCG | [TCGdex](https://tcgdex.dev) | No | Chosen over pokemontcg.io, which returned a 502 when checked. Search results carry no rarity or price |
-| Yu-Gi-Oh! | [YGOPRODeck](https://ygoprodeck.com/api-guide/) | No | One result per set printing (set code + rarity) |
-| Disney Lorcana | [Lorcast](https://lorcast.com/docs/api) | No | Names include the version ("Elsa — Concerned Sister") |
-| One Piece Card Game | [OPTCG API](https://optcgapi.com) | No | Community-run; booster sets and starter decks both searched; alternate arts are separate printings |
+| Game                 | Catalog                                         | Key | Notes                                                                                                 |
+| -------------------- | ----------------------------------------------- | --- | ----------------------------------------------------------------------------------------------------- |
+| Magic: The Gathering | [Scryfall](https://scryfall.com/docs/api)       | No  | Every printing; prices prefer Cardmarket EUR, then USD                                                |
+| Pokémon TCG          | [TCGdex](https://tcgdex.dev)                    | No  | Chosen over pokemontcg.io, which returned a 502 when checked. Search results carry no rarity or price |
+| Yu-Gi-Oh!            | [YGOPRODeck](https://ygoprodeck.com/api-guide/) | No  | One result per set printing (set code + rarity)                                                       |
+| Disney Lorcana       | [Lorcast](https://lorcast.com/docs/api)         | No  | Names include the version ("Elsa — Concerned Sister")                                                 |
+| One Piece Card Game  | [OPTCG API](https://optcgapi.com)               | No  | Community-run; booster sets and starter decks both searched; alternate arts are separate printings    |
 
 NIMBUS identifies itself to every catalog and spaces requests to the same
 one by at least 150 ms, as Scryfall asks. Results are cached for 10
@@ -55,7 +55,7 @@ overlap, a Masterworks fills a gap neither covers. So every book carries
 **runs** — "Journey Into Mystery (1952) #110-125; Thor (1966) #126-130" — and
 **coverage** is worked out across the whole shelf
 ([coverage.ts](../src/collections/books/coverage.ts)): each series, the
-issues you hold once, twice (*duplicate*), in part (*partial*, from
+issues you hold once, twice (_duplicate_), in part (_partial_, from
 "reprints material from"), and the gaps between — with any wishlist book
 that would fill one. A run with no year joins the one series of that name
 the shelf knows a year for; the same name with two years is two series.
@@ -84,9 +84,33 @@ process saves with).
 
 The shelf is `books.json`, validated book by book on load.
 
+## Card pages
+
+Clicking a card opens its page — text, stats, legality, price, how many
+you own and which decks use it. `nimbus:get-card-detail` takes a game and
+catalog id only; the main process fetches the card from that game's
+database (`catalogs/details.ts`) and caches it for an hour.
+
+## Decks
+
+`decks/` holds decks (`decks.json`), each with zones by game and format:
+main and sideboard for Magic (commander and main for Commander), main,
+extra and side for Yu-Gi-Oh!, leader and main for One Piece, main for
+Pokémon and Lorcana. `rules.ts` checks the rules that hold at any table —
+deck size, copy limits, the extra deck, a leader's or commander's colours,
+Lorcana's two inks, the Yu-Gi-Oh! banlist as YGOPRODeck reports it — not
+every format's full banlist or rotation. Errors make a deck not legal;
+warnings are worth a look.
+
+A deck is compared with the owned cards in your collection by name, in
+any printing (One Piece by card number). Decklists import as
+`4 Lightning Bolt` lines with `Sideboard` / `Extra` / `Commander` /
+`Leader` headings; each name is searched and the first exact match added,
+and names that aren't found are listed.
+
 ## Not yet
 
-- Card pages and deck building for the card games.
-- Set completion ("78 of 102"), decks, and card language or condition.
+- Set completion ("78 of 102"), and card language or condition.
+- Full per-format banlists and rotation.
 - Pokémon rarity and prices, which TCGdex only gives per card, at one
   request each.

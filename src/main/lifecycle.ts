@@ -70,7 +70,24 @@ import {
   isTcgGame,
 } from "../collections";
 import { FileCollectionStore } from "./collectionStore";
-import { BOOK_FORMATS, BookService, GcdCatalog } from "../collections";
+import {
+  BOOK_FORMATS,
+  BookService,
+  DECK_FORMATS,
+  DeckService,
+  DeckZone,
+  GcdCatalog,
+  TCG_GAMES,
+  checkDeck,
+  compareWithCollection,
+  detailFetchers,
+  formatDecklist,
+  parseDecklist,
+  sameCardName,
+  zoneLabel,
+  zonesFor,
+} from "../collections";
+import { FileDeckStore } from "./deckStore";
 import { FileBookStore } from "./bookStore";
 import {
   ActivityService,
@@ -113,6 +130,7 @@ let presenceService: PresenceService | null = null;
 let collectionService: CollectionService;
 let catalogService: CatalogService;
 let bookService: BookService;
+let deckService: DeckService;
 let gcdCatalog: GcdCatalog;
 
 /** A routine suggestion the user answered — reinforces that routine's acceptance pattern. */
@@ -660,6 +678,121 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:remove-collection-card", (_event, id: unknown) =>
     collectionService.remove(String(id ?? ""))
   );
+
+  // Card pages and decks (src/collections/). Cards are named by game and
+  // catalog id only; their data comes from the main process's own lookup.
+  const zoneOf = (value: unknown): DeckZone | null =>
+    value === "main" || value === "side" || value === "extra" || value === "leader" ? value : null;
+  const ownedCopies = (game: string, name: string, number: string | null): number =>
+    collectionService
+      .list({ status: "owned" })
+      .filter((card) => card.game === game)
+      .filter((card) =>
+        game === "onepiece" ? card.number === number : card.name.toLowerCase() === name.toLowerCase()
+      )
+      .reduce((sum, card) => sum + card.quantity, 0);
+
+  ipcMain.handle("nimbus:get-card-detail", async (_event, game: unknown, sourceId: unknown) => {
+    const detail = await catalogService.getDetail(game, sourceId);
+    const decks = deckService.list().filter((deck) => deck.game === detail.game);
+    return {
+      detail,
+      owned: ownedCopies(detail.game, detail.name, detail.number),
+      inDecks: decks
+        .map((deck) => ({
+          deckId: deck.id,
+          name: deck.name,
+          quantity: deck.cards
+            .filter((card) => card.rules.copyKey === detail.rules.copyKey)
+            .reduce((sum, card) => sum + card.quantity, 0),
+        }))
+        .filter((entry) => entry.quantity > 0),
+      decks: decks.map((deck) => ({ id: deck.id, name: deck.name })),
+    };
+  });
+  ipcMain.handle("nimbus:get-decks", () => ({
+    decks: deckService.list().map((deck) => {
+      const check = checkDeck(deck);
+      return {
+        id: deck.id,
+        name: deck.name,
+        game: deck.game,
+        format: deck.format,
+        total: check.total,
+        legal: check.legal,
+      };
+    }),
+    formats: DECK_FORMATS,
+    games: TCG_GAMES.map((game) => ({ id: game.id, name: game.name })),
+  }));
+  ipcMain.handle("nimbus:get-deck", (_event, id: unknown) => {
+    const deck = deckService.get(String(id ?? ""));
+    return {
+      deck,
+      check: checkDeck(deck),
+      zones: zonesFor(deck.game, deck.format).map((zone) => ({ zone, label: zoneLabel(deck.game, zone) })),
+      collection: compareWithCollection(deck, collectionService.list()),
+      decklist: formatDecklist(deck, deck.game),
+    };
+  });
+  ipcMain.handle("nimbus:create-deck", (_event, input: unknown) => deckService.create(input));
+  ipcMain.handle("nimbus:update-deck", (_event, id: unknown, changes: unknown) =>
+    deckService.update(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:remove-deck", (_event, id: unknown) => deckService.remove(String(id ?? "")));
+  ipcMain.handle("nimbus:add-deck-card", async (_event, id: unknown, sourceId: unknown, zone: unknown) => {
+    const deck = deckService.get(String(id ?? ""));
+    const detail = await catalogService.getDetail(deck.game, sourceId);
+    return deckService.addCard(deck.id, detail, zoneOf(zone) ?? undefined);
+  });
+  ipcMain.handle(
+    "nimbus:set-deck-card-quantity",
+    (_event, id: unknown, sourceId: unknown, zone: unknown, quantity: unknown) => {
+      const z = zoneOf(zone);
+      if (!z) throw new Error("That isn't a deck zone.");
+      return deckService.setQuantity(String(id ?? ""), String(sourceId ?? ""), z, Number(quantity));
+    }
+  );
+  ipcMain.handle(
+    "nimbus:move-deck-card",
+    (_event, id: unknown, sourceId: unknown, from: unknown, to: unknown) => {
+      const f = zoneOf(from);
+      const t = zoneOf(to);
+      if (!f || !t) throw new Error("That isn't a deck zone.");
+      return deckService.moveCard(String(id ?? ""), String(sourceId ?? ""), f, t);
+    }
+  );
+  // A pasted decklist: each name is searched in the deck's game and the first
+  // printing with exactly that name is added. Capped, and paced by the
+  // catalog service like any search.
+  ipcMain.handle("nimbus:import-decklist", async (_event, id: unknown, text: unknown) => {
+    const deck = deckService.get(String(id ?? ""));
+    const { lines, unread } = parseDecklist(typeof text === "string" ? text.slice(0, 20_000) : "");
+    let added = 0;
+    const notFound: string[] = [];
+    for (const line of lines.slice(0, 150)) {
+      try {
+        const found = await catalogService.search(deck.game, line.name);
+        const match = found.find((card) => sameCardName(card.name, line.name));
+        if (!match) {
+          notFound.push(line.name);
+          continue;
+        }
+        const detail = await catalogService.getDetail(deck.game, match.sourceId);
+        const zones = zonesFor(deck.game, deck.format);
+        deckService.addCard(
+          deck.id,
+          detail,
+          zones.includes(line.zone) ? line.zone : undefined,
+          Math.min(line.quantity, 99)
+        );
+        added += line.quantity;
+      } catch {
+        notFound.push(line.name);
+      }
+    }
+    return { added, notFound, unread };
+  });
 
   // Books (src/collections/books/): comics collected editions and manga.
   // GCD lookups take a series name or a numeric volume id only; the URL is
@@ -1268,13 +1401,22 @@ export function startApp(): void {
   // Collections (src/collections/): your cards, and the card databases that
   // look them up. The catalogs are read-only and need no account; only the
   // text of a search is sent to them, never anything from the collection.
-  catalogService = new CatalogService([
-    new ScryfallCatalog(),
-    new TcgdexCatalog(),
-    new YgoprodeckCatalog(),
-    new LorcastCatalog(),
-    new OptcgCatalog(),
-  ]);
+  catalogService = new CatalogService(
+    [
+      new ScryfallCatalog(),
+      new TcgdexCatalog(),
+      new YgoprodeckCatalog(),
+      new LorcastCatalog(),
+      new OptcgCatalog(),
+    ],
+    Date.now,
+    undefined,
+    detailFetchers()
+  );
+  deckService = new DeckService(new FileDeckStore());
+  deckService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:decks-changed");
+  });
   collectionService = new CollectionService(new FileCollectionStore());
   // The comics and manga shelf, and the Grand Comics Database it can look
   // volumes up in (read-only, no account; only the series name or volume

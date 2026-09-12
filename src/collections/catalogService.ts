@@ -1,5 +1,7 @@
 import { logger } from "../logging/logger";
+import { DetailFetcher } from "./catalogs/details";
 import {
+  CardDetail,
   CardCatalog,
   CatalogCard,
   MAX_QUERY_LENGTH,
@@ -30,11 +32,13 @@ export class CatalogService {
   private readonly cache = new Map<string, { at: number; cards: CatalogCard[] }>();
   private readonly resolvable = new Map<string, { at: number; card: CatalogCard }>();
   private readonly lastRequestAt = new Map<TcgGame, number>();
+  private readonly details = new Map<string, { at: number; detail: CardDetail | null }>();
 
   constructor(
     catalogs: CardCatalog[],
     private readonly now: () => number = Date.now,
-    private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))
+    private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+    private readonly detailFetchers: Partial<Record<TcgGame, DetailFetcher>> = {}
   ) {
     for (const catalog of catalogs) this.catalogs.set(catalog.game, catalog);
   }
@@ -70,6 +74,37 @@ export class CatalogService {
     for (const card of cards) this.resolvable.set(`${game}|${card.sourceId}`, { at, card });
     this.prune(at);
     return cards.map((card) => ({ ...card }));
+  }
+
+  /**
+   * A card's full page, by game and catalog id. Kept for an hour, and —
+   * like a search result — resolvable for adding to the collection or a
+   * deck afterwards.
+   */
+  async getDetail(game: unknown, sourceId: unknown): Promise<CardDetail> {
+    if (!isTcgGame(game)) throw new Error("Choose a game.");
+    if (typeof sourceId !== "string" || !sourceId || sourceId.length > 120)
+      throw new Error("That isn't a card id.");
+    const fetcher = this.detailFetchers[game];
+    if (!fetcher) throw new Error("That game has no card pages yet.");
+    const key = `${game}|${sourceId}`;
+    const cached = this.details.get(key);
+    let detail: CardDetail | null;
+    if (cached && this.now() - cached.at < RESOLVABLE_MS) {
+      detail = cached.detail;
+    } else {
+      await this.pace(game);
+      try {
+        detail = await fetcher(sourceId);
+      } catch (err) {
+        logger.warn("Card page failed", { game, error: String(err) });
+        throw new Error("The card database couldn't be reached. Try again in a moment.");
+      }
+      this.details.set(key, { at: this.now(), detail });
+    }
+    if (!detail || detail.game !== game) throw new Error("The card database doesn't have that card.");
+    this.resolvable.set(key, { at: this.now(), card: detail });
+    return { ...detail };
   }
 
   /** A card from a recent search, by its game and catalog id — or null. */

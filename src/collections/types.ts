@@ -59,6 +59,37 @@ export interface CatalogCard {
   price: CardPrice | null;
 }
 
+export interface CardStat {
+  label: string;
+  value: string;
+}
+
+/** The facts deck rules need about a card — see decks/rules.ts. */
+export interface CardRulesInfo {
+  /** What copies are counted by: the name, a Lorcana name with its version, a One Piece card number. */
+  copyKey: string;
+  /** Basic lands, basic energy: any number allowed. */
+  unlimitedCopies: boolean;
+  /** Where it goes: Yu-Gi-Oh!'s extra deck, a One Piece leader, or the main deck. */
+  zone: "main" | "extra" | "leader";
+  /** Magic colours, Lorcana inks, One Piece colours, Pokémon types. */
+  colors: string[];
+  /** Yu-Gi-Oh! TCG: 0 forbidden, 1 limited, 2 semi-limited; null unrestricted. */
+  banLimit: number | null;
+}
+
+/** A card's full page. */
+export interface CardDetail extends CatalogCard {
+  largeImageUrl: string | null;
+  typeLine: string | null;
+  text: string | null;
+  flavor: string | null;
+  stats: CardStat[];
+  legalities: Array<{ format: string; status: string }>;
+  artist: string | null;
+  rules: CardRulesInfo;
+}
+
 /** Answers "which cards match this name?" for one game. */
 export interface CardCatalog {
   readonly game: TcgGame;

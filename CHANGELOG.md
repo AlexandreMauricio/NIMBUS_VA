@@ -18,6 +18,21 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.3 — 2026-09-13
+
+- **Card pages.** Click a card in Cards or Decks to open its page: the
+  large image, rules text, stats, format legality (Magic), the Yu-Gi-Oh!
+  banlist status, price, artist, how many you own and which decks use it,
+  with add to collection, wishlist or a deck. Data comes from each game's
+  database, fetched and cached for an hour in the main process.
+- **Decks**, a new tab in the Collections group. Decks per game and
+  format, checked against that game's rules — Magic constructed and
+  Commander (size, copies, sideboard, commander colours), Pokémon (60,
+  4 copies, a Basic), Yu-Gi-Oh! (40–60, extra deck, banlist), Lorcana
+  (60+, two inks), One Piece (a leader, 50, colours). Shows what you're
+  missing from your collection, and imports and exports plain-text
+  decklists.
+
 ## 0.5.2 — 2026-09-13
 
 - **Collections is a sidebar group**, like Admin, with **Cards** and
@@ -105,7 +120,7 @@ hobby — trading card collections.
   to pop up 15 minutes before it — fine for a call at your desk, too late
   for an appointment you travel to: a 9:30 massage popped up at 9:15, and
   the only earlier sign was a Home feed line at 8:30. Reminders now pop up
-  at a lead time you choose (Context → Attention → *Calendar reminders*,
+  at a lead time you choose (Context → Attention → _Calendar reminders_,
   default **an hour**, 15 minutes to 4 hours), and once more five minutes
   before. From the lead time on they are high priority and ignore the
   busy rule, so a game or a running timer can't silence them.
@@ -143,7 +158,7 @@ hobby — trading card collections.
 - A build in a folder where `npm install` has not been run now says so —
   "dependencies are not installed in this folder", with the folder and
   what to run — instead of `'tsc' is not recognized as an internal or
-  external command`, which named the wrong problem.
+external command`, which named the wrong problem.
 
 ## 0.4.6 — 2026-09-12
 
@@ -302,8 +317,8 @@ portfolio in one currency with a tax helper.
 
 ## 0.3.5 — 2026-09-11
 
-- "Make it an activity?" (opt-in: *Suggest activities for apps I use a
-  lot*, in Routines → Activities). NIMBUS keeps a small local tally of
+- "Make it an activity?" (opt-in: _Suggest activities for apps I use a
+  lot_, in Routines → Activities). NIMBUS keeps a small local tally of
   programs with a visible window — name, Windows description and minutes
   per day, never window titles — and offers a program used on 3 of the
   last 7 days (or 5 hours) that isn't an activity yet. The Attention

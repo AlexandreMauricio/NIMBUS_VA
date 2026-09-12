@@ -15,13 +15,13 @@ unnecessarily painful later.
 
 ## The five layers
 
-| Layer | What it means | Owns |
-|---|---|---|
-| **1. Core** | Platform-independent logic. Zero dependency on Electron or any OS API. | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Briefing, the assistant-event contract, settings schema, generic utilities |
-| **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app." | Windows, tray, lifecycle, autostart, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups |
-| **3. External integrations** | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter. | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance |
-| **4. User data/context** | The data itself: what NIMBUS knows and what the user has told it. A *slice* of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences` |
-| **5. UI/presentation** | Rendering and interaction for *this* client. A future client's UI would be a separate implementation talking to the same Core. | `src/ui/`, the preload bridges |
+| Layer                         | What it means                                                                                                                                 | Owns                                                                                                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Core**                   | Platform-independent logic. Zero dependency on Electron or any OS API.                                                                        | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Briefing, the assistant-event contract, settings schema, generic utilities |
+| **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app."                                                                    | Windows, tray, lifecycle, autostart, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups                   |
+| **3. External integrations**  | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter.                 | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance                                                              |
+| **4. User data/context**      | The data itself: what NIMBUS knows and what the user has told it. A _slice_ of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences`                                                                                                      |
+| **5. UI/presentation**        | Rendering and interaction for _this_ client. A future client's UI would be a separate implementation talking to the same Core.                | `src/ui/`, the preload bridges                                                                                                                       |
 
 ## Where every module sits
 
@@ -213,6 +213,7 @@ src/
     siteUsageStore.ts             The opt-in website tally
                                    (site-usage.json)
     collectionStore.ts            The card collection (collection.json)
+    deckStore.ts                  Decks (decks.json)
     bookStore.ts                  The comics and manga shelf (books.json)
     memoryStore.ts                Memory, one file per tier
                                    (memory/*.json)
@@ -263,23 +264,24 @@ renderer can only call what its preload exposes.
 
 **Main window** (`preload.ts` → `window.nimbus`), handled in `lifecycle.ts`:
 
-| Area | Channels |
-| --- | --- |
-| App & window | `nimbus:get-app-info`, `nimbus:get-settings`, `nimbus:update-settings`, `nimbus:get-zoom`, `nimbus:set-zoom`, `nimbus:hide-window` |
-| Context & briefing | `nimbus:get-context`, `nimbus:get-briefing`, `nimbus:regenerate-briefing` |
-| Weather / calendar | `nimbus:get-weather-settings`, `nimbus:update-weather-settings`, `nimbus:get-calendar-settings`, `nimbus:update-calendar-settings` |
-| Email | `nimbus:get-email-settings`, `nimbus:update-email-settings` |
-| Tasks | `nimbus:get-task-settings`, `nimbus:update-task-settings`, `nimbus:list-tasks`, `nimbus:list-task-projects`, `nimbus:create-task`, `nimbus:update-task`, `nimbus:complete-task`, `nimbus:reopen-task`, `nimbus:delete-task` |
-| Spotify | `nimbus:get-spotify-settings`, `nimbus:update-spotify-settings`, `nimbus:spotify-connect`, `nimbus:spotify-disconnect`, `nimbus:spotify-list-playlists` |
-| Stocks | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news`, `nimbus:find-stock-listings` (tracked symbols only), `nimbus:get-stock-dividends`, `nimbus:close-stock-position`, `nimbus:get-stock-irs-report` |
-| Actions | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters) |
-| Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings` |
-| Network | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings` |
-| Presence | `nimbus:get-presence`, `nimbus:set-presence-phone` (a Network tab device id, checked against the list) |
-| Books | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book` |
-| Collections | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card` |
-| Memory | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings` |
-| Activity & timer | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state` |
+| Area                   | Channels                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App & window           | `nimbus:get-app-info`, `nimbus:get-settings`, `nimbus:update-settings`, `nimbus:get-zoom`, `nimbus:set-zoom`, `nimbus:hide-window`                                                                                                                                                                                                                                                 |
+| Context & briefing     | `nimbus:get-context`, `nimbus:get-briefing`, `nimbus:regenerate-briefing`                                                                                                                                                                                                                                                                                                          |
+| Weather / calendar     | `nimbus:get-weather-settings`, `nimbus:update-weather-settings`, `nimbus:get-calendar-settings`, `nimbus:update-calendar-settings`                                                                                                                                                                                                                                                 |
+| Email                  | `nimbus:get-email-settings`, `nimbus:update-email-settings`                                                                                                                                                                                                                                                                                                                        |
+| Tasks                  | `nimbus:get-task-settings`, `nimbus:update-task-settings`, `nimbus:list-tasks`, `nimbus:list-task-projects`, `nimbus:create-task`, `nimbus:update-task`, `nimbus:complete-task`, `nimbus:reopen-task`, `nimbus:delete-task`                                                                                                                                                        |
+| Spotify                | `nimbus:get-spotify-settings`, `nimbus:update-spotify-settings`, `nimbus:spotify-connect`, `nimbus:spotify-disconnect`, `nimbus:spotify-list-playlists`                                                                                                                                                                                                                            |
+| Stocks                 | `nimbus:get-stock-settings`, `nimbus:update-stock-settings`, `nimbus:refresh-stocks`, `nimbus:get-stock-news`, `nimbus:find-stock-listings` (tracked symbols only), `nimbus:get-stock-dividends`, `nimbus:close-stock-position`, `nimbus:get-stock-irs-report`                                                                                                                     |
+| Actions                | `nimbus:list-actions`, `nimbus:execute-action`, `nimbus:pick-path` (a file/folder dialog for path parameters)                                                                                                                                                                                                                                                                      |
+| Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings`                                          |
+| Network                | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings`                                                                                                                                      |
+| Presence               | `nimbus:get-presence`, `nimbus:set-presence-phone` (a Network tab device id, checked against the list)                                                                                                                                                                                                                                                                             |
+| Decks                  | `nimbus:get-card-detail` (game and catalog id only), `nimbus:get-decks`, `nimbus:get-deck`, `nimbus:create-deck`, `nimbus:update-deck`, `nimbus:remove-deck`, `nimbus:add-deck-card` (catalog id only — the card is fetched in the main process), `nimbus:set-deck-card-quantity`, `nimbus:move-deck-card`, `nimbus:import-decklist` (text, capped); pushes `nimbus:decks-changed` |
+| Books                  | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book`                                                                                                                                              |
+| Collections            | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card`                                                                                                            |
+| Memory                 | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings`                                                                                                                                                                                           |
+| Activity & timer       | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state`                                                                                                                                                          |
 
 **Suggestion popup** (`suggestionPreload.ts`): `nimbus:get-popup-suggestion`,
 `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`,
@@ -316,20 +318,21 @@ Rules the handlers follow:
 All under Electron's `userData` directory (`%APPDATA%\nimbus\`), each
 written atomically (temp file, fsync, rename):
 
-| File | Owner | Contents |
-| --- | --- | --- |
-| `settings.json` | `settingsManager.ts` | `WindowsClientSettings` + `UserPreferences`, with credentials stripped out |
-| `secrets.json` | `secretStore.ts` | IMAP passwords and Todoist tokens, DPAPI-encrypted, keyed by account id |
-| `spotify-tokens.json` | `spotifyTokenStore.ts` | Spotify tokens, DPAPI-encrypted |
-| `routine-state.json` | `routineStateStore.ts` | Cooldown timestamps; wind-downs still owed (dropped after 12 h) |
-| `activity-history.json` | `activityStateStore.ts` | Up to 200 activity sessions |
-| `network-devices.json` | `network/networkFiles.ts` | Devices seen on the local network: MAC, nickname, recognized, names, first/last seen, recent IPs |
-| `app-usage.json` | `appUsageStore.ts` | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?" |
-| `site-usage.json` | `siteUsageStore.ts` | Opt-in: per website (the name at the end of its tab title), minutes per day (two weeks) and your answers |
-| `memory/explicit.json`, `memory/learned.json`, `memory/observed.json` | `memoryStore.ts` | Memory, one tier per file: `{version: 1, items}`. Validated item by item on load; an unparseable file is renamed `<tier>.unreadable-<time>.json` |
-| `books.json` | `bookStore.ts` | The comics and manga shelf: `{version: 1, books}`, each with its issue runs; validated per book and per run |
-| `collection.json` | `collectionStore.ts` | The card collection: `{version: 1, cards}`, validated per entry; an unparseable file is renamed `collection.unreadable-<time>.json` |
-| `logs/nimbus.log` | `logger.ts` | Log lines; never credentials |
+| File                                                                  | Owner                     | Contents                                                                                                                                         |
+| --------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `settings.json`                                                       | `settingsManager.ts`      | `WindowsClientSettings` + `UserPreferences`, with credentials stripped out                                                                       |
+| `secrets.json`                                                        | `secretStore.ts`          | IMAP passwords and Todoist tokens, DPAPI-encrypted, keyed by account id                                                                          |
+| `spotify-tokens.json`                                                 | `spotifyTokenStore.ts`    | Spotify tokens, DPAPI-encrypted                                                                                                                  |
+| `routine-state.json`                                                  | `routineStateStore.ts`    | Cooldown timestamps; wind-downs still owed (dropped after 12 h)                                                                                  |
+| `activity-history.json`                                               | `activityStateStore.ts`   | Up to 200 activity sessions                                                                                                                      |
+| `network-devices.json`                                                | `network/networkFiles.ts` | Devices seen on the local network: MAC, nickname, recognized, names, first/last seen, recent IPs                                                 |
+| `app-usage.json`                                                      | `appUsageStore.ts`        | Opt-in: per program with a window, minutes per day (two weeks) and your answers to "make it an activity?"                                        |
+| `site-usage.json`                                                     | `siteUsageStore.ts`       | Opt-in: per website (the name at the end of its tab title), minutes per day (two weeks) and your answers                                         |
+| `memory/explicit.json`, `memory/learned.json`, `memory/observed.json` | `memoryStore.ts`          | Memory, one tier per file: `{version: 1, items}`. Validated item by item on load; an unparseable file is renamed `<tier>.unreadable-<time>.json` |
+| `books.json`                                                          | `bookStore.ts`            | The comics and manga shelf: `{version: 1, books}`, each with its issue runs; validated per book and per run                                      |
+| `decks.json`                                                          | `deckStore.ts`            | Decks: validated deck by deck and card by card; an unparseable file is renamed `decks.unreadable-<time>.json`                                    |
+| `collection.json`                                                     | `collectionStore.ts`      | The card collection: `{version: 1, cards}`, validated per entry; an unparseable file is renamed `collection.unreadable-<time>.json`              |
+| `logs/nimbus.log`                                                     | `logger.ts`               | Log lines; never credentials                                                                                                                     |
 
 **Credential lifecycle.** `loadSettings()` runs before Electron is ready
 and deliberately reads no credentials (`safeStorage` reports itself
@@ -350,12 +353,12 @@ deleted.
 
 `src/actions/` is deliberately separate from `src/context/`:
 
-| | Context | Action |
-|---|---|---|
-| Question | "What is happening?" | "Do something." |
-| Side effects | None — read-only by contract | May change state outside NIMBUS |
-| Failure mode | `status: "error"`/`"unavailable"` in a snapshot | A structured `ActionResult` with `status: "failure"` |
-| Safety metadata | None needed | `readOnly`/`changesExternalState`/`requiresConfirmation`/`affectsService` |
+|                 | Context                                         | Action                                                                    |
+| --------------- | ----------------------------------------------- | ------------------------------------------------------------------------- |
+| Question        | "What is happening?"                            | "Do something."                                                           |
+| Side effects    | None — read-only by contract                    | May change state outside NIMBUS                                           |
+| Failure mode    | `status: "error"`/`"unavailable"` in a snapshot | A structured `ActionResult` with `status: "failure"`                      |
+| Safety metadata | None needed                                     | `readOnly`/`changesExternalState`/`requiresConfirmation`/`affectsService` |
 
 Spotify is the clearest illustration: "what's playing" is
 `SpotifyContextProvider`, "play this" is `SpotifyActionProvider`, and both
@@ -382,15 +385,16 @@ Context/OS → Event → Event Bus → Trigger Matcher → Routine gates
 - **`src/events/`**: `ContextEventBus` is a bare pub/sub hub, and
   `ContextEvent` is a closed union. Every event has a `source`.
 
-  | Event | Producer |
-  | --- | --- |
-  | `applicationOpened`, `applicationClosed`, `websiteOpened`, `folderOpened` | `DesktopActivityMonitor` |
-  | `timerCompleted` | `TimerService` (every phase) |
-  | `activityEnded` | `ActivityService` (not on shutdown); also recorded to memory as a pattern |
-  | `networkDeviceAppeared` | `NetworkService` (not for the first-run baseline); recorded to memory as an observation |
+  | Event                                                                     | Producer                                                                                |
+  | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+  | `applicationOpened`, `applicationClosed`, `websiteOpened`, `folderOpened` | `DesktopActivityMonitor`                                                                |
+  | `timerCompleted`                                                          | `TimerService` (every phase)                                                            |
+  | `activityEnded`                                                           | `ActivityService` (not on shutdown); also recorded to memory as a pattern               |
+  | `networkDeviceAppeared`                                                   | `NetworkService` (not for the first-run baseline); recorded to memory as an observation |
 
   `playbackChanged`, `calendarEventApproaching` and `emailReceived` are
   reserved names in `ContextEventType`; nothing emits them.
+
 - **`src/routines/`**: a `Routine` is generic — triggers, conditions, a
   suggestion, and ordered `{actionId, params}` steps for its start and
   end halves — with no service-specific field. `triggerMatcher.ts` and
@@ -560,7 +564,7 @@ Two early refactors established the boundary this document describes:
   settings) or `src/main/lifecycle.ts` (live settings). Add a builder in
   `briefingGenerator.ts` if it belongs in the briefing — `meals` already
   exists in `BriefingCategory`, unused.
-- **Something NIMBUS should *do***: an `ActionProvider` under
+- **Something NIMBUS should _do_**: an `ActionProvider` under
   `src/actions/providers/`, registered in `lifecycle.ts`. No IPC change is
   needed. Set `requiresConfirmation: true` for anything genuinely risky —
   it isn't enforced yet, but the metadata should be accurate.

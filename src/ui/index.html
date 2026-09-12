@@ -103,6 +103,22 @@
                 </svg>
                 Books
               </button>
+              <button class="side-link" data-tab="decks">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 256 256"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="16"
+                  stroke-linejoin="round"
+                >
+                  <rect x="56" y="72" width="112" height="152" rx="10" />
+                  <path d="M88 40h100a10 10 0 0 1 10 10v140" />
+                  <path d="M120 16h92a10 10 0 0 1 10 10v124" />
+                </svg>
+                Decks
+              </button>
             </div>
           </div>
           <!-- Everything you set up, check on, or look under the hood at, kept
@@ -729,6 +745,37 @@
             <p class="form-error" id="collectionError" role="alert" hidden></p>
             <div id="collectionList"></div>
             <p class="feed-empty" id="collectionEmpty" hidden>No cards yet. Search above to add some.</p>
+          </div>
+        </section>
+
+        <section id="tab-decks" class="panel">
+          <div class="panel-header">
+            <div>
+              <h6 class="kicker">Decks</h6>
+              <p class="panel-subtitle">Checked against each game's deck rules</p>
+            </div>
+          </div>
+          <div class="decks-layout">
+            <div class="decks-sidebar">
+              <div class="deck-new">
+                <input
+                  type="text"
+                  id="deckNewName"
+                  class="input"
+                  maxlength="100"
+                  placeholder="New deck name"
+                />
+                <select id="deckNewGame" class="select"></select>
+                <select id="deckNewFormat" class="select"></select>
+                <button class="btn btn-secondary" id="deckCreateBtn" type="button">Create deck</button>
+              </div>
+              <div id="deckList"></div>
+            </div>
+            <div class="decks-main">
+              <p class="form-error" id="deckError" role="alert" hidden></p>
+              <p class="feed-empty" id="deckEditorEmpty">Create a deck, or pick one on the left.</p>
+              <div id="deckEditor" hidden></div>
+            </div>
           </div>
         </section>
 
@@ -1881,6 +1928,8 @@
           </p>
         </section>
       </main>
+      <!-- A card's page, opened from Cards and Decks. -->
+      <div id="cardPage" class="card-page-overlay" hidden></div>
     </div>
     <script src="renderer.bundle.js"></script>
   </body>
