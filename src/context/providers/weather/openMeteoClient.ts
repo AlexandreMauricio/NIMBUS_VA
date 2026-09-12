@@ -3,7 +3,8 @@ import { describeWeatherCode } from "./weatherCodes";
 
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 import { httpTimeoutSignal } from "../../../common/timeout";
-const FORECAST_DAYS = 3;
+// A week: the Weather tab shows it; everything else reads only today.
+const FORECAST_DAYS = 7;
 
 interface OpenMeteoResponse {
   current: {

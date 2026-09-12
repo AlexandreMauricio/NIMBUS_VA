@@ -48,6 +48,16 @@ entirely on top of the [Context architecture](context-system.md). Nothing about
   exists) — `dateTime` and `system` are entirely unaffected. NIMBUS never
   fabricates weather data it doesn't have.
 
+## The Weather tab
+
+In the sidebar's **Admin** group: the current conditions (temperature,
+feels-like, today's high and low, rain chance, where and when it was
+read) and a card per day for the week ahead, with a day's rain chance
+highlighted from 50%. It reads the same weather result in the context
+snapshot that the briefing and Attention use, so it costs no extra
+request; **Refresh** re-reads the snapshot. The forecast is 7 days
+(`FORECAST_DAYS`); everything else only reads today's.
+
 ## Tests
 
 Weather-specific tests live alongside the other provider tests, run via

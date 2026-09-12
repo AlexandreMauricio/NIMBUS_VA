@@ -52,7 +52,12 @@ which modules are portable "Core" versus Windows-specific.
   controls and a playlist picker, the current activity (with the running
   timer and track), recent activity sessions, and an activity feed of
   routine suggestions, automatic runs and Attention notices.
-- **Calendar tab** — today's and upcoming events from your feeds.
+- **Calendar tab** — today's events (finished ones marked) and the next
+  90 days from your feeds.
+- **Weather tab** — now, and a card per day for the week ahead.
+- **Sidebar** — everyday tabs on top; Weather, Routines, Network, Memory,
+  Context and Settings in a foldable **Admin** group, which opens itself
+  when one of its tabs is opened from elsewhere.
 - **Tasks tab** — the full active Todoist list (list/grid, sorting) with
   create, edit, complete and delete, written straight to Todoist.
 - **Stocks tab** — positions you enter by hand, grouped into holdings,

@@ -18,6 +18,35 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.0 — 2026-09-13
+
+The milestone since 0.4.0: NIMBUS installs like a normal app, reminds you
+in time to leave, answers questions where it asks them, and has its first
+hobby — trading card collections.
+
+- **Weather tab**: current conditions and a card per day for the week
+  ahead (the forecast now covers 7 days), from the same weather result the
+  briefing uses.
+- **Sidebar groups fold.** Routines and Weather join Network, Memory,
+  Context and Settings in the **Admin** group, which folds away and
+  remembers it; opening one of its tabs from elsewhere unfolds it.
+- Since 0.4.0:
+  - **Installable**: a per-user Windows installer (`npm run package`),
+    Electron 33 → 44 with a clean `npm audit`, "Start with Windows" fixed
+    for both source and installed runs, and a clear message when
+    dependencies aren't installed.
+  - **Routines**: conditions as field → operator → value, with new ones
+    (time before/after, activity is not, Spotify playlist, timer state,
+    a device on the network) and `timer.pause` / `timer.resume`.
+  - **Calendar and Attention**: reminders pop up at a lead time you choose
+    (default an hour), the Calendar tab looks 90 days ahead, feed questions
+    have answer buttons, and popups are logged.
+  - **Collections**: trading cards for Magic, Pokémon, Yu-Gi-Oh!, Lorcana
+    and One Piece, from free card databases.
+  - **Quieter suggestions**: Windows helpers, NIMBUS itself and non-site
+    tabs no longer count towards "Make it an activity?".
+  - **Interface size**: 50–200%, with Ctrl+= / Ctrl+- / Ctrl+0.
+
 ## 0.4.11 — 2026-09-12
 
 - **Collections**: a new tab for trading cards. Search a game's card
