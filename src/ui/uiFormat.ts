@@ -131,6 +131,28 @@ export function formatEventDateLabel(iso: string, timezone: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * The two halves of a calendar row: the left column and what leads the
+ * line under the title. In Today the column is the time (or "All day");
+ * in Upcoming it is always the date — an all-day event without one would
+ * not say when it is — and the time, or "All day", moves under the title.
+ * A multi-day all-day event also says its last day (DTEND is exclusive).
+ */
+export function calendarEventWhen(
+  event: { startsAt: string; endsAt: string; isAllDay: boolean },
+  timezone: string,
+  showDate: boolean
+): { column: string; meta: string | null } {
+  if (!showDate) {
+    return { column: event.isAllDay ? "All day" : formatEventTime(event.startsAt, timezone), meta: null };
+  }
+  const column = formatEventDateLabel(event.startsAt, timezone);
+  if (!event.isAllDay) return { column, meta: formatEventTime(event.startsAt, timezone) };
+  const lastDayIso = new Date(new Date(event.endsAt).getTime() - 1).toISOString();
+  const lastDay = formatEventDateLabel(lastDayIso, timezone);
+  return { column, meta: lastDay === column ? "All day" : `All day, until ${lastDay}` };
+}
+
 /** What each routine history kind (routines/types.ts RoutineHistoryKind) means, in words. */
 const ROUTINE_HISTORY_LABELS: Record<string, string> = {
   matched: "Matched — suggestion on its way",

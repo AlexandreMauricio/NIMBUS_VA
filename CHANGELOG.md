@@ -18,6 +18,18 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.15 — 2026-09-13
+
+- **Upcoming all-day events say which day they're on.** The Calendar
+  tab's Upcoming list showed "All day" where the date belongs, so a
+  birthday or holiday gave no hint of when it was — easy to miss before,
+  and everywhere once recurring events started repeating in 0.5.11. The
+  date now always leads the row, with "All day" (or "All day, until
+  Fri 18 Sep" for a multi-day event) under the title, the way timed
+  events show their time.
+
+---
+
 ## 0.5.14 — 2026-09-13
 
 - **See what your routines decided.** The Routines tab has a **Recent

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  calendarEventWhen,
   formatContextValue,
   formatEventDateLabel,
   formatEventTime,
@@ -230,4 +231,36 @@ test("an unknown history kind still shows, as itself", () => {
     outcome: "somethingNew",
     tone: "neutral",
   });
+});
+
+// ----------------------------------------------------- calendarEventWhen
+
+const allDay = { startsAt: "2026-09-15T00:00:00.000Z", endsAt: "2026-09-16T00:00:00.000Z", isAllDay: true };
+
+test("an upcoming all-day event shows its date, with All day under the title", () => {
+  const when = calendarEventWhen(allDay, "UTC", true);
+  assert.equal(when.column, formatEventDateLabel(allDay.startsAt, "UTC"));
+  assert.equal(when.meta, "All day");
+});
+
+test("a multi-day all-day event says its last day, not the exclusive end", () => {
+  const trip = { ...allDay, endsAt: "2026-09-19T00:00:00.000Z" };
+  const when = calendarEventWhen(trip, "UTC", true);
+  assert.equal(when.meta, `All day, until ${formatEventDateLabel("2026-09-18T12:00:00.000Z", "UTC")}`);
+});
+
+test("an upcoming timed event shows its date, and its time under the title", () => {
+  const meeting = {
+    startsAt: "2026-09-15T14:30:00.000Z",
+    endsAt: "2026-09-15T15:00:00.000Z",
+    isAllDay: false,
+  };
+  assert.deepEqual(calendarEventWhen(meeting, "UTC", true), {
+    column: formatEventDateLabel(meeting.startsAt, "UTC"),
+    meta: formatEventTime(meeting.startsAt, "UTC"),
+  });
+});
+
+test("today's list keeps the time, or All day, in the column", () => {
+  assert.deepEqual(calendarEventWhen(allDay, "UTC", false), { column: "All day", meta: null });
 });

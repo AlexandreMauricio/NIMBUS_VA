@@ -1,7 +1,6 @@
 import {
+  calendarEventWhen,
   formatContextValue,
-  formatEventDateLabel,
-  formatEventTime,
   formatMs,
   formatTaskDue,
   maskAddress,
@@ -4089,11 +4088,8 @@ function renderEventList(
 
     const time = document.createElement("span");
     time.className = "calendar-event-time";
-    time.textContent = event.isAllDay
-      ? "All day"
-      : showDate
-        ? `${formatEventDateLabel(event.startsAt, timezone)}`
-        : formatEventTime(event.startsAt, timezone);
+    const when = calendarEventWhen(event, timezone, showDate);
+    time.textContent = when.column;
     row.appendChild(time);
 
     const body = document.createElement("div");
@@ -4105,7 +4101,7 @@ function renderEventList(
     body.appendChild(title);
 
     const metaParts: string[] = [];
-    if (showDate && !event.isAllDay) metaParts.push(formatEventTime(event.startsAt, timezone));
+    if (when.meta) metaParts.push(when.meta);
     if (event.location) metaParts.push(event.location);
     if (event.calendarName) metaParts.push(event.calendarName);
     if (ended) metaParts.unshift("Ended");
