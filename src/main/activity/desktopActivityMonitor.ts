@@ -35,9 +35,55 @@ const MAX_SESSION_FAILURES = 3;
 const POWERSHELL_SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'
 $procs = Get-Process | Select-Object -ExpandProperty ProcessName -Unique
-$browsers = Get-Process -Name chrome,msedge,firefox,brave,opera -ErrorAction SilentlyContinue |
-  Where-Object { $_.MainWindowTitle } |
-  Select-Object ProcessName, MainWindowTitle
+# Every visible browser window's title, not just each browser's "main"
+# window: Get-Process's MainWindowTitle is one window per browser, so a
+# site in a second window went unseen. Titles only, as before.
+if (-not ('NimbusWindows' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class NimbusWindows {
+  delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr hWnd);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int max);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  public static List<KeyValuePair<uint, string>> Titles() {
+    var result = new List<KeyValuePair<uint, string>>();
+    EnumWindows((h, l) => {
+      if (!IsWindowVisible(h)) return true;
+      int length = GetWindowTextLength(h);
+      if (length <= 0) return true;
+      var text = new StringBuilder(length + 1);
+      GetWindowText(h, text, text.Capacity);
+      uint pid;
+      GetWindowThreadProcessId(h, out pid);
+      result.Add(new KeyValuePair<uint, string>(pid, text.ToString()));
+      return true;
+    }, IntPtr.Zero);
+    return result;
+  }
+}
+'@
+}
+$browserPids = @{}
+Get-Process -Name chrome,msedge,firefox,brave,opera -ErrorAction SilentlyContinue |
+  ForEach-Object { $browserPids[[uint32]$_.Id] = $_.ProcessName }
+$browsers = @()
+try {
+  foreach ($w in [NimbusWindows]::Titles()) {
+    if ($browserPids.ContainsKey($w.Key)) {
+      $browsers += [pscustomobject]@{ ProcessName = $browserPids[$w.Key]; MainWindowTitle = $w.Value }
+    }
+  }
+} catch {
+  $browsers = Get-Process -Name chrome,msedge,firefox,brave,opera -ErrorAction SilentlyContinue |
+    Where-Object { $_.MainWindowTitle } |
+    Select-Object ProcessName, MainWindowTitle
+}
 # Programs with a visible window, and their description — kept only by the
 # opt-in app-usage tally.
 $windowed = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } |

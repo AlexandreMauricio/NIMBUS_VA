@@ -184,3 +184,8 @@ test("tabs that aren't a site - an address, search results, a new tab, NIMBUS - 
   }
   assert.equal(siteFromTitle("Some video - YouTube - Google Chrome"), "YouTube", "real sites still count");
 });
+
+test("Portuguese Edge profile names are not taken for the site", () => {
+  assert.equal(siteFromTitle("Second page - SiteTwo - Pessoal - Microsoft​ Edge"), "SiteTwo");
+  assert.equal(siteFromTitle("First page - SiteOne - Perfil 1 - Microsoft​ Edge"), "SiteOne");
+});

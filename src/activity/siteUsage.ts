@@ -67,7 +67,10 @@ const DAY_MS = 24 * 60 * 60_000;
 /** The browser's own name, which browsers append to every title. */
 const BROWSER_SUFFIX = /\s[-–—]\s(?:google chrome|microsoft\S?\s?edge|mozilla firefox|firefox|brave|opera)$/i;
 /** Edge's extra title parts: "… and 3 more pages - Personal - Microsoft Edge". */
-const EDGE_PROFILE = /\s[-–—]\s(?:personal|work|profile \d+)$/i;
+// Default profile names in the languages NIMBUS is used in (Portuguese
+// Windows titles them "Pessoal" and "Perfil 1").
+const EDGE_PROFILE =
+  /\s[-–—]\s(?:personal|work|profile \d+|pessoal|trabalho|perfil \d+|trabajo|personnel|travail|profil \d+|persönlich|arbeit)$/i;
 const EDGE_MORE_PAGES = /\s+and \d+ more pages?$/i;
 /** Where sites separate the page from their name. Deliberately not ":" — too common inside names. */
 const SEPARATOR = /\s[-|–—·•]\s/;

@@ -18,6 +18,16 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.5 — 2026-09-13
+
+- **Fix: websites in a second browser window weren't counted.** NIMBUS
+  read one title per browser (Windows' "main window"), so a site open in
+  another Chrome or Edge window was missed that day — a site used three
+  days in a row could show two. Every visible browser window is read now,
+  still by title only.
+- **Fix: Edge profile names in Portuguese** ("Pessoal", "Perfil 1") and
+  other languages are no longer mistaken for the site's name.
+
 ## 0.5.4 — 2026-09-13
 
 - **Home redesign.** The day on the left (briefing, current activity,
