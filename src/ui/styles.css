@@ -3470,3 +3470,128 @@ details.context-card > summary .context-card-title {
 .book-edition-title {
   font-weight: 600;
 }
+
+/* Books: the GCD picker, the book page's tools and read checkboxes. */
+.book-series-pick,
+.book-volume-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.book-series-pick:hover,
+.book-volume:hover {
+  border-color: var(--color-divider);
+}
+
+.book-volume-pick {
+  background: none;
+  border: none;
+}
+
+.book-series-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.book-series-header {
+  gap: 4px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.book-series-header .books-back {
+  margin-bottom: var(--space-2);
+}
+
+#bookSeriesResults,
+#bookVolumeResults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.book-volume {
+  gap: 0;
+  padding: 0;
+  border: 1px solid transparent;
+}
+
+.book-volume-preview {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.book-volume-layout {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.book-volume-cover {
+  width: 110px;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.book-volume-contents {
+  opacity: 1;
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+
+.books-hero-cover-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.books-hero-cover-column .books-hero-cover {
+  width: 100%;
+}
+
+.books-cover-button {
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.books-cover-button:hover .books-cover {
+  outline: 2px solid var(--color-accent);
+}
+
+.books-cover-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.books-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  float: right;
+  margin-left: var(--space-4);
+}
+
+.books-read-check {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.books-issue-read .books-issue-title {
+  color: var(--color-neutral-400);
+}

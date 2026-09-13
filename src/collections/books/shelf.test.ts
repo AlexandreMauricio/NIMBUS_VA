@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bookIssues, bookOverlap, groupShelf, shelfName, shelfStats } from "./shelf";
+import {
+  bookIssues,
+  bookOverlap,
+  bookProgress,
+  groupShelf,
+  readingStatus,
+  shelfName,
+  shelfStats,
+} from "./shelf";
 import { creditNames, mapGcdIssueDetail, pickIssue } from "./gcd";
 import { coverUrlForIsbn, isCoverUrl } from "./bookService";
 import { parseRuns } from "./runs";
@@ -57,7 +65,11 @@ test("Thor's Epic, Omnibus and a wishlisted Masterworks sit in one group", () =>
     ]
   );
   assert.equal(groups[1].coverUrl, epic.coverUrl);
-  assert.equal(groups[1].progress, 60);
+  assert.equal(
+    groups[1].progress,
+    null,
+    "a book with issues takes its progress from the issues read, not a percentage"
+  );
   assert.equal(groups[0].kind, "manga");
 
   const { issues } = bookIssues(epic, [epic, omni, wish, manga]);
@@ -75,7 +87,7 @@ test("Thor's Epic, Omnibus and a wishlisted Masterworks sit in one group", () =>
   const stats = shelfStats([epic, omni, wish, manga]);
   assert.deepEqual(stats, {
     owned: 3,
-    reading: 1,
+    reading: 0,
     finished: 0,
     wishlist: 1,
     byKind: { comic: 2, manga: 1, novel: 0 },
@@ -170,4 +182,34 @@ test("GCD issue: credits merged per person, ads left out, the plain printing pic
   assert.deepEqual(pickIssue(series, "Thor", 1966, 337), { seriesId: 2, issueId: 11 });
   assert.equal(pickIssue(series, "Thor", 1998, 337), null);
   assert.equal(pickIssue(series, "Thor", 1966, 999), null);
+});
+
+test("progress and status: from the issues read when a book has them, else the percentage set", () => {
+  const epic = book("Thor Epic Collection", "1", "Journey Into Mystery (1952) #83-86");
+  const novel = book("Project Hail Mary", null, "", { kind: "novel", progress: 80 });
+  const read = new Set(["journey into mystery (1952)#83"]);
+  assert.equal(bookProgress(epic, [epic, novel], read).percent, 25);
+  assert.equal(bookProgress(novel, [epic, novel], read).percent, 80);
+  assert.equal(bookIssues(epic, [epic], read).issues[0].read, true);
+  assert.equal(bookIssues(epic, [epic], read).issues[1].read, false);
+  // A key saved without a year still counts once the year is known.
+  assert.equal(bookIssues(epic, [epic], new Set(["journey into mystery#84"])).issues[1].read, true);
+  assert.deepEqual(
+    [null, 0, 25, 100].map((p) => readingStatus(p)),
+    ["Not started", "Not started", "Reading", "Read"]
+  );
+  const stats = shelfStats([epic, novel], read);
+  assert.equal(stats.reading, 2);
+  assert.equal(stats.finished, 0);
+  assert.equal(groupShelf([epic], [epic], read)[0].progress, 25);
+});
+
+test("chosen covers are only ever this app's own address for that book", async () => {
+  const { chosenCoverUrl, isChosenCover } = await import("./covers");
+  assert.equal(chosenCoverUrl("b1", 5), "nimbus-cover://cover/b1.jpg?v=5");
+  assert.equal(chosenCoverUrl("../../etc", 5), null);
+  assert.ok(isCoverUrl("nimbus-cover://cover/b1.jpg?v=5"));
+  assert.ok(isChosenCover("nimbus-cover://cover/b1.jpg"));
+  assert.ok(!isCoverUrl("nimbus-cover://cover/../secret.jpg"));
+  assert.ok(!isCoverUrl("nimbus-cover://elsewhere/b1.jpg"));
 });

@@ -108,8 +108,15 @@ page names what to look up; the main process builds the link, for those
 two sites only. An issue without a year in its run is only found when
 GCD's first page of results holds that exact series name.
 
-**Reading progress** is a percentage per book; anything between 0 and 100
-is on the Reading page. **Novels** are a third kind, typed in by hand.
+**Reading.** Issues are marked read one by one (a checkbox on the book's
+page, or "Mark as read" on the issue's), and kept for the shelf — read in
+the Epic Collection is read in the Omnibus. A book with issues takes its
+progress from them; a novel or a book without issues keeps a percentage.
+Status follows: Not started, Reading, Read.
+
+**Covers you choose** are resized to 600 px, saved in
+`<userData>/book-covers/<book id>.jpg` and shown through the
+`nimbus-cover://` scheme, which serves only that folder. **Novels** are a third kind, typed in by hand.
 
 **Covers** come from Open Library's cover service by ISBN, looked for
 once a session per book with an ISBN, a second apart. GCD's own cover

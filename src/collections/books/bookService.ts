@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import { logger } from "../../logging/logger";
 import { computeCoverage, SeriesCoverage } from "./coverage";
-import { parseRuns } from "./runs";
+import { isChosenCover, isCoverUrl } from "./covers";
+import { parseRuns, seriesKey } from "./runs";
 import {
   BOOK_FORMATS,
   Book,
@@ -76,24 +77,7 @@ function readProgress(value: unknown): number | null {
     : null;
 }
 
-/**
- * Covers come from Open Library's cover service, by ISBN, and nowhere else.
- * (GCD's own cover images refuse anything but a person's browser.)
- */
-export function isCoverUrl(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^https:\/\/covers\.openlibrary\.org\/b\/isbn\/[0-9X]{10,13}-M\.jpg$/.test(value)
-  );
-}
-
-/** The Open Library cover address for an ISBN, or null if it isn't one. */
-export function coverUrlForIsbn(isbn: string | null): string | null {
-  const digits = (isbn ?? "").replace(/[^0-9Xx]/g, "").toUpperCase();
-  return /^(?:\d{9}[\dX]|\d{13})$/.test(digits)
-    ? `https://covers.openlibrary.org/b/isbn/${digits}-M.jpg`
-    : null;
-}
+export { coverUrlForIsbn, isCoverUrl } from "./covers";
 
 export interface BookFilter {
   kind?: BookKind;
@@ -108,8 +92,21 @@ export interface BookFilter {
  * and kept as parsed runs; whatever couldn't be read is handed back so the
  * form can say so.
  */
+/** How an issue is remembered as read: its series (with year when known) and number. */
+export function issueReadKey(series: string, year: number | null, number: number): string {
+  return `${seriesKey(series, year)}#${number}`;
+}
+
+const MAX_READ_ISSUES = 100_000;
+
 export class BookService {
   private books: Book[] = [];
+  /**
+   * Issues you've read, by issueReadKey. Kept for the shelf rather than a
+   * book: reading Journey Into Mystery #83 in the Epic Collection means
+   * you've read it in the Omnibus too.
+   */
+  private readIssues = new Set<string>();
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -137,6 +134,12 @@ export class BookService {
         }
       }
       if (skipped > 0) logger.warn(`Skipped ${skipped} malformed book${skipped === 1 ? "" : "s"}`);
+    }
+    const read = raw && typeof raw === "object" ? (raw as { readIssues?: unknown }).readIssues : null;
+    if (Array.isArray(read)) {
+      for (const key of read.slice(0, MAX_READ_ISSUES)) {
+        if (typeof key === "string" && key.length <= 250 && /#\d+$/.test(key)) this.readIssues.add(key);
+      }
     }
   }
 
@@ -207,7 +210,45 @@ export class BookService {
     return { ...book, runs: book.runs.map((run) => ({ ...run })) };
   }
 
-  /** The cover the main process found. Not part of the form: only an Open Library cover address is kept. */
+  /** Issues marked read, as issueReadKey strings. */
+  readIssueKeys(): string[] {
+    return [...this.readIssues];
+  }
+
+  /**
+   * Marks issues read or unread. Each is {series, year, number} — the same
+   * shape a book's issue list gives — and at most 5000 at once.
+   */
+  setIssuesRead(issues: unknown, read: unknown): number {
+    if (!Array.isArray(issues) || typeof read !== "boolean") throw new Error("Nothing to mark.");
+    let changed = 0;
+    for (const raw of issues.slice(0, 5000)) {
+      if (!raw || typeof raw !== "object") continue;
+      const r = raw as Record<string, unknown>;
+      if (typeof r.series !== "string" || !r.series.trim() || r.series.length > 200) continue;
+      const year =
+        Number.isInteger(r.year) && (r.year as number) >= 1800 && (r.year as number) <= 2200
+          ? (r.year as number)
+          : null;
+      if (!Number.isInteger(r.number) || (r.number as number) < 0 || (r.number as number) > 100_000) continue;
+      const keys = [issueReadKey(r.series, year, r.number as number)];
+      // A year learnt later shouldn't make an issue read without one look unread.
+      if (year !== null) keys.push(issueReadKey(r.series, null, r.number as number));
+      for (const key of keys) {
+        if (read && key === keys[0] && !this.readIssues.has(key)) {
+          if (this.readIssues.size >= MAX_READ_ISSUES) break;
+          this.readIssues.add(key);
+          changed++;
+        } else if (!read && this.readIssues.delete(key)) {
+          changed++;
+        }
+      }
+    }
+    if (changed) this.save();
+    return changed;
+  }
+
+  /** The cover the main process found or you chose. Only an Open Library or chosen-cover address is kept. */
   setCover(id: string, coverUrl: string | null): void {
     const book = this.books.find((b) => b.id === id);
     if (!book || (coverUrl !== null && !isCoverUrl(coverUrl)) || book.coverUrl === coverUrl) return;
@@ -276,15 +317,19 @@ export class BookService {
             ? null
             : readProgress(Number(i.progress))
           : (current?.progress ?? null),
-        // A different ISBN means a different cover — looked for again later.
-        coverUrl: has("isbn") && isbn !== current?.isbn ? null : (current?.coverUrl ?? null),
+        // A different ISBN means a different cover — looked for again later —
+        // unless it's a picture you chose.
+        coverUrl:
+          has("isbn") && isbn !== current?.isbn && !isChosenCover(current?.coverUrl)
+            ? null
+            : (current?.coverUrl ?? null),
       },
       unread,
     };
   }
 
   private save(): void {
-    const state: BookState = { version: 1, books: this.books };
+    const state: BookState = { version: 1, books: this.books, readIssues: [...this.readIssues] };
     try {
       this.store?.save(state);
     } catch (err) {

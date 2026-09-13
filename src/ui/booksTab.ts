@@ -14,8 +14,11 @@
  * and the main process builds every address.
  */
 import { formatRuns, parseRuns } from "../collections/books/runs";
+import { coverUrlForIsbn, isChosenCover } from "../collections/books/covers";
 import {
   bookIssues,
+  bookProgress,
+  readingStatus,
   bookOverlap,
   groupShelf,
   shelfName,
@@ -30,7 +33,12 @@ interface GcdSeriesUI {
   id: number;
   name: string;
   yearBegan: number | null;
+  yearEnded: number | null;
   publisher: string | null;
+  binding: string | null;
+  publishingFormat: string | null;
+  language: string | null;
+  dimensions: string | null;
   volumes: Array<{ issueId: number; descriptor: string }>;
 }
 
@@ -40,6 +48,9 @@ interface GcdVolumeUI {
   descriptor: string;
   isbn: string | null;
   publisher: string | null;
+  publicationDate: string | null;
+  pageCount: number | null;
+  price: string | null;
   format: string;
   runs: Book["runs"];
   unread: string[];
@@ -66,7 +77,13 @@ interface EditionUI extends ContentsUI {
 interface BooksBridge {
   getBooks(
     filter: Record<string, unknown>
-  ): Promise<{ books: Book[]; coverage: SeriesCoverage[]; formats: string[] }>;
+  ): Promise<{ books: Book[]; coverage: SeriesCoverage[]; formats: string[]; readIssues: string[] }>;
+  setIssuesRead(
+    issues: Array<{ series: string; year: number | null; number: number }>,
+    read: boolean
+  ): Promise<number>;
+  chooseBookCover(id: string): Promise<boolean>;
+  clearBookCover(id: string): Promise<boolean>;
   searchComicSeries(name: string): Promise<GcdSeriesUI[]>;
   getComicVolume(issueId: number): Promise<GcdVolumeUI>;
   getComicIssue(series: string, year: number | null, number: number): Promise<GcdIssueDetail | null>;
@@ -231,6 +248,9 @@ export function initBooksTab(): void {
 
   let books: Book[] = [];
   let coverage: SeriesCoverage[] = [];
+  /** Issues read, shared by every book that collects them. */
+  let readIssues: ReadonlySet<string> = new Set();
+  const progressOf = (book: Book) => bookProgress(book, books, readIssues);
   let formatsFilled = false;
   let pane: Pane = "shelf";
   let page: Page = { view: "shelf" };
@@ -257,6 +277,7 @@ export function initBooksTab(): void {
       const view = await bridge().getBooks({});
       books = view.books;
       coverage = view.coverage;
+      readIssues = new Set(view.readIssues ?? []);
       if (!formatsFilled) {
         formatsFilled = true;
         for (const name of view.formats) format.appendChild(new Option(name, name));
@@ -310,7 +331,7 @@ export function initBooksTab(): void {
 
     if (pane === "shelf") {
       grid.replaceChildren();
-      const groups = groupShelf(filtered());
+      const groups = groupShelf(filtered(), books, readIssues);
       empty.hidden = groups.length > 0;
       for (const group of groups) {
         const card = make("button", "books-card");
@@ -340,11 +361,17 @@ export function initBooksTab(): void {
     } else if (pane === "reading") {
       readingList.replaceChildren();
       const reading = books
-        .filter((b) => b.progress !== null && b.progress > 0 && b.progress < 100)
-        .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
+        .map((book) => ({ book, percent: progressOf(book).percent }))
+        .filter((entry) => readingStatus(entry.percent) === "Reading")
+        .sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0))
+        .map((entry) => entry.book);
       if (!reading.length) {
         readingList.appendChild(
-          make("p", "feed-empty", "Nothing in progress. Open a book and set how far you've read.")
+          make(
+            "p",
+            "feed-empty",
+            "Nothing in progress. Open a book and tick the issues you've read — or set how far you are in a novel."
+          )
         );
       }
       for (const book of reading) readingList.appendChild(bookRow(book, "reading"));
@@ -374,8 +401,18 @@ export function initBooksTab(): void {
     const meta = [book.author ?? book.publisher, book.format].filter(Boolean).join(" · ");
     body.appendChild(make("p", "card-meta books-row-meta", meta));
     if (kindOfRow === "reading") {
+      const progress = progressOf(book);
       const line = make("div", "books-progress-line");
-      line.append(progressBar(book.progress ?? 0), make("span", "books-small", `${book.progress}%`));
+      line.append(
+        progressBar(progress.percent ?? 0),
+        make(
+          "span",
+          "books-small",
+          progress.fromIssues
+            ? `${progress.readIssues} of ${progress.totalIssues} issues read`
+            : `${progress.percent}%`
+        )
+      );
       body.appendChild(line);
     } else {
       const overlap = bookOverlap(book, books);
@@ -393,7 +430,7 @@ export function initBooksTab(): void {
     }
     row.appendChild(body);
     if (kindOfRow === "reading") {
-      row.appendChild(progressEditor(book));
+      if (!progressOf(book).fromIssues) row.appendChild(progressEditor(book));
     } else {
       row.appendChild(make("span", `tag ${KIND_TAG[book.kind]}`, KIND_LABEL[book.kind]));
       const got = make("button", "btn btn-secondary", "Mark owned");
@@ -427,7 +464,7 @@ export function initBooksTab(): void {
   }
 
   function renderStats(): void {
-    const stats = shelfStats(books);
+    const stats = shelfStats(books, readIssues);
     statsEl.replaceChildren();
     const tiles = make("div", "books-stat-tiles");
     for (const [label, value] of [
@@ -506,7 +543,9 @@ export function initBooksTab(): void {
   // ----------------------------------------------------------------- series
 
   function renderSeries(name: string): void {
-    const members = groupShelf(books).find((g) => g.name.toLowerCase() === name.toLowerCase());
+    const members = groupShelf(books, books, readIssues).find(
+      (g) => g.name.toLowerCase() === name.toLowerCase()
+    );
     detailView.replaceChildren(backLink("Back to books", () => go({ view: "shelf" })));
     if (!members) {
       detailView.appendChild(make("p", "feed-empty", "Nothing on the shelf under that name any more."));
@@ -547,13 +586,16 @@ export function initBooksTab(): void {
       const line = make("div", "books-progress-line");
       if (book.status === "owned") {
         const overlap = bookOverlap(book, books);
-        if (book.progress !== null) line.appendChild(progressBar(book.progress));
+        const progress = progressOf(book);
+        const status = readingStatus(progress.percent);
+        if (progress.percent !== null && progress.percent > 0)
+          line.appendChild(progressBar(progress.percent));
         line.append(
           make(
             "span",
             "books-small",
             [
-              book.progress === null ? "Owned" : book.progress === 100 ? "Read" : `${book.progress}% read`,
+              status === "Reading" ? `Reading · ${progress.percent}%` : status,
               overlap.ownedElsewhere
                 ? `${overlap.ownedElsewhere} of ${overlap.issues} issues also in other books`
                 : null,
@@ -598,11 +640,49 @@ export function initBooksTab(): void {
       detailView.appendChild(make("p", "feed-empty", "That book is no longer on the shelf."));
       return;
     }
-    const { issues, truncated } = bookIssues(book, books);
+    const { issues, truncated } = bookIssues(book, books, readIssues);
+    const progress = progressOf(book);
+    const status = readingStatus(progress.percent);
 
     const hero = make("div", "books-hero");
-    hero.appendChild(cover(book.coverUrl, book.title, "books-cover books-hero-cover"));
+    const coverColumn = make("div", "books-hero-cover-column");
+    const coverButton = make("button", "books-cover-button");
+    coverButton.type = "button";
+    coverButton.title = "Change the cover";
+    coverButton.appendChild(cover(book.coverUrl, book.title, "books-cover books-hero-cover"));
+    const changeCover = async () => {
+      try {
+        if (await bridge().chooseBookCover(book.id)) await load();
+      } catch (err) {
+        show(errorEl, errorText(err));
+      }
+    };
+    coverButton.addEventListener("click", () => void changeCover());
+    coverColumn.appendChild(coverButton);
+    const coverTools = make("div", "books-cover-tools");
+    const changeBtn = make("button", "btn btn-ghost", book.coverUrl ? "Change cover" : "Add a cover");
+    changeBtn.type = "button";
+    changeBtn.addEventListener("click", () => void changeCover());
+    coverTools.appendChild(changeBtn);
+    if (isChosenCover(book.coverUrl) || (book.coverUrl && coverUrlForIsbn(book.isbn) === book.coverUrl)) {
+      const reset = make(
+        "button",
+        "btn btn-ghost",
+        isChosenCover(book.coverUrl) ? (book.isbn ? "Use the ISBN's cover" : "Remove cover") : "Remove cover"
+      );
+      reset.type = "button";
+      reset.addEventListener("click", () => void act(() => bridge().clearBookCover(book.id)));
+      coverTools.appendChild(reset);
+    }
+    coverColumn.appendChild(coverTools);
+    hero.appendChild(coverColumn);
     const info = make("div", "books-hero-info");
+    const toolbar = make("div", "books-toolbar");
+    const editTop = make("button", "btn btn-secondary", "Edit details");
+    editTop.type = "button";
+    editTop.addEventListener("click", () => openEditor(book));
+    toolbar.appendChild(editTop);
+    info.appendChild(toolbar);
     const kindText =
       book.kind === "comic"
         ? book.runs.length > 1 || issues.length > 1
@@ -630,7 +710,8 @@ export function initBooksTab(): void {
       item.append(make("span", "books-fact-label", label), make("span", "books-fact-value", value));
       facts.appendChild(item);
     };
-    fact("Status", book.status === "owned" ? "Owned" : "Wishlist");
+    fact("Shelf", book.status === "owned" ? "Owned" : "Wishlist");
+    fact("Reading", status === "Reading" ? `Reading · ${progress.percent}%` : status);
     if (issues.length) {
       const twice = issues.filter((i) => i.copies > 1).length;
       const elsewhere = issues.filter((i) => i.elsewhere.some((b) => b.status === "owned")).length;
@@ -648,8 +729,28 @@ export function initBooksTab(): void {
 
     const progressLine = make("div", "books-progress-line books-hero-progress");
     progressLine.append(make("span", "books-fact-label", "Reading progress"));
-    if (book.progress !== null) progressLine.appendChild(progressBar(book.progress));
-    progressLine.appendChild(progressEditor(book));
+    if (progress.fromIssues) {
+      progressLine.append(
+        progressBar(progress.percent ?? 0),
+        make("span", "books-small", `${progress.readIssues} of ${progress.totalIssues} issues read`)
+      );
+      const all = issues.map((i) => ({ series: i.series, year: i.year, number: i.number }));
+      if (progress.readIssues < progress.totalIssues) {
+        const allRead = make("button", "btn btn-ghost", "Mark all read");
+        allRead.type = "button";
+        allRead.addEventListener("click", () => void act(() => bridge().setIssuesRead(all, true)));
+        progressLine.appendChild(allRead);
+      }
+      if (progress.readIssues > 0) {
+        const noneRead = make("button", "btn btn-ghost", "Mark all unread");
+        noneRead.type = "button";
+        noneRead.addEventListener("click", () => void act(() => bridge().setIssuesRead(all, false)));
+        progressLine.appendChild(noneRead);
+      }
+    } else {
+      if (book.progress !== null) progressLine.appendChild(progressBar(book.progress));
+      progressLine.appendChild(progressEditor(book));
+    }
     info.appendChild(progressLine);
     hero.appendChild(info);
     detailView.appendChild(hero);
@@ -738,21 +839,37 @@ export function initBooksTab(): void {
       page = { view: "shelf" };
       await load();
     });
-    const edit = make("button", "btn btn-secondary", "Edit details");
-    edit.type = "button";
-    edit.addEventListener("click", () => {
-      editingId = book.id;
-      source = book.source;
-      returnTo = { view: "book", id: book.id };
-      go({ view: "add" });
-      openForm(book, null);
-    });
-    actions.append(move, remove, edit);
+    actions.append(move, remove);
     detailView.appendChild(actions);
   }
 
+  /** The add form, filled with a book, to change anything about it. */
+  function openEditor(book: Book): void {
+    editingId = book.id;
+    source = book.source;
+    returnTo = { view: "book", id: book.id };
+    go({ view: "add" });
+    openForm(book, null);
+  }
+
   function issueRow(book: Book, issue: BookIssue): HTMLElement {
-    const row = make("div", "books-issue");
+    const row = make("div", `books-issue${issue.read ? " books-issue-read" : ""}`);
+    const check = make("input", "books-read-check");
+    check.type = "checkbox";
+    check.checked = issue.read;
+    check.title = issue.read ? "Read — untick to mark unread" : "Mark as read";
+    check.setAttribute("aria-label", `Read ${issue.series} #${issue.number}`);
+    check.addEventListener(
+      "change",
+      () =>
+        void act(() =>
+          bridge().setIssuesRead(
+            [{ series: issue.series, year: issue.year, number: issue.number }],
+            check.checked
+          )
+        )
+    );
+    row.appendChild(check);
     row.appendChild(make("span", "books-issue-num", `#${issue.number}`));
     const name = make(
       "button",
@@ -801,6 +918,11 @@ export function initBooksTab(): void {
     info.appendChild(metaLine);
 
     // What your shelf says about it, without waiting for GCD.
+    const thisIssue = book
+      ? bookIssues(book, books, readIssues).issues.find(
+          (i) => i.number === target.number && i.series.toLowerCase() === target.series.toLowerCase()
+        )
+      : undefined;
     const holders = books.filter(
       (b) =>
         b.status === "owned" &&
@@ -819,7 +941,35 @@ export function initBooksTab(): void {
     };
     addFact("Copies owned", String(holders.length));
     if (holders.length) addFact("Collected in", holders.map((b) => bookTitle(b)).join(", "));
+    addFact("Read", thisIssue?.read ? "Yes" : "Not yet");
     info.appendChild(facts);
+
+    const readTools = make("div", "books-actions books-actions-start");
+    const toggleRead = make(
+      "button",
+      thisIssue?.read ? "btn btn-ghost" : "btn btn-primary",
+      thisIssue?.read ? "Mark as unread" : "Mark as read"
+    );
+    toggleRead.type = "button";
+    toggleRead.addEventListener(
+      "click",
+      () =>
+        void act(() =>
+          bridge().setIssuesRead(
+            [{ series: target.series, year: target.year, number: target.number }],
+            !thisIssue?.read
+          )
+        )
+    );
+    readTools.appendChild(toggleRead);
+    if (book) {
+      const fix = make("button", "btn btn-ghost", "Edit this book's issues");
+      fix.type = "button";
+      fix.title = "The issue's series, year and number come from what the book collects";
+      fix.addEventListener("click", () => openEditor(book));
+      readTools.appendChild(fix);
+    }
+    info.appendChild(readTools);
 
     const links = make("div", "books-actions books-actions-start");
     const locg = make("button", "btn btn-secondary", "League of Comic Geeks");
@@ -1062,12 +1212,12 @@ export function initBooksTab(): void {
         found.length ? "On the Grand Comics Database — pick a series:" : "No series by that name on GCD."
       );
       for (const series of found) {
-        const pick = make(
-          "button",
-          "btn btn-ghost book-pick",
-          `${series.name}${series.yearBegan ? ` (${series.yearBegan})` : ""} — ${volumeCount(series)}`
-        );
+        const pick = make("button", "card book-series-pick");
         pick.type = "button";
+        pick.append(
+          make("span", "book-series-name", series.name),
+          make("span", "books-small", seriesFacts(series).join(" · "))
+        );
         pick.addEventListener("click", () => showVolumes(series));
         seriesResults.appendChild(pick);
       }
@@ -1078,46 +1228,164 @@ export function initBooksTab(): void {
     }
   }
 
+  /** "Marvel · 2024– · hardcover with dustjacket · collected edition · 1 volume (2 printings)". */
+  function seriesFacts(series: GcdSeriesUI): string[] {
+    const years = series.yearBegan
+      ? series.yearEnded && series.yearEnded !== series.yearBegan
+        ? `${series.yearBegan}–${series.yearEnded}`
+        : series.yearEnded
+          ? `${series.yearBegan}`
+          : `${series.yearBegan}–`
+      : null;
+    return [
+      series.publisher,
+      years,
+      series.binding,
+      series.publishingFormat,
+      volumeCount(series),
+      series.language && series.language !== "en" ? series.language.toUpperCase() : null,
+    ].filter((part): part is string => !!part);
+  }
+
+  /** GCD volumes already read this session, so opening one twice doesn't ask GCD again. */
+  const volumeCache = new Map<number, GcdVolumeUI>();
+
   function showVolumes(series: GcdSeriesUI): void {
     seriesResults.replaceChildren();
-    show(searchStatus, `${series.name}: pick a volume`);
+    show(searchStatus, null);
     volumeResults.replaceChildren();
+
+    const header = make("div", "card book-series-header");
+    const back = make("button", "books-back", "← Other series");
+    back.type = "button";
+    back.addEventListener("click", () => void searchSeries());
+    header.append(
+      back,
+      make("span", "book-series-name", series.name),
+      make("span", "books-small", seriesFacts(series).join(" · "))
+    );
+    if (series.dimensions) header.appendChild(make("span", "books-small", `Size: ${series.dimensions}`));
+    volumeResults.appendChild(header);
+    volumeResults.appendChild(
+      make("p", "setting-note", "Pick a volume to see its details before adding it.")
+    );
+
     for (const entry of series.volumes) {
-      // "1 [Direct]" is the same volume with the direct-market cover.
-      const pick = make(
-        "button",
-        "btn btn-ghost book-pick",
-        entry.descriptor.replace(/\s*\[Direct\]\s*$/i, " — direct market cover")
-      );
+      const direct = /\[Direct\]\s*$/i.test(entry.descriptor);
+      const variant = entry.descriptor.match(/\[([^\]]+)\]\s*$/)?.[1] ?? null;
+      const number = entry.descriptor.replace(/\s*\[[^\]]*\]\s*$/, "");
+      const item = make("div", "card book-volume");
+      const pick = make("button", "book-volume-pick");
       pick.type = "button";
-      pick.addEventListener("click", async () => {
-        show(searchStatus, "Reading that volume from GCD…");
-        try {
-          const found = await bridge().getComicVolume(entry.issueId);
-          editingId = null;
-          source = `gcd:${found.issueId}`;
-          volumeResults.replaceChildren();
-          show(searchStatus, null);
-          openForm(
-            {
-              kind: "comic",
-              title: found.seriesName,
-              volume: found.descriptor,
-              format: found.format as Book["format"],
-              publisher: found.publisher ?? series.publisher ?? "",
-              isbn: found.isbn,
-              runs: found.runs,
-            },
-            found.runs.length
-              ? `Contents filled in from ${found.contentsFrom === "gcd" ? "GCD's note" : `Wikipedia's ${found.contentsFrom} list`}${found.unread.length ? `, except: ${found.unread.join(", ")}` : ""}. Check it matches your copy.`
-              : "Neither GCD nor Wikipedia's lists say what this volume collects — type the issue runs below."
-          );
-        } catch (err) {
-          show(searchStatus, errorText(err));
+      pick.append(
+        make("span", "book-series-name", /^\d+$/.test(number) ? `Vol. ${number}` : number),
+        make(
+          "span",
+          "books-small",
+          direct
+            ? "Direct market printing — the comic-shop cover"
+            : variant
+              ? `${variant} printing`
+              : "Standard printing"
+        )
+      );
+      const preview = make("div", "book-volume-preview");
+      preview.hidden = true;
+      pick.addEventListener("click", () => {
+        if (!preview.hidden) {
+          preview.hidden = true;
+          return;
         }
+        preview.hidden = false;
+        void showVolumePreview(series, entry.issueId, preview);
       });
-      volumeResults.appendChild(pick);
+      item.append(pick, preview);
+      volumeResults.appendChild(item);
     }
+  }
+
+  /** A volume's details — cover, ISBN, pages, date, what it collects — with "Add". */
+  async function showVolumePreview(series: GcdSeriesUI, issueId: number, into: HTMLElement): Promise<void> {
+    into.replaceChildren(make("p", "books-small", "Reading that volume from GCD…"));
+    let found: GcdVolumeUI;
+    try {
+      found = volumeCache.get(issueId) ?? (await bridge().getComicVolume(issueId));
+      volumeCache.set(issueId, found);
+    } catch (err) {
+      into.replaceChildren(make("p", "form-error", errorText(err)));
+      return;
+    }
+    const label = `${found.seriesName} ${found.descriptor}`;
+    const layout = make("div", "book-volume-layout");
+    layout.appendChild(cover(coverUrlForIsbn(found.isbn), label, "books-cover book-volume-cover"));
+    const body = make("div", "books-row-body");
+    const facts = make("div", "books-facts");
+    const fact = (name: string, value: string | null) => {
+      if (!value) return;
+      const item = make("div");
+      item.append(make("span", "books-fact-label", name), make("span", "books-fact-value", value));
+      facts.appendChild(item);
+    };
+    fact("Published", found.publicationDate);
+    fact("Pages", found.pageCount ? String(found.pageCount) : null);
+    fact("Price", found.price);
+    fact("ISBN", found.isbn);
+    fact("Publisher", found.publisher ?? series.publisher);
+    body.appendChild(facts);
+    if (found.runs.length) {
+      body.appendChild(make("p", "card-body book-volume-contents", `Collects ${formatRuns(found.runs)}`));
+      body.appendChild(
+        make(
+          "p",
+          "books-small",
+          found.contentsFrom === "gcd"
+            ? "Contents from GCD's note."
+            : `Contents from Wikipedia's ${found.contentsFrom} list.`
+        )
+      );
+    } else {
+      body.appendChild(
+        make(
+          "p",
+          "books-small",
+          "Neither GCD nor Wikipedia's lists say what this collects — you can type it in."
+        )
+      );
+    }
+    const actions = make("div", "books-actions books-actions-start");
+    const addAs = (status: Book["status"]) => {
+      editingId = null;
+      source = `gcd:${found.issueId}`;
+      volumeResults.replaceChildren();
+      editionResults.replaceChildren();
+      show(searchStatus, null);
+      show(editionStatus, null);
+      openForm(
+        {
+          kind: "comic",
+          title: found.seriesName,
+          volume: found.descriptor.replace(/\s*\[[^\]]*\]\s*$/, ""),
+          format: found.format as Book["format"],
+          publisher: found.publisher ?? series.publisher ?? "",
+          isbn: found.isbn,
+          runs: found.runs,
+          status,
+        },
+        found.runs.length
+          ? `Contents filled in from ${found.contentsFrom === "gcd" ? "GCD's note" : `Wikipedia's ${found.contentsFrom} list`}${found.unread.length ? `, except: ${found.unread.join(", ")}` : ""}. Check it matches your copy.`
+          : "Neither GCD nor Wikipedia's lists say what this volume collects — type the issue runs below."
+      );
+    };
+    const add = make("button", "btn btn-primary", "Add this book");
+    add.type = "button";
+    add.addEventListener("click", () => addAs("owned"));
+    const wish = make("button", "btn btn-ghost", "Add to wishlist");
+    wish.type = "button";
+    wish.addEventListener("click", () => addAs("wishlist"));
+    actions.append(add, wish);
+    body.appendChild(actions);
+    layout.appendChild(body);
+    into.replaceChildren(layout);
   }
 
   async function save(): Promise<void> {

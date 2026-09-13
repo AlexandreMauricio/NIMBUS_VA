@@ -77,6 +77,8 @@ import {
   DeckService,
   DeckZone,
   GcdCatalog,
+  chosenCoverUrl,
+  isChosenCover,
   WikipediaCollections,
   coverUrlForIsbn,
   isCoverUrl,
@@ -91,6 +93,7 @@ import {
   zonesFor,
 } from "../collections";
 import { FileDeckStore } from "./deckStore";
+import { chooseCoverFile, registerCoverProtocol, removeCoverFile } from "./coverStore";
 import { checkForUpdates, getUpdateState, installUpdate, startUpdater } from "./updater";
 import { buildWeeklySummary } from "../summary/weeklySummary";
 import type { CalendarEvent } from "../context/providers/calendar/types";
@@ -822,7 +825,32 @@ function registerIpcHandlers(): void {
       }),
       coverage: bookService.coverage(),
       formats: BOOK_FORMATS,
+      readIssues: bookService.readIssueKeys(),
     };
+  });
+  // Issues read or unread: [{series, year, number}], checked in the service.
+  ipcMain.handle("nimbus:set-issues-read", (_event, issues: unknown, read: unknown) =>
+    bookService.setIssuesRead(issues, read)
+  );
+  // A cover you choose: the main process opens the file picker, and the
+  // picture is resized and saved in NIMBUS's folder — the renderer never
+  // names a path.
+  ipcMain.handle("nimbus:choose-book-cover", async (_event, id: unknown) => {
+    const book = bookService.get(String(id ?? ""));
+    const saved = await chooseCoverFile(BrowserWindow.getFocusedWindow(), book.id);
+    if (!saved) return false;
+    const url = chosenCoverUrl(book.id, Date.now());
+    if (url) bookService.setCover(book.id, url);
+    return true;
+  });
+  // Back to the cover found by ISBN (looked for again).
+  ipcMain.handle("nimbus:clear-book-cover", (_event, id: unknown) => {
+    const book = bookService.get(String(id ?? ""));
+    if (isChosenCover(book.coverUrl)) removeCoverFile(book.id);
+    bookService.setCover(book.id, null);
+    coverAttempted.delete(book.id);
+    void fillBookCovers();
+    return true;
   });
   // A single issue's page, from GCD — the series name, year and number only.
   ipcMain.handle("nimbus:get-comic-issue", (_event, series: unknown, year: unknown, number: unknown) =>
@@ -878,7 +906,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
     bookService.update(String(id ?? ""), input)
   );
-  ipcMain.handle("nimbus:remove-book", (_event, id: unknown) => bookService.remove(String(id ?? "")));
+  ipcMain.handle("nimbus:remove-book", (_event, id: unknown) => {
+    const removed = bookService.remove(String(id ?? ""));
+    if (removed) removeCoverFile(String(id));
+    return removed;
+  });
 
   // Presence: the current judgement, and the devices you can choose as your
   // phone. The choice is a Network tab device id — checked against the list.
@@ -1447,6 +1479,7 @@ async function fillBookCovers(): Promise<void> {
 
 export function startApp(): void {
   settings = loadSettings();
+  void app.whenReady().then(registerCoverProtocol);
   registerIpcHandlers();
   startUpdater();
 

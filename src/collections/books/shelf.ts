@@ -50,7 +50,11 @@ const naturalVolume = (a: Book, b: Book) =>
   a.title.localeCompare(b.title) ||
   (a.volume ?? "").localeCompare(b.volume ?? "", undefined, { numeric: true });
 
-export function groupShelf(books: Book[]): ShelfGroup[] {
+export function groupShelf(
+  books: Book[],
+  allBooks: Book[] = books,
+  read: ReadIssues = NOTHING_READ
+): ShelfGroup[] {
   const groups = new Map<string, Book[]>();
   for (const book of books) {
     const key = shelfName(book).toLowerCase();
@@ -61,7 +65,10 @@ export function groupShelf(books: Book[]): ShelfGroup[] {
   for (const members of groups.values()) {
     members.sort(naturalVolume);
     const owned = members.filter((b) => b.status === "owned");
-    const withProgress = members.filter((b) => b.progress !== null);
+    const progress = members
+      .map((b) => bookProgress(b, allBooks, read).percent)
+      .filter((p): p is number => p !== null && (p > 0 || read.size > 0));
+    const withProgress = progress;
     const kinds = new Map<BookKind, number>();
     for (const b of members) kinds.set(b.kind, (kinds.get(b.kind) ?? 0) + 1);
     result.push({
@@ -74,17 +81,29 @@ export function groupShelf(books: Book[]): ShelfGroup[] {
       wishlist: members.length - owned.length,
       coverUrl: (owned.find((b) => b.coverUrl) ?? members.find((b) => b.coverUrl))?.coverUrl ?? null,
       progress: withProgress.length
-        ? Math.round(withProgress.reduce((sum, b) => sum + (b.progress ?? 0), 0) / withProgress.length)
+        ? Math.round(withProgress.reduce((sum, p) => sum + p, 0) / withProgress.length)
         : null,
     });
   }
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Issues read, as "series (year)#number" keys (bookService.issueReadKey). */
+export type ReadIssues = ReadonlySet<string>;
+const NOTHING_READ: ReadIssues = new Set();
+
+function isRead(read: ReadIssues, series: string, year: number | null, number: number): boolean {
+  return (
+    read.has(`${seriesKey(series, year)}#${number}`) ||
+    (year !== null && read.has(`${seriesKey(series, null)}#${number}`))
+  );
+}
+
 export interface BookIssue {
   series: string;
   year: number | null;
   number: number;
+  read: boolean;
   /** The book only has "material from" this issue. */
   partial: boolean;
   /** Owned books holding it — this one included when it's owned. */
@@ -97,7 +116,11 @@ export interface BookIssue {
 export const MAX_LISTED_ISSUES = 1500;
 
 /** Every issue a book collects, in the order its runs list them, with how many copies you own. */
-export function bookIssues(book: Book, allBooks: Book[]): { issues: BookIssue[]; truncated: boolean } {
+export function bookIssues(
+  book: Book,
+  allBooks: Book[],
+  read: ReadIssues = NOTHING_READ
+): { issues: BookIssue[]; truncated: boolean } {
   const years = resolveYears(allBooks);
   const place = (series: string, year: number | null) => {
     const resolved = year ?? years.get(seriesKey(series, null)) ?? null;
@@ -130,6 +153,7 @@ export function bookIssues(book: Book, allBooks: Book[]): { issues: BookIssue[];
         series: run.series,
         year,
         number: n,
+        read: isRead(read, run.series, year, n),
         partial: run.partial,
         copies: holding.filter((h) => h.book.status === "owned").length,
         elsewhere: holding
@@ -150,6 +174,35 @@ export function bookOverlap(book: Book, allBooks: Book[]): { issues: number; own
   };
 }
 
+/**
+ * How far through a book you are. A book with issues is worked out from
+ * the issues you've marked read; one without (a novel, a manga volume
+ * typed as one) uses the percentage you set.
+ */
+export function bookProgress(
+  book: Book,
+  allBooks: Book[],
+  read: ReadIssues = NOTHING_READ
+): { percent: number | null; readIssues: number; totalIssues: number; fromIssues: boolean } {
+  const { issues } = bookIssues(book, allBooks, read);
+  if (!issues.length) return { percent: book.progress, readIssues: 0, totalIssues: 0, fromIssues: false };
+  const done = issues.filter((issue) => issue.read).length;
+  return {
+    percent: Math.round((done / issues.length) * 100),
+    readIssues: done,
+    totalIssues: issues.length,
+    fromIssues: true,
+  };
+}
+
+export type ReadingStatus = "Not started" | "Reading" | "Read";
+
+/** The book's status from its progress: nothing yet, part-way, or finished. */
+export function readingStatus(percent: number | null): ReadingStatus {
+  if (percent === null || percent <= 0) return "Not started";
+  return percent >= 100 ? "Read" : "Reading";
+}
+
 export interface ShelfStats {
   owned: number;
   reading: number;
@@ -158,12 +211,13 @@ export interface ShelfStats {
   byKind: Record<BookKind, number>;
 }
 
-export function shelfStats(books: Book[]): ShelfStats {
+export function shelfStats(books: Book[], read: ReadIssues = NOTHING_READ): ShelfStats {
   const owned = books.filter((b) => b.status === "owned");
+  const statuses = books.map((b) => readingStatus(bookProgress(b, books, read).percent));
   return {
     owned: owned.length,
-    reading: books.filter((b) => b.progress !== null && b.progress > 0 && b.progress < 100).length,
-    finished: books.filter((b) => b.progress === 100).length,
+    reading: statuses.filter((s) => s === "Reading").length,
+    finished: statuses.filter((s) => s === "Read").length,
     wishlist: books.length - owned.length,
     byKind: {
       comic: owned.filter((b) => b.kind === "comic").length,

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BookService } from "./bookService";
+import { bookProgress } from "./shelf";
 import { GcdCatalog, guessFormat, mapGcdIssue, mapGcdSeriesSearch } from "./gcd";
 import { BookState, BookStore } from "./types";
 
@@ -27,7 +28,12 @@ test("GCD series search: volumes pair each descriptor with its issue id", () => 
     id: 74601,
     name: "Thor Epic Collection",
     yearBegan: 2013,
+    yearEnded: null,
     publisher: "Marvel",
+    binding: null,
+    publishingFormat: null,
+    language: null,
+    dimensions: null,
     volumes: [
       { issueId: 1205407, descriptor: "1 - The God of Thunder" },
       { issueId: 1643051, descriptor: "2 - When Titans Clash" },
@@ -228,4 +234,84 @@ test('GCD saying "too many requests" is told apart from GCD being down', async (
   } finally {
     catalogRetry.sleep = original;
   }
+});
+
+test("issues read are kept for the shelf, validated, and survive a restart", () => {
+  const { service, saves } = shelf();
+  const epic = service.add({
+    kind: "comic",
+    title: "Thor Epic Collection",
+    format: "Epic Collection",
+    runs: "Journey Into Mystery (1952) #83-86",
+  }).book;
+  const omni = service.add({
+    kind: "comic",
+    title: "Thor Omnibus",
+    format: "Omnibus",
+    runs: "Journey Into Mystery (1952) #83-90",
+  }).book;
+  assert.equal(
+    service.setIssuesRead(
+      [
+        { series: "Journey Into Mystery", year: 1952, number: 83 },
+        { series: "Journey Into Mystery", year: 1952, number: 84 },
+        { series: "", year: 1952, number: 85 },
+        { series: "Journey Into Mystery", year: 1952, number: -1 },
+        "junk",
+      ],
+      true
+    ),
+    2,
+    "only the two well-formed issues"
+  );
+  assert.throws(() => service.setIssuesRead("everything", true), /Nothing to mark/);
+  const reopened = new BookService({ load: () => saves[saves.length - 1], save: () => {} });
+  assert.deepEqual(reopened.readIssueKeys().sort(), [
+    "journey into mystery (1952)#83",
+    "journey into mystery (1952)#84",
+  ]);
+
+  // Read in one book is read in the other.
+  const all = reopened.list();
+  const read = new Set(reopened.readIssueKeys());
+  assert.deepEqual(
+    bookProgress(
+      all.find((b) => b.id === epic.id)!,
+      all,
+      read
+    ),
+    { percent: 50, readIssues: 2, totalIssues: 4, fromIssues: true }
+  );
+  assert.deepEqual(
+    bookProgress(
+      all.find((b) => b.id === omni.id)!,
+      all,
+      read
+    ),
+    { percent: 25, readIssues: 2, totalIssues: 8, fromIssues: true }
+  );
+
+  assert.equal(
+    reopened.setIssuesRead([{ series: "Journey Into Mystery", year: 1952, number: 83 }], false),
+    1
+  );
+  assert.deepEqual(reopened.readIssueKeys(), ["journey into mystery (1952)#84"]);
+});
+
+test("a chosen cover survives an ISBN change; a found one is looked for again", () => {
+  const { service } = shelf();
+  const book = service.add({ kind: "comic", title: "Thor", format: "Other", isbn: "9780785188353" }).book;
+  service.setCover(book.id, "https://covers.openlibrary.org/b/isbn/9780785188353-M.jpg");
+  assert.equal(service.update(book.id, { isbn: "9781302933982" }).book.coverUrl, null);
+  service.setCover(book.id, `nimbus-cover://cover/${book.id}.jpg?v=1`);
+  assert.equal(
+    service.update(book.id, { isbn: "9780785188353" }).book.coverUrl,
+    `nimbus-cover://cover/${book.id}.jpg?v=1`
+  );
+  service.setCover(book.id, "file:///C:/Users/secret.jpg");
+  assert.equal(
+    service.get(book.id).coverUrl,
+    `nimbus-cover://cover/${book.id}.jpg?v=1`,
+    "other addresses are ignored"
+  );
 });

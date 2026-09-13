@@ -18,6 +18,26 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.10 — 2026-09-13
+
+- **Read single issues, and books follow.** Every issue in a book has a
+  read checkbox (and "Mark as read" on the issue's page). A book with
+  issues takes its progress from them — "3 of 36 issues read" — with
+  **Mark all read / unread**, and a status: Not started, Reading (with %),
+  or Read. Reading an issue in one book counts in every book that
+  collects it. Novels and books without issues keep the percentage.
+- **Edit anything, from the top of a book's page**: Edit details sits
+  beside the title, and the issue page has "Edit this book's issues".
+- **Choose a cover** — click the cover or "Add a cover"/"Change cover" to
+  pick a picture; it's resized and kept in NIMBUS's own folder (shown
+  through `nimbus-cover://`, never a file path). "Use the ISBN's cover"
+  goes back to Open Library's.
+- **A fuller GCD picker**: each series shows its publisher, years,
+  binding, format and how many volumes and printings; its volumes say
+  which printing they are; and picking one shows a preview — cover, date,
+  pages, price, ISBN and what it collects — with Add this book or Add to
+  wishlist.
+
 ## 0.5.9 — 2026-09-13
 
 - **Adding a book works while GCD is unavailable.** The search also looks

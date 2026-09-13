@@ -324,6 +324,12 @@ contextBridge.exposeInMainWorld("nimbus", {
   getComicVolume: (issueId: number): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-comic-volume", issueId),
   findBookContents: (isbn: string): Promise<unknown> => ipcRenderer.invoke("nimbus:find-book-contents", isbn),
+  setIssuesRead: (
+    issues: Array<{ series: string; year: number | null; number: number }>,
+    read: boolean
+  ): Promise<number> => ipcRenderer.invoke("nimbus:set-issues-read", issues, read),
+  chooseBookCover: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:choose-book-cover", id),
+  clearBookCover: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:clear-book-cover", id),
   searchBookEditions: (query: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:search-book-editions", query),
   getComicIssue: (series: string, year: number | null, number: number): Promise<unknown> =>

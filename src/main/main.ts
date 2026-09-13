@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, protocol } from "electron";
 import * as path from "path";
 import { logger, configureFileLogging } from "../logging/logger";
 import { configureLocale } from "../common/locale";
@@ -25,6 +25,12 @@ configureFileLogging(() => path.join(app.getPath("userData"), "logs"));
 // src/main/suggestionWindow.ts) since native toasts can't render those well
 // regardless of identity.
 app.setAppUserModelId("com.nimbus.desktop");
+
+// Covers you choose for books are kept in NIMBUS's own folder and shown
+// through this scheme (see coverStore.ts) — never as file:// paths.
+protocol.registerSchemesAsPrivileged([
+  { scheme: "nimbus-cover", privileges: { standard: true, secure: true } },
+]);
 
 // `app.getLocale()` needs Electron ready; briefing/context generation
 // only ever happens after that anyway, so this is always set in time.

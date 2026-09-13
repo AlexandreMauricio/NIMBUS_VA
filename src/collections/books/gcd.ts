@@ -26,7 +26,14 @@ export interface GcdSeries {
   id: number;
   name: string;
   yearBegan: number | null;
+  yearEnded: number | null;
   publisher: string | null;
+  /** e.g. "hardcover with dustjacket". */
+  binding: string | null;
+  /** e.g. "collected edition". */
+  publishingFormat: string | null;
+  language: string | null;
+  dimensions: string | null;
   volumes: Array<{ issueId: number; descriptor: string }>;
 }
 
@@ -38,6 +45,8 @@ export interface GcdVolume {
   isbn: string | null;
   publicationDate: string | null;
   publisher: string | null;
+  pageCount: number | null;
+  price: string | null;
   format: BookFormat;
   /** The runs read from GCD's note — empty when it doesn't say. */
   runs: IssueRun[];
@@ -147,7 +156,7 @@ export function mapGcdIssueDetail(json: unknown, issueId: number): GcdIssueDetai
  * edition, then any variant. Null when GCD has no such series or issue.
  */
 export function pickIssue(
-  series: GcdSeries[],
+  series: Array<Pick<GcdSeries, "id" | "name" | "yearBegan" | "volumes">>,
   name: string,
   year: number | null,
   number: number
@@ -209,7 +218,12 @@ export function mapGcdSeriesSearch(json: unknown): GcdSeries[] {
       id,
       name,
       yearBegan: typeof r.year_began === "number" ? r.year_began : null,
+      yearEnded: typeof r.year_ended === "number" ? r.year_ended : null,
       publisher: publisherId ? (KNOWN_PUBLISHERS[publisherId] ?? null) : null,
+      binding: asString(r.binding),
+      publishingFormat: asString(r.publishing_format),
+      language: asString(r.language),
+      dimensions: asString(r.dimensions),
       volumes,
     });
   }
@@ -233,6 +247,11 @@ export function mapGcdIssue(json: unknown, issueId: number): GcdVolume {
     isbn,
     publicationDate: asString(r.publication_date),
     publisher: publisherId ? (KNOWN_PUBLISHERS[publisherId] ?? null) : null,
+    pageCount:
+      Number.isFinite(Number(asString(r.page_count))) && Number(asString(r.page_count)) > 0
+        ? Math.round(Number(asString(r.page_count)))
+        : null,
+    price: asString(r.price),
     format: guessFormat(seriesName),
     runs,
     unread,

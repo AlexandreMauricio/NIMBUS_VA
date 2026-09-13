@@ -20,8 +20,17 @@ export { BookService, parseBook } from "./books/bookService";
 export { GcdCatalog, mapGcdIssueDetail, pickIssue, creditNames } from "./books/gcd";
 export type { GcdIssueDetail } from "./books/gcd";
 export { computeCoverage, bookLabel } from "./books/coverage";
-export { bookIssues, bookOverlap, groupShelf, shelfName, shelfStats } from "./books/shelf";
-export { coverUrlForIsbn, isCoverUrl } from "./books/bookService";
+export {
+  bookIssues,
+  bookOverlap,
+  bookProgress,
+  groupShelf,
+  readingStatus,
+  shelfName,
+  shelfStats,
+} from "./books/shelf";
+export { coverUrlForIsbn, isCoverUrl, isChosenCover, chosenCoverUrl } from "./books/covers";
+export { issueReadKey } from "./books/bookService";
 export {
   WikipediaCollections,
   findContentsByIsbn,

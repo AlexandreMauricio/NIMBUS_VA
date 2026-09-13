@@ -74,6 +74,8 @@ export interface Book {
 export interface BookState {
   version: 1;
   books: Book[];
+  /** Issues read, by "series (year)#number" — see bookService.issueReadKey. */
+  readIssues?: string[];
 }
 
 export interface BookStore {
