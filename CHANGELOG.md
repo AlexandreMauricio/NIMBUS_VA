@@ -18,6 +18,21 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.20 — 2026-09-13
+
+- **A reading log for comics.** Log when you read single issues — on a
+  book's page, pick the stretch you read (#3 to #14) and the day; on an
+  issue's page, see every reading and log another. Reading the same Epic
+  Collection twice on different days counts twice. Each reading takes an
+  estimated time (12 minutes an issue by default, adjustable in Stats and
+  per reading), and logging marks the issues read.
+- **Reading time in Stats**: total, this month and this year, readings and
+  re-reads, and time spent with each series, character, writer and artist
+  — from the issues' Grand Comics Database pages, kept once looked up
+  ("Look them up on GCD" fills in the rest, a second apart).
+
+---
+
 ## 0.5.19 — 2026-09-13
 
 - **Cards that work well together.** Every card page now ends with

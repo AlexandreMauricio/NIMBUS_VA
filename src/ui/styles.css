@@ -4219,3 +4219,104 @@ details.context-card > summary .context-card-title {
   font-size: 0.75rem;
   color: var(--color-text);
 }
+
+/* ---------- Books: reading log (readingLog.ts) ---------- */
+
+.reading-log-box {
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.reading-log-box summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.reading-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.reading-issue-pick {
+  width: auto;
+}
+
+.reading-date {
+  width: auto;
+}
+
+.reading-minutes {
+  width: 5rem;
+}
+
+.reading-issue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.reading-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.2rem 0;
+}
+
+.reading-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.reading-top-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.reading-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.reading-top-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(3rem, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.82rem;
+}
+
+.reading-top-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reading-top-bar {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  overflow: hidden;
+}
+
+.reading-top-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent-500);
+}

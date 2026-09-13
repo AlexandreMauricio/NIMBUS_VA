@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { logger } from "../../logging/logger";
 import { computeCoverage, SeriesCoverage } from "./coverage";
 import { isChosenCover, isCoverUrl } from "./covers";
+import { DEFAULT_MINUTES_PER_ISSUE, IssueCredits, IssueReading, MAX_READINGS } from "./readings";
 import { parseRuns, seriesKey } from "./runs";
 import {
   BOOK_FORMATS,
@@ -99,6 +100,56 @@ export function issueReadKey(series: string, year: number | null, number: number
 
 const MAX_READ_ISSUES = 100_000;
 
+/** {series, year, number} from outside, checked — the shape a book's issue list gives. */
+function readIssue(raw: unknown): { series: string; year: number | null; number: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.series !== "string" || !r.series.trim() || r.series.length > 200) return null;
+  if (!Number.isInteger(r.number) || (r.number as number) < 0 || (r.number as number) > 100_000) return null;
+  const year =
+    Number.isInteger(r.year) && (r.year as number) >= 1800 && (r.year as number) <= 2200
+      ? (r.year as number)
+      : null;
+  return { series: r.series.trim(), year, number: r.number as number };
+}
+
+function parseReading(raw: unknown): IssueReading | null {
+  const issue = readIssue(raw);
+  if (!issue) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || !r.id || r.id.length > 80) return null;
+  if (typeof r.readOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(r.readOn)) return null;
+  if (typeof r.minutes !== "number" || !Number.isFinite(r.minutes) || r.minutes < 1 || r.minutes > 600)
+    return null;
+  return {
+    id: r.id,
+    key: issueReadKey(issue.series, issue.year, issue.number),
+    ...issue,
+    readOn: r.readOn,
+    minutes: Math.round(r.minutes),
+    bookId: typeof r.bookId === "string" && r.bookId.length <= 80 ? r.bookId : null,
+    loggedAt: typeof r.loggedAt === "string" ? r.loggedAt : new Date(0).toISOString(),
+  };
+}
+
+function parseCredits(raw: unknown): IssueCredits | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const names = (value: unknown, max: number) =>
+    Array.isArray(value)
+      ? value
+          .filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 80)
+          .slice(0, max)
+      : [];
+  return {
+    title: typeof r.title === "string" ? r.title.slice(0, 200) : null,
+    characters: names(r.characters, 60),
+    writers: names(r.writers, 10),
+    artists: names(r.artists, 10),
+    pageCount: Number.isInteger(r.pageCount) && (r.pageCount as number) > 0 ? (r.pageCount as number) : null,
+  };
+}
+
 export class BookService {
   private books: Book[] = [];
   /**
@@ -107,6 +158,9 @@ export class BookService {
    * you've read it in the Omnibus too.
    */
   private readIssues = new Set<string>();
+  private readings: IssueReading[] = [];
+  private issueCredits: Record<string, IssueCredits> = {};
+  private minutesPerIssue = DEFAULT_MINUTES_PER_ISSUE;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -141,6 +195,120 @@ export class BookService {
         if (typeof key === "string" && key.length <= 250 && /#\d+$/.test(key)) this.readIssues.add(key);
       }
     }
+    const state = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    if (Array.isArray(state.readings)) {
+      for (const entry of state.readings.slice(0, MAX_READINGS)) {
+        const reading = parseReading(entry);
+        if (reading) this.readings.push(reading);
+      }
+    }
+    if (state.issueCredits && typeof state.issueCredits === "object") {
+      const entries = Object.entries(state.issueCredits as Record<string, unknown>).slice(0, MAX_READ_ISSUES);
+      for (const [key, value] of entries) {
+        const credits = parseCredits(value);
+        if (credits && key.length <= 250) this.issueCredits[key] = credits;
+      }
+    }
+    const minutes = state.minutesPerIssue;
+    if (Number.isInteger(minutes) && (minutes as number) >= 1 && (minutes as number) <= 240) {
+      this.minutesPerIssue = minutes as number;
+    }
+  }
+
+  // ------------------------------------------------------------ reading log
+
+  /** The reading log, newest first, the credits known, and the minutes a new reading takes. */
+  readingLog(): { readings: IssueReading[]; credits: Record<string, IssueCredits>; minutesPerIssue: number } {
+    return {
+      readings: [...this.readings]
+        .sort((a, b) => b.readOn.localeCompare(a.readOn) || b.loggedAt.localeCompare(a.loggedAt))
+        .map((r) => ({ ...r })),
+      credits: JSON.parse(JSON.stringify(this.issueCredits)) as Record<string, IssueCredits>,
+      minutesPerIssue: this.minutesPerIssue,
+    };
+  }
+
+  /**
+   * Logs a reading of each issue on a day, and marks them read. `minutes`
+   * is per issue; without it the minutes-per-issue estimate is used.
+   */
+  logReadings(issues: unknown, readOn: unknown, minutes?: unknown, bookId?: unknown): number {
+    if (!Array.isArray(issues)) throw new Error("Nothing to log.");
+    if (
+      typeof readOn !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(readOn) ||
+      Number.isNaN(Date.parse(readOn))
+    ) {
+      throw new Error("Choose the day you read it.");
+    }
+    const now = this.now();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    if (readOn > today) throw new Error("That day hasn't happened yet.");
+    let each = this.minutesPerIssue;
+    if (minutes !== undefined && minutes !== null) {
+      if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes < 1 || minutes > 600) {
+        throw new Error("Minutes must be 1 to 600.");
+      }
+      each = Math.round(minutes);
+    }
+    const book = typeof bookId === "string" && this.books.some((b) => b.id === bookId) ? bookId : null;
+    const logged: Array<{ series: string; year: number | null; number: number }> = [];
+    const loggedAt = this.now().toISOString();
+    for (const raw of issues.slice(0, 2000)) {
+      const issue = readIssue(raw);
+      if (!issue || this.readings.length >= MAX_READINGS) continue;
+      this.readings.push({
+        id: this.newId(),
+        key: issueReadKey(issue.series, issue.year, issue.number),
+        ...issue,
+        readOn,
+        minutes: each,
+        bookId: book,
+        loggedAt,
+      });
+      logged.push(issue);
+    }
+    if (!logged.length) return 0;
+    // Marking read saves when it changes something; the log needs saving either way.
+    if (!this.setIssuesRead(logged, true)) this.save();
+    return logged.length;
+  }
+
+  removeReading(id: unknown): boolean {
+    const index = this.readings.findIndex((r) => r.id === id);
+    if (index === -1) return false;
+    this.readings.splice(index, 1);
+    this.save();
+    return true;
+  }
+
+  setMinutesPerIssue(minutes: unknown): number {
+    if (!Number.isInteger(minutes) || (minutes as number) < 1 || (minutes as number) > 240) {
+      throw new Error("Minutes per issue must be 1 to 240.");
+    }
+    this.minutesPerIssue = minutes as number;
+    this.save();
+    return this.minutesPerIssue;
+  }
+
+  /** What GCD says about an issue, kept for reading stats. Saves only when new or changed. */
+  setIssueCredits(series: string, year: number | null, number: number, credits: IssueCredits): void {
+    const key = issueReadKey(series, year, number);
+    if (JSON.stringify(this.issueCredits[key]) === JSON.stringify(credits)) return;
+    this.issueCredits[key] = credits;
+    this.save();
+  }
+
+  /** Issues in the reading log whose characters and creators aren't known yet. */
+  issuesWithoutCredits(limit = 50): Array<{ series: string; year: number | null; number: number }> {
+    const out = new Map<string, { series: string; year: number | null; number: number }>();
+    for (const r of this.readings) {
+      if (out.size >= limit) break;
+      if (!this.issueCredits[r.key] && !out.has(r.key)) {
+        out.set(r.key, { series: r.series, year: r.year, number: r.number });
+      }
+    }
+    return [...out.values()];
   }
 
   onChange(listener: () => void): () => void {
@@ -329,7 +497,14 @@ export class BookService {
   }
 
   private save(): void {
-    const state: BookState = { version: 1, books: this.books, readIssues: [...this.readIssues] };
+    const state: BookState = {
+      version: 1,
+      books: this.books,
+      readIssues: [...this.readIssues],
+      readings: this.readings,
+      issueCredits: this.issueCredits,
+      minutesPerIssue: this.minutesPerIssue,
+    };
     try {
       this.store?.save(state);
     } catch (err) {

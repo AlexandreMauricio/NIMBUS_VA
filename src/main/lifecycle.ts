@@ -83,6 +83,7 @@ import {
   coverUrlForIsbn,
   isCoverUrl,
   TCG_GAMES,
+  creditsFromGcd,
   checkDeck,
   deckStats,
   balanceColours,
@@ -973,7 +974,45 @@ function registerIpcHandlers(): void {
       coverage: bookService.coverage(),
       formats: BOOK_FORMATS,
       readIssues: bookService.readIssueKeys(),
+      readingLog: bookService.readingLog(),
     };
+  });
+  // The reading log: readings of issues on a day, with estimated minutes.
+  ipcMain.handle(
+    "nimbus:log-issue-readings",
+    (_event, issues: unknown, readOn: unknown, minutes: unknown, bookId: unknown) =>
+      bookService.logReadings(issues, readOn, minutes, bookId)
+  );
+  ipcMain.handle("nimbus:remove-issue-reading", (_event, id: unknown) => bookService.removeReading(id));
+  ipcMain.handle("nimbus:set-minutes-per-issue", (_event, minutes: unknown) =>
+    bookService.setMinutesPerIssue(minutes)
+  );
+  // Characters and creators for logged issues not looked up yet — a few at a
+  // time, each through GCD's own pacing (a second apart, kept a day).
+  ipcMain.handle("nimbus:fill-reading-credits", async (_event, count: unknown) => {
+    const batch = bookService.issuesWithoutCredits(
+      Number.isInteger(count) && (count as number) > 0 && (count as number) <= 10 ? (count as number) : 5
+    );
+    let filled = 0;
+    let notFound = 0;
+    for (const issue of batch) {
+      const detail = await gcdCatalog.findIssue(issue.series, issue.year, issue.number);
+      if (detail) {
+        bookService.setIssueCredits(issue.series, issue.year, issue.number, creditsFromGcd(detail));
+        filled++;
+      } else {
+        // Remember it has none, so it isn't asked for again.
+        bookService.setIssueCredits(issue.series, issue.year, issue.number, {
+          title: null,
+          characters: [],
+          writers: [],
+          artists: [],
+          pageCount: null,
+        });
+        notFound++;
+      }
+    }
+    return { filled, notFound, left: bookService.issuesWithoutCredits(1000).length };
   });
   // Issues read or unread: [{series, year, number}], checked in the service.
   ipcMain.handle("nimbus:set-issues-read", (_event, issues: unknown, read: unknown) =>
@@ -1000,8 +1039,17 @@ function registerIpcHandlers(): void {
     return true;
   });
   // A single issue's page, from GCD — the series name, year and number only.
-  ipcMain.handle("nimbus:get-comic-issue", (_event, series: unknown, year: unknown, number: unknown) =>
-    gcdCatalog.findIssue(series, year, number)
+  // Its characters and creators are kept for reading stats.
+  ipcMain.handle(
+    "nimbus:get-comic-issue",
+    async (_event, series: unknown, year: unknown, number: unknown) => {
+      const detail = await gcdCatalog.findIssue(series, year, number);
+      if (detail && typeof series === "string" && Number.isInteger(number)) {
+        const y = Number.isInteger(year) ? (year as number) : null;
+        bookService.setIssueCredits(series, y, number as number, creditsFromGcd(detail));
+      }
+      return detail;
+    }
   );
   // Links out to the two comic databases. The page names what to look up;
   // the address is built here, for these two sites only, so the renderer

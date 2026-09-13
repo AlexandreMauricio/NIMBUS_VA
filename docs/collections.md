@@ -114,6 +114,25 @@ the Epic Collection is read in the Omnibus. A book with issues takes its
 progress from them; a novel or a book without issues keeps a percentage.
 Status follows: Not started, Reading, Read.
 
+**The reading log** ([readings.ts](../src/collections/books/readings.ts)).
+Ticking an issue says it's read; the log says *when*, and every time. On a
+book's page, **Log a reading** takes a stretch of its issues (#3 to #14), a
+day, and the minutes each took; on an issue's page each reading is listed,
+removable, and another can be logged — reading the same Epic Collection
+twice, a year apart, is two readings of each issue. Logging marks the
+issues read. Nobody times their reading, so each reading takes an
+estimate: the minutes per issue set in Stats (12 by default — a 20–24 page
+issue at an easy pace is 10–15), changeable per reading.
+
+Stats adds **Reading time**: total, this month, this year, readings,
+issues read again, and time with each **series, character, writer and
+artist** — Barry Windsor-Smith 24 min, Doctor Strange 36 min. Characters and
+creators come from each issue's GCD page, kept once seen: opening an issue's
+page keeps them, and **Look them up on GCD** fetches the rest five at a
+time, a second apart. Characters lose GCD's aliases and notes ("Thor
+[Donald Blake]" is Thor); an artist is anyone credited with pencils, inks or
+art. Everything stays in `books.json`.
+
 **Covers you choose** are resized to 600 px, saved in
 `<userData>/book-covers/<book id>.jpg` and shown through the
 `nimbus-cover://` scheme, which serves only that folder. **Novels** are a third kind, typed in by hand.

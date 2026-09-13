@@ -32,6 +32,14 @@ export {
 export { coverUrlForIsbn, isCoverUrl, isChosenCover, chosenCoverUrl } from "./books/covers";
 export { issueReadKey } from "./books/bookService";
 export {
+  creditsFromGcd,
+  characterNames,
+  readingStats,
+  formatReadingTime,
+  DEFAULT_MINUTES_PER_ISSUE,
+} from "./books/readings";
+export type { IssueReading, IssueCredits, ReadingStats, TimeLine } from "./books/readings";
+export {
   WikipediaCollections,
   findContentsByIsbn,
   toIsbn13,

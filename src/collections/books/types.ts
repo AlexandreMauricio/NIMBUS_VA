@@ -12,6 +12,8 @@
  * owned, and the next one to buy is simply the first gap.
  */
 
+import type { IssueCredits, IssueReading } from "./readings";
+
 export type BookKind = "comic" | "manga" | "novel";
 
 export const BOOK_FORMATS = [
@@ -76,6 +78,12 @@ export interface BookState {
   books: Book[];
   /** Issues read, by "series (year)#number" — see bookService.issueReadKey. */
   readIssues?: string[];
+  /** The reading log (readings.ts). */
+  readings?: IssueReading[];
+  /** Characters and creators per issue, by issueReadKey, from GCD. */
+  issueCredits?: Record<string, IssueCredits>;
+  /** The estimate a new reading takes, in minutes. */
+  minutesPerIssue?: number;
 }
 
 export interface BookStore {

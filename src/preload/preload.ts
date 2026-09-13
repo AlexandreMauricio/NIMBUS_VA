@@ -333,6 +333,17 @@ contextBridge.exposeInMainWorld("nimbus", {
   getComicVolume: (issueId: number): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-comic-volume", issueId),
   findBookContents: (isbn: string): Promise<unknown> => ipcRenderer.invoke("nimbus:find-book-contents", isbn),
+  logIssueReadings: (
+    issues: unknown[],
+    readOn: string,
+    minutes: number | null,
+    bookId: string | null
+  ): Promise<unknown> => ipcRenderer.invoke("nimbus:log-issue-readings", issues, readOn, minutes, bookId),
+  removeIssueReading: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:remove-issue-reading", id),
+  setMinutesPerIssue: (minutes: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:set-minutes-per-issue", minutes),
+  fillReadingCredits: (count: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:fill-reading-credits", count),
   setIssuesRead: (
     issues: Array<{ series: string; year: number | null; number: number }>,
     read: boolean

@@ -28,6 +28,13 @@ import {
 import type { Book } from "../collections/books/types";
 import type { SeriesCoverage } from "../collections/books/coverage";
 import type { GcdIssueDetail } from "../collections/books/gcd";
+import {
+  ReadingLogView,
+  issueReadingList,
+  logReadingForm,
+  readingStatsSection,
+  readingSummary,
+} from "./readingLog";
 
 interface GcdSeriesUI {
   id: number;
@@ -75,9 +82,13 @@ interface EditionUI extends ContentsUI {
 }
 
 interface BooksBridge {
-  getBooks(
-    filter: Record<string, unknown>
-  ): Promise<{ books: Book[]; coverage: SeriesCoverage[]; formats: string[]; readIssues: string[] }>;
+  getBooks(filter: Record<string, unknown>): Promise<{
+    books: Book[];
+    coverage: SeriesCoverage[];
+    formats: string[];
+    readIssues: string[];
+    readingLog: ReadingLogView;
+  }>;
   setIssuesRead(
     issues: Array<{ series: string; year: number | null; number: number }>,
     read: boolean
@@ -250,6 +261,7 @@ export function initBooksTab(): void {
   let coverage: SeriesCoverage[] = [];
   /** Issues read, shared by every book that collects them. */
   let readIssues: ReadonlySet<string> = new Set();
+  let readingLog: ReadingLogView = { readings: [], credits: {}, minutesPerIssue: 12 };
   const progressOf = (book: Book) => bookProgress(book, books, readIssues);
   let formatsFilled = false;
   let pane: Pane = "shelf";
@@ -278,6 +290,7 @@ export function initBooksTab(): void {
       books = view.books;
       coverage = view.coverage;
       readIssues = new Set(view.readIssues ?? []);
+      readingLog = view.readingLog ?? readingLog;
       if (!formatsFilled) {
         formatsFilled = true;
         for (const name of view.formats) format.appendChild(new Option(name, name));
@@ -484,6 +497,7 @@ export function initBooksTab(): void {
         `${stats.byKind.comic} comics · ${stats.byKind.manga} manga · ${stats.byKind.novel} novels owned · ${stats.finished} finished`
       )
     );
+    statsEl.appendChild(readingStatsSection(readingLog, () => void load()));
 
     coverageEl.replaceChildren();
     coverageEmpty.hidden = coverage.length > 0;
@@ -759,6 +773,19 @@ export function initBooksTab(): void {
       detailView.appendChild(
         make("h6", "kicker books-section", book.kind === "manga" ? "Volumes" : "Issues collected")
       );
+      if (book.kind === "comic") {
+        const logBox = make("details", "reading-log-box");
+        logBox.appendChild(make("summary", undefined, "Log a reading — which issues you read, and when"));
+        logBox.appendChild(
+          logReadingForm(
+            issues.map((i) => ({ series: i.series, year: i.year, number: i.number })),
+            readingLog,
+            book.id,
+            () => void load()
+          )
+        );
+        detailView.appendChild(logBox);
+      }
       const card = make("div", "card books-issues");
       for (const issue of issues) card.appendChild(issueRow(book, issue));
       if (truncated) card.appendChild(make("p", "books-small", "The list stops here — it's very long."));
@@ -941,7 +968,8 @@ export function initBooksTab(): void {
     };
     addFact("Copies owned", String(holders.length));
     if (holders.length) addFact("Collected in", holders.map((b) => bookTitle(b)).join(", "));
-    addFact("Read", thisIssue?.read ? "Yes" : "Not yet");
+    const issueRef = { series: target.series, year: target.year, number: target.number };
+    addFact("Read", readingSummary(issueRef, readingLog) ?? (thisIssue?.read ? "Yes" : "Not yet"));
     info.appendChild(facts);
 
     const readTools = make("div", "books-actions books-actions-start");
@@ -970,6 +998,11 @@ export function initBooksTab(): void {
       readTools.appendChild(fix);
     }
     info.appendChild(readTools);
+    const readings = make("div", "reading-issue");
+    readings.appendChild(make("span", "books-fact-label", "Readings"));
+    readings.appendChild(issueReadingList(issueRef, readingLog, () => void load()));
+    readings.appendChild(logReadingForm([issueRef], readingLog, book?.id ?? null, () => void load()));
+    info.appendChild(readings);
 
     const links = make("div", "books-actions books-actions-start");
     const locg = make("button", "btn btn-secondary", "League of Comic Geeks");
