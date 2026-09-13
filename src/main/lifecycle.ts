@@ -10,7 +10,7 @@ import { config } from "../config/config";
 import { createTray, destroyTray } from "./tray";
 import { applyAutostart } from "./autostart";
 import { contextService } from "../context";
-import { WeatherProvider, LocationResolver } from "../context/providers/weather";
+import { WeatherProvider, LocationResolver, GeocodingClient } from "../context/providers/weather";
 import { CalendarProvider } from "../context/providers/calendar";
 import { EmailProvider } from "../context/providers/email";
 import { TaskProvider, TaskWriteRequest } from "../context/providers/tasks";
@@ -332,6 +332,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:get-context", () => contextService.getSnapshot());
 
   ipcMain.handle("nimbus:get-weather-settings", () => settings.userPreferences.weather);
+  // City search for the manual location; only the typed name leaves the PC.
+  const geocoding = new GeocodingClient();
+  ipcMain.handle("nimbus:search-places", (_event, query: unknown) => geocoding.searchPlaces(query));
 
   ipcMain.handle(
     "nimbus:update-weather-settings",

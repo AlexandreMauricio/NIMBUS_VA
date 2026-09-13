@@ -18,6 +18,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.13 — 2026-09-13
+
+- **Find your weather location by name.** Settings → Weather location →
+  Manual now has a **Find a place** search: type a city, pick it from the
+  list (with region, country and coordinates to tell the Lisbons apart)
+  and it's saved — no more looking up latitude and longitude. The
+  coordinate fields are still there, and saving says so. The search uses
+  Open-Meteo's free geocoding, and only the typed name is sent.
+
+---
+
 ## 0.5.12 — 2026-09-13
 
 - **Checks run on GitHub.** A workflow (`.github/workflows/check.yml`)

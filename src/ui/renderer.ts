@@ -444,6 +444,13 @@ interface Briefing {
   items: BriefingItem[];
 }
 
+/** A place from the weather location search (context/providers/weather/geocoding.ts). */
+interface PlaceResult {
+  label: string;
+  latitude: number;
+  longitude: number;
+}
+
 interface NimbusApi {
   getAppInfo: () => Promise<AppInfo>;
   getSettings: () => Promise<StartupSettings>;
@@ -455,6 +462,7 @@ interface NimbusApi {
   getContext: () => Promise<ContextSnapshot>;
   getWeatherSettings: () => Promise<WeatherSettings>;
   updateWeatherSettings: (partial: Partial<WeatherSettings>) => Promise<WeatherSettings>;
+  searchPlaces: (query: string) => Promise<PlaceResult[]>;
   getCalendarSettings: () => Promise<CalendarSettings>;
   updateCalendarSettings: (partial: Partial<CalendarSettings>) => Promise<CalendarSettings>;
   getEmailSettings: () => Promise<EmailSettings>;
@@ -617,6 +625,10 @@ async function initWeatherSettings(): Promise<void> {
   const latInput = document.getElementById("manualLocationLat") as HTMLInputElement;
   const lonInput = document.getElementById("manualLocationLon") as HTMLInputElement;
   const saveBtn = document.getElementById("saveManualLocationBtn") as HTMLButtonElement;
+  const searchInput = document.getElementById("placeSearchInput") as HTMLInputElement;
+  const searchBtn = document.getElementById("placeSearchBtn") as HTMLButtonElement;
+  const searchResults = document.getElementById("placeSearchResults") as HTMLElement;
+  const locationStatus = document.getElementById("manualLocationStatus") as HTMLElement;
 
   function syncManualFieldsVisibility(): void {
     manualFields.hidden = modeSelect.value !== "manual";
@@ -641,20 +653,80 @@ async function initWeatherSettings(): Promise<void> {
     window.nimbus.updateWeatherSettings({ locationMode: modeSelect.value as "auto" | "manual" });
   });
 
-  saveBtn.addEventListener("click", () => {
+  async function saveManualLocation(): Promise<void> {
     const latitude = Number(latInput.value);
     const longitude = Number(lonInput.value);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    if (
+      !latInput.value.trim() ||
+      !lonInput.value.trim() ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      locationStatus.textContent = "Search for a place, or enter a latitude and longitude.";
       latInput.focus();
       return;
     }
-    window.nimbus.updateWeatherSettings({
-      manualLocation: {
-        latitude,
-        longitude,
-        label: labelInput.value.trim() || `${latitude}, ${longitude}`,
-      },
-    });
+    try {
+      const saved = await window.nimbus.updateWeatherSettings({
+        manualLocation: {
+          latitude,
+          longitude,
+          label: labelInput.value.trim() || `${latitude}, ${longitude}`,
+        },
+      });
+      locationStatus.textContent = `Saved: ${saved.manualLocation?.label ?? labelInput.value}.`;
+    } catch (err) {
+      console.error("Failed to save the weather location", err);
+      locationStatus.textContent = "Couldn't save the location.";
+    }
+  }
+
+  saveBtn.addEventListener("click", () => void saveManualLocation());
+
+  async function searchPlaces(): Promise<void> {
+    const query = searchInput.value.trim();
+    searchResults.replaceChildren();
+    if (query.length < 2) {
+      locationStatus.textContent = "Type at least two letters of a place name.";
+      return;
+    }
+    searchBtn.disabled = true;
+    locationStatus.textContent = "Searchingâ€¦";
+    try {
+      const places = await window.nimbus.searchPlaces(query);
+      locationStatus.textContent = places.length ? "" : `No places found for "${query}".`;
+      for (const place of places) {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "place-search-result";
+        option.textContent = place.label;
+        const coords = document.createElement("span");
+        coords.className = "place-search-coords";
+        coords.textContent = `${place.latitude.toFixed(2)}, ${place.longitude.toFixed(2)}`;
+        option.appendChild(coords);
+        option.addEventListener("click", () => {
+          labelInput.value = place.label;
+          latInput.value = String(place.latitude);
+          lonInput.value = String(place.longitude);
+          searchResults.replaceChildren();
+          void saveManualLocation();
+        });
+        searchResults.appendChild(option);
+      }
+    } catch (err) {
+      console.error("Place search failed", err);
+      locationStatus.textContent = "Couldn't reach the place search. Check the connection and try again.";
+    } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  searchBtn.addEventListener("click", () => void searchPlaces());
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void searchPlaces();
+    }
   });
 }
 

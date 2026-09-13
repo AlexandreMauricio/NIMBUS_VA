@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld("nimbus", {
   getWeatherSettings: (): Promise<WeatherSettings> => ipcRenderer.invoke("nimbus:get-weather-settings"),
   updateWeatherSettings: (partial: Partial<WeatherSettings>): Promise<WeatherSettings> =>
     ipcRenderer.invoke("nimbus:update-weather-settings", partial),
+  searchPlaces: (query: string): Promise<unknown> => ipcRenderer.invoke("nimbus:search-places", query),
 
   getCalendarSettings: (): Promise<CalendarSettings> => ipcRenderer.invoke("nimbus:get-calendar-settings"),
   updateCalendarSettings: (partial: Partial<CalendarSettings>): Promise<CalendarSettings> =>

@@ -1825,7 +1825,7 @@
             <span>
               <span class="setting-title">Location mode</span>
               <span class="setting-desc"
-                >Automatic uses your approximate location (via IP); manual uses fixed coordinates.</span
+                >Automatic uses your approximate location (via IP); manual uses a place you choose.</span
               >
             </span>
             <select id="locationModeSelect" class="select">
@@ -1835,6 +1835,14 @@
           </label>
 
           <div id="manualLocationFields" class="manual-location-fields" hidden>
+            <div class="field-row">
+              <label class="setting-title" for="placeSearchInput">Find a place</label>
+              <span class="place-search-controls">
+                <input type="search" id="placeSearchInput" placeholder="e.g. Lisbon" maxlength="100" />
+                <button class="btn btn-secondary" id="placeSearchBtn" type="button">Search</button>
+              </span>
+            </div>
+            <div id="placeSearchResults" class="place-search-results"></div>
             <label class="field-row">
               <span class="setting-title">Label</span>
               <input type="text" id="manualLocationLabel" placeholder="e.g. Lisbon, Portugal" />
@@ -1848,6 +1856,7 @@
               <input type="number" id="manualLocationLon" step="any" placeholder="-9.1393" />
             </label>
             <button class="btn btn-secondary" id="saveManualLocationBtn">Save location</button>
+            <p id="manualLocationStatus" class="setting-note" aria-live="polite"></p>
           </div>
 
           <h6 class="kicker settings-section-spaced">Calendar</h6>

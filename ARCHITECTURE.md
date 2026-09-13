@@ -37,7 +37,8 @@ src/
       dateTimeProvider.ts         [1]/[4] No external calls
       systemInfoProvider.ts       [1]/[4] Node's `os` module — see caveat below
       weather/                    weatherProvider, locationResolver [1];
-                                   openMeteoClient, ipGeolocation [3];
+                                   openMeteoClient, ipGeolocation,
+                                   geocoding (city search) [3];
                                    weatherCodes [1]
       calendar/                   calendarProvider [1]; icsCalendarSource [3]
                                    (http(s) or a local .ics file); icsParser,

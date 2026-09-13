@@ -675,6 +675,49 @@ button.btn {
   gap: 1rem;
 }
 
+.place-search-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.place-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.place-search-results:empty {
+  display: none;
+}
+
+.place-search-result {
+  appearance: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.place-search-result:hover,
+.place-search-result:focus-visible {
+  border-color: var(--color-divider);
+}
+
+.place-search-coords {
+  color: var(--color-neutral-400);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Unlike .field-row (a label pinned left, one control pinned right),
    this row packs several controls together left-to-right — .field-row's
    space-between spread them across the whole row width with huge gaps

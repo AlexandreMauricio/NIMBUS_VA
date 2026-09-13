@@ -26,7 +26,11 @@ entirely on top of the [Context architecture](context-system.md). Nothing about
     machine's public IP via [geojs.io](https://www.geojs.io/) (also free,
     no key), cached for 1 hour since location rarely changes.
   - **Manual**: a fixed latitude/longitude/label, set from the Settings
-    tab (**Weather location**) or via `NIMBUS_WEATHER_LAT` /
+    tab (**Weather location**) â€” where **Find a place** searches
+    Open-Meteo's free geocoding API
+    ([geocoding.ts](../src/context/providers/weather/geocoding.ts); only
+    the typed name is sent) and picking a result saves it â€” or via
+    `NIMBUS_WEATHER_LAT` /
     `NIMBUS_WEATHER_LON` / `NIMBUS_WEATHER_LOCATION_LABEL` in `.env` as a
     default for headless/dev use before any UI setting is saved. This is
     the "user can choose automatic vs. manual" system the task asked for;
@@ -61,7 +65,9 @@ request; **Refresh** re-reads the snapshot. The forecast is 7 days
 ## Tests
 
 Weather-specific tests live alongside the other provider tests, run via
-`npm test`: `openMeteoClient.test.ts` (response mapping, HTTP-failure
+`npm test`: `geocoding.test.ts` (place labels, empty and malformed
+results, short queries never sent, HTTP errors),
+`openMeteoClient.test.ts` (response mapping, HTTP-failure
 error message, unknown weather codes), `locationResolver.test.ts` (manual
 mode, manual→env fallback, manual with nothing configured, auto mode,
 auto-location caching, geolocation failure propagation),
