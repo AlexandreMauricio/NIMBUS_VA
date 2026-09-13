@@ -16,6 +16,10 @@
 import { formatRuns, parseRuns } from "../collections/books/runs";
 import { coverUrlForIsbn, isChosenCover } from "../collections/books/covers";
 import {
+  BOOK_ORDERS,
+  BookOrder,
+  GROUP_ORDERS,
+  GroupOrder,
   bookIssues,
   bookProgress,
   readingStatus,
@@ -35,6 +39,8 @@ import {
   readingStatsSection,
   readingSummary,
 } from "./readingLog";
+import { seriesYearsPanel } from "./seriesYearsPanel";
+import { creditsEditor } from "./creditsEditor";
 
 interface GcdSeriesUI {
   id: number;
@@ -223,6 +229,7 @@ export function initBooksTab(): void {
   const coverageEl = byId<HTMLElement>("bookCoverage");
   const coverageEmpty = byId<HTMLElement>("bookCoverageEmpty");
   const filterKind = byId<HTMLSelectElement>("bookFilterKind");
+  const shelfSort = byId<HTMLSelectElement>("bookShelfSort");
   const filterStatus = byId<HTMLSelectElement>("bookFilterStatus");
   const filterText = byId<HTMLInputElement>("bookFilterText");
 
@@ -261,7 +268,7 @@ export function initBooksTab(): void {
   let coverage: SeriesCoverage[] = [];
   /** Issues read, shared by every book that collects them. */
   let readIssues: ReadonlySet<string> = new Set();
-  let readingLog: ReadingLogView = { readings: [], credits: {}, minutesPerIssue: 12 };
+  let readingLog: ReadingLogView = { readings: [], credits: {}, minutesPerIssue: 12, undated: [] };
   const progressOf = (book: Book) => bookProgress(book, books, readIssues);
   let formatsFilled = false;
   let pane: Pane = "shelf";
@@ -270,6 +277,31 @@ export function initBooksTab(): void {
   let returnTo: Page = { view: "shelf" };
   let editingId: string | null = null;
   let source: string | null = null;
+  // Sort orders, remembered on this PC.
+  const remembered = <T extends string>(key: string, allowed: readonly { id: T }[], fallback: T): T => {
+    try {
+      const value = localStorage.getItem(key);
+      return allowed.some((o) => o.id === value) ? (value as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const remember = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // A convenience only.
+    }
+  };
+  let groupOrder = remembered<GroupOrder>("nimbus:books-shelf-sort", GROUP_ORDERS, "name");
+  let bookOrder = remembered<BookOrder>("nimbus:books-series-sort", BOOK_ORDERS, "volume");
+  for (const order of GROUP_ORDERS) shelfSort.appendChild(new Option(`Sort: ${order.label}`, order.id));
+  shelfSort.value = groupOrder;
+  shelfSort.addEventListener("change", () => {
+    groupOrder = shelfSort.value as GroupOrder;
+    remember("nimbus:books-shelf-sort", groupOrder);
+    render();
+  });
   /** Issue pages already looked up this session, by "series|year|number". */
   const issueCache = new Map<string, GcdIssueDetail | null>();
 
@@ -344,7 +376,7 @@ export function initBooksTab(): void {
 
     if (pane === "shelf") {
       grid.replaceChildren();
-      const groups = groupShelf(filtered(), books, readIssues);
+      const groups = groupShelf(filtered(), books, readIssues, bookOrder, groupOrder);
       empty.hidden = groups.length > 0;
       for (const group of groups) {
         const card = make("button", "books-card");
@@ -557,7 +589,7 @@ export function initBooksTab(): void {
   // ----------------------------------------------------------------- series
 
   function renderSeries(name: string): void {
-    const members = groupShelf(books, books, readIssues).find(
+    const members = groupShelf(books, books, readIssues, bookOrder).find(
       (g) => g.name.toLowerCase() === name.toLowerCase()
     );
     detailView.replaceChildren(backLink("Back to books", () => go({ view: "shelf" })));
@@ -578,6 +610,23 @@ export function initBooksTab(): void {
           : "The volumes on your shelf and wishlist for this series."
       )
     );
+    const sortRow = make("div", "books-sort-row");
+    const sort = make("select", "select");
+    sort.setAttribute("aria-label", "Sort these books");
+    for (const order of BOOK_ORDERS) sort.appendChild(new Option(`Sort: ${order.label}`, order.id));
+    sort.value = bookOrder;
+    sort.addEventListener("change", () => {
+      bookOrder = sort.value as BookOrder;
+      remember("nimbus:books-series-sort", bookOrder);
+      render();
+    });
+    sortRow.appendChild(sort);
+    if (bookOrder === "collected") {
+      sortRow.appendChild(
+        make("span", "books-small", "By the year and number of the first issue each book collects.")
+      );
+    }
+    detailView.appendChild(sortRow);
     const list = make("div", "books-rows");
     for (const book of members.books) {
       const row = make("button", "card books-row books-row-link");
@@ -769,6 +818,9 @@ export function initBooksTab(): void {
     hero.appendChild(info);
     detailView.appendChild(hero);
 
+    const years = seriesYearsPanel(book);
+    if (years) detailView.appendChild(years);
+
     if (issues.length) {
       detailView.appendChild(
         make("h6", "kicker books-section", book.kind === "manga" ? "Volumes" : "Issues collected")
@@ -785,6 +837,17 @@ export function initBooksTab(): void {
           )
         );
         detailView.appendChild(logBox);
+        const creditsBox = make("details", "reading-log-box");
+        creditsBox.appendChild(make("summary", undefined, "Add characters or creators to several issues"));
+        creditsBox.appendChild(
+          creditsEditor(
+            issues.map((i) => ({ series: i.series, year: i.year, number: i.number })),
+            null,
+            readingLog,
+            () => void load()
+          )
+        );
+        detailView.appendChild(creditsBox);
       }
       const card = make("div", "card books-issues");
       for (const issue of issues) card.appendChild(issueRow(book, issue));
@@ -943,6 +1006,15 @@ export function initBooksTab(): void {
     info.appendChild(make("h2", "books-heading", label));
     const metaLine = make("p", "card-meta books-row-meta", "Looking it up on the Grand Comics Database…");
     info.appendChild(metaLine);
+    if (target.year === null) {
+      info.appendChild(
+        make(
+          "p",
+          "books-small series-years-warning",
+          "This issue's series has no year, so it may be a different volume of the same name — set it on the book's page."
+        )
+      );
+    }
 
     // What your shelf says about it, without waiting for GCD.
     const thisIssue = book
@@ -969,7 +1041,7 @@ export function initBooksTab(): void {
     addFact("Copies owned", String(holders.length));
     if (holders.length) addFact("Collected in", holders.map((b) => bookTitle(b)).join(", "));
     const issueRef = { series: target.series, year: target.year, number: target.number };
-    addFact("Read", readingSummary(issueRef, readingLog) ?? (thisIssue?.read ? "Yes" : "Not yet"));
+    addFact("Read", readingSummary(issueRef, readingLog, thisIssue?.read ?? false) ?? "Not yet");
     info.appendChild(facts);
 
     const readTools = make("div", "books-actions books-actions-start");
@@ -1003,6 +1075,17 @@ export function initBooksTab(): void {
     readings.appendChild(issueReadingList(issueRef, readingLog, () => void load()));
     readings.appendChild(logReadingForm([issueRef], readingLog, book?.id ?? null, () => void load()));
     info.appendChild(readings);
+    const creditsBox = make("details", "reading-log-box");
+    creditsBox.appendChild(make("summary", undefined, "Characters & creators for your reading stats"));
+    const bookIssueRefs = book
+      ? bookIssues(book, books, readIssues).issues.map((i) => ({
+          series: i.series,
+          year: i.year,
+          number: i.number,
+        }))
+      : [issueRef];
+    creditsBox.appendChild(creditsEditor(bookIssueRefs, issueRef, readingLog, () => void load()));
+    info.appendChild(creditsBox);
 
     const links = make("div", "books-actions books-actions-start");
     const locg = make("button", "btn btn-secondary", "League of Comic Geeks");

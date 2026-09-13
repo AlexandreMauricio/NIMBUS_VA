@@ -50,10 +50,69 @@ const naturalVolume = (a: Book, b: Book) =>
   a.title.localeCompare(b.title) ||
   (a.volume ?? "").localeCompare(b.volume ?? "", undefined, { numeric: true });
 
+/** How a series' books are ordered. */
+export type BookOrder = "volume" | "collected" | "title" | "added" | "progress";
+/** How the shelf's groups are ordered. */
+export type GroupOrder = "name" | "collected" | "added" | "progress";
+
+export const BOOK_ORDERS: Array<{ id: BookOrder; label: string }> = [
+  { id: "volume", label: "Title and volume" },
+  { id: "collected", label: "Order of the comics collected" },
+  { id: "added", label: "Recently added" },
+  { id: "progress", label: "Reading progress" },
+  { id: "title", label: "Title only" },
+];
+
+export const GROUP_ORDERS: Array<{ id: GroupOrder; label: string }> = [
+  { id: "name", label: "Name" },
+  { id: "collected", label: "Order of the comics collected" },
+  { id: "added", label: "Recently added" },
+  { id: "progress", label: "Reading progress" },
+];
+
+/**
+ * Where a book starts in comics history: its earliest run's series year,
+ * then issue number — "Amazing Spider-Man (1963) #1" before "(1963) #18"
+ * before "(2018) #29". Runs without a year borrow the shelf's (see
+ * coverage.ts); a book with none sorts last.
+ */
+export function collectedStart(book: Book, years: Map<string, number | null>): [number, number] {
+  let best: [number, number] = [Infinity, Infinity];
+  for (const run of book.runs) {
+    const year = run.year ?? years.get(seriesKey(run.series, null)) ?? Infinity;
+    if (year < best[0] || (year === best[0] && run.from < best[1])) best = [year, run.from];
+  }
+  return best;
+}
+
+const byStart = (a: [number, number], b: [number, number]) =>
+  (a[0] === b[0] ? 0 : a[0] - b[0]) || (a[1] === b[1] ? 0 : a[1] - b[1]);
+
+/** A copy of `books` in the chosen order; ties fall back to title and volume. */
+export function sortBooks(
+  books: Book[],
+  order: BookOrder,
+  allBooks: Book[] = books,
+  read: ReadIssues = NOTHING_READ
+): Book[] {
+  const years = resolveYears(allBooks);
+  const progress = (b: Book) => bookProgress(b, allBooks, read).percent ?? -1;
+  const compare: Record<BookOrder, (a: Book, b: Book) => number> = {
+    volume: naturalVolume,
+    title: (a, b) => a.title.localeCompare(b.title),
+    collected: (a, b) => byStart(collectedStart(a, years), collectedStart(b, years)),
+    added: (a, b) => b.addedAt.localeCompare(a.addedAt),
+    progress: (a, b) => progress(b) - progress(a),
+  };
+  return [...books].sort((a, b) => compare[order](a, b) || naturalVolume(a, b));
+}
+
 export function groupShelf(
   books: Book[],
   allBooks: Book[] = books,
-  read: ReadIssues = NOTHING_READ
+  read: ReadIssues = NOTHING_READ,
+  bookOrder: BookOrder = "volume",
+  groupOrder: GroupOrder = "name"
 ): ShelfGroup[] {
   const groups = new Map<string, Book[]>();
   for (const book of books) {
@@ -62,8 +121,8 @@ export function groupShelf(
     groups.get(key)!.push(book);
   }
   const result: ShelfGroup[] = [];
-  for (const members of groups.values()) {
-    members.sort(naturalVolume);
+  for (const unsorted of groups.values()) {
+    const members = sortBooks(unsorted, bookOrder, allBooks, read);
     const owned = members.filter((b) => b.status === "owned");
     const progress = members
       .map((b) => bookProgress(b, allBooks, read).percent)
@@ -85,7 +144,20 @@ export function groupShelf(
         : null,
     });
   }
-  return result.sort((a, b) => a.name.localeCompare(b.name));
+  const years = resolveYears(allBooks);
+  const start = (g: ShelfGroup) =>
+    g.books
+      .map((b) => collectedStart(b, years))
+      .reduce((best, s) => (byStart(s, best) < 0 ? s : best), [Infinity, Infinity] as [number, number]);
+  const newest = (g: ShelfGroup) =>
+    g.books.reduce((latest, b) => (b.addedAt > latest ? b.addedAt : latest), "");
+  const compare: Record<GroupOrder, (a: ShelfGroup, b: ShelfGroup) => number> = {
+    name: () => 0,
+    collected: (a, b) => byStart(start(a), start(b)),
+    added: (a, b) => newest(b).localeCompare(newest(a)),
+    progress: (a, b) => (b.progress ?? -1) - (a.progress ?? -1),
+  };
+  return result.sort((a, b) => compare[groupOrder](a, b) || a.name.localeCompare(b.name));
 }
 
 /** Issues read, as "series (year)#number" keys (bookService.issueReadKey). */

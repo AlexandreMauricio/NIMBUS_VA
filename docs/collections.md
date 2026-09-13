@@ -86,6 +86,25 @@ through Wikipedia's API (kept for a day) and matched locally — the ISBN
 isn't sent. Wikipedia often leaves out series years ("Journey into
 Mystery #83–109"); add one if the same name has two series.
 
+**Which volume a run is.** "Amazing Spider-Man #29–31" is a different comic
+in the 1963, 1999, 2015, 2018 and 2022 volumes, and contents from Wikipedia
+or GCD's notes usually leave the year out
+([seriesYears.ts](../src/collections/books/seriesYears.ts)). After a comic is
+saved, each run without a year is matched against GCD's series of that
+name — English, not a collected edition, from the book's publisher, with
+those issue numbers (GCD's "29 (830)" legacy numbering included). One match
+settles it. Names with more series than GCD's first page (Amazing
+Spider-Man has over 300 worldwide) are looked up only by the few years
+before the book's **era** — the years of its dated runs and the names
+already settled, or the year the book was published — stopping as soon as a
+volume running then has the issues. So an Absolute Carnage omnibus settles
+Absolute Carnage on 2019 and places Spider-Man #29–31 in the 2018 volume. A
+name with no era to go by is never guessed: the book's page lists the runs
+without a year, offers the volumes GCD found, and takes a year typed in. GCD
+pauses clients that ask too much; the work stops, keeps what it settled,
+and says so, with a button to try again. An issue whose series has no year
+says so on its page.
+
 **Typing runs.** `Series (year) #from-to`, separated by `;` or `,`.
 `Annual #1` after a series means that series' annual; a bare `#140-145`
 continues the series before it; `material from X #3` marks a partial
@@ -124,6 +143,12 @@ issues read. Nobody times their reading, so each reading takes an
 estimate: the minutes per issue set in Stats (12 by default — a 20–24 page
 issue at an easy pace is 10–15), changeable per reading.
 
+An issue ticked as read with no logged reading counts as **one reading on
+an unknown day**, at the estimate: in total time and time with each series,
+character, writer and artist — so five Epic Collections read years ago still
+put Iron Man near the top — but not in this month or this year. Its page
+says "Yes — day not logged".
+
 Stats adds **Reading time**: total, this month, this year, readings,
 issues read again, and time with each **series, character, writer and
 artist** — Barry Windsor-Smith 24 min, Doctor Strange 36 min. Characters and
@@ -132,6 +157,23 @@ page keeps them, and **Look them up on GCD** fetches the rest five at a
 time, a second apart. Characters lose GCD's aliases and notes ("Thor
 [Donald Blake]" is Thor); an artist is anyone credited with pencils, inks or
 art. Everything stays in `books.json`.
+
+**Characters and creators you add** ([creditsEditor.ts](../src/ui/creditsEditor.ts)).
+An issue's page has "Characters & creators for your reading stats": its
+characters, writers and artists as chips, from GCD when it had them, to add
+to or remove from; or, with "Add these to issues #… to #…", added to a
+stretch of the book's issues. A book's page can add names to a stretch too.
+Names are matched loosely — capitals, accents and punctuation don't make a
+different person — and a name typed differently takes the spelling already
+known, so "venom" is GCD's "Venom" and Stats counts them as one. Edited
+credits are marked and a GCD lookup no longer replaces them.
+
+**Sorting.** The shelf sorts its groups by name, by the comics they collect,
+by recently added or by reading progress; a series page sorts its books by
+title and volume, **by the comics they collect** (each book's earliest
+series year, then issue: Amazing Fantasy (1962) #15 before Amazing
+Spider-Man (1963) #18 before Amazing Spider-Man (2018) #29), recently added,
+reading progress or title. Both are remembered on this PC.
 
 **Covers you choose** are resized to 600 px, saved in
 `<userData>/book-covers/<book id>.jpg` and shown through the

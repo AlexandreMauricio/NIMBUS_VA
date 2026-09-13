@@ -10,6 +10,7 @@ import {
   IssueCredits,
   IssueReading,
   TimeLine,
+  UndatedRead,
   formatReadingTime,
   readingStats,
 } from "../collections/books/readings";
@@ -18,6 +19,7 @@ export interface ReadingLogView {
   readings: IssueReading[];
   credits: Record<string, IssueCredits>;
   minutesPerIssue: number;
+  undated: UndatedRead[];
 }
 
 export interface IssueRef {
@@ -177,10 +179,14 @@ export function issueReadingList(issue: IssueRef, log: ReadingLogView, onChanged
 }
 
 /** "Read twice — last on 12 Sep 2026", or null when never logged. */
-export function readingSummary(issue: IssueRef, log: ReadingLogView): string | null {
+export function readingSummary(issue: IssueRef, log: ReadingLogView, read = false): string | null {
   const key = issueReadKey(issue.series, issue.year, issue.number);
   const mine = log.readings.filter((r) => r.key === key);
-  if (!mine.length) return null;
+  if (!mine.length) {
+    return read
+      ? `Yes — day not logged (counts as one reading, ${formatReadingTime(log.minutesPerIssue)})`
+      : null;
+  }
   const times =
     mine.length === 1 ? "Read once" : mine.length === 2 ? "Read twice" : `Read ${mine.length} times`;
   return `${times} — last on ${dayLabel(mine[0].readOn)}`;
@@ -212,11 +218,18 @@ function timeList(title: string, lines: TimeLine[], empty: string): HTMLElement 
 
 /** The Stats pane's reading section. */
 export function readingStatsSection(log: ReadingLogView, onChanged: () => void): HTMLElement {
-  const stats = readingStats(log.readings, log.credits, localToday());
+  const stats = readingStats(
+    log.readings,
+    log.credits,
+    localToday(),
+    10,
+    log.undated ?? [],
+    log.minutesPerIssue
+  );
   const section = make("section", "reading-stats");
   section.appendChild(make("h6", "kicker books-section", "Reading time"));
 
-  if (!stats.readings) {
+  if (!stats.readings && !stats.undated) {
     section.appendChild(
       make(
         "p",
@@ -230,7 +243,9 @@ export function readingStatsSection(log: ReadingLogView, onChanged: () => void):
       ["Time reading", formatReadingTime(stats.totalMinutes)],
       ["This month", formatReadingTime(stats.thisMonthMinutes)],
       ["This year", formatReadingTime(stats.thisYearMinutes)],
-      ["Readings", `${stats.readings} of ${stats.issues} issues`],
+      ["Readings logged", String(stats.readings)],
+      ["Read, day unknown", `${stats.undated} issue${stats.undated === 1 ? "" : "s"}`],
+      ["Issues read", String(stats.issues)],
       ["Read again", `${stats.reread} issue${stats.reread === 1 ? "" : "s"}`],
     ] as const) {
       const tile = make("div", "card books-stat");
@@ -265,7 +280,7 @@ export function readingStatsSection(log: ReadingLogView, onChanged: () => void):
   );
   section.appendChild(estimate);
 
-  if (!stats.readings) return section;
+  if (!stats.readings && !stats.undated) return section;
 
   if (stats.withoutCredits > 0) {
     const fill = make("div", "reading-estimate");

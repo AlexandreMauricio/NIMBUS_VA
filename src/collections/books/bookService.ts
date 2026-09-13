@@ -1,8 +1,19 @@
 import { randomUUID } from "crypto";
 import { logger } from "../../logging/logger";
-import { computeCoverage, SeriesCoverage } from "./coverage";
+import { computeCoverage, resolveYears, SeriesCoverage } from "./coverage";
 import { isChosenCover, isCoverUrl } from "./covers";
-import { DEFAULT_MINUTES_PER_ISSUE, IssueCredits, IssueReading, MAX_READINGS } from "./readings";
+import {
+  CREDIT_FIELDS,
+  CreditField,
+  canonicalNames,
+  knownNames,
+  personKey,
+  DEFAULT_MINUTES_PER_ISSUE,
+  IssueCredits,
+  IssueReading,
+  MAX_READINGS,
+  UndatedRead,
+} from "./readings";
 import { parseRuns, seriesKey } from "./runs";
 import {
   BOOK_FORMATS,
@@ -147,6 +158,7 @@ function parseCredits(raw: unknown): IssueCredits | null {
     writers: names(r.writers, 10),
     artists: names(r.artists, 10),
     pageCount: Number.isInteger(r.pageCount) && (r.pageCount as number) > 0 ? (r.pageCount as number) : null,
+    ...(r.edited === true ? { edited: true } : {}),
   };
 }
 
@@ -218,8 +230,14 @@ export class BookService {
   // ------------------------------------------------------------ reading log
 
   /** The reading log, newest first, the credits known, and the minutes a new reading takes. */
-  readingLog(): { readings: IssueReading[]; credits: Record<string, IssueCredits>; minutesPerIssue: number } {
+  readingLog(): {
+    readings: IssueReading[];
+    credits: Record<string, IssueCredits>;
+    minutesPerIssue: number;
+    undated: UndatedRead[];
+  } {
     return {
+      undated: this.undatedReads(),
       readings: [...this.readings]
         .sort((a, b) => b.readOn.localeCompare(a.readOn) || b.loggedAt.localeCompare(a.loggedAt))
         .map((r) => ({ ...r })),
@@ -291,18 +309,96 @@ export class BookService {
     return this.minutesPerIssue;
   }
 
-  /** What GCD says about an issue, kept for reading stats. Saves only when new or changed. */
+  /**
+   * What GCD says about an issue, kept for reading stats. Saves only when
+   * new or changed, and never over credits you've edited.
+   */
   setIssueCredits(series: string, year: number | null, number: number, credits: IssueCredits): void {
     const key = issueReadKey(series, year, number);
+    if (this.issueCredits[key]?.edited) return;
     if (JSON.stringify(this.issueCredits[key]) === JSON.stringify(credits)) return;
     this.issueCredits[key] = credits;
     this.save();
   }
 
-  /** Issues in the reading log whose characters and creators aren't known yet. */
+  /**
+   * Comic issues ticked as read that have no reading in the log — read at
+   * some point, day unknown. Walked from the books' runs, with the same year
+   * a book's issue list gives each one.
+   */
+  undatedReads(): UndatedRead[] {
+    const logged = new Set(this.readings.map((r) => r.key));
+    const years = resolveYears(this.books);
+    const out = new Map<string, UndatedRead>();
+    for (const book of this.books) {
+      if (book.kind !== "comic") continue;
+      for (const run of book.runs) {
+        if (run.to - run.from > 1500) continue;
+        const year = run.year ?? years.get(seriesKey(run.series, null)) ?? null;
+        for (let number = run.from; number <= run.to; number++) {
+          const key = issueReadKey(run.series, year, number);
+          if (out.has(key) || logged.has(key)) continue;
+          if (this.readIssues.has(key) || this.readIssues.has(issueReadKey(run.series, null, number))) {
+            out.set(key, { key, series: run.series, year, number });
+          }
+        }
+      }
+    }
+    return [...out.values()];
+  }
+
+  /**
+   * Your own characters, writers and artists for issues. "replace" sets an
+   * issue's lists to exactly these (one issue, edited in full); "add" adds
+   * them to every issue given (a stretch of a book) and keeps what's there.
+   * Names take the spelling already known, so "venom" joins "Venom".
+   * Edited credits aren't replaced by a later GCD lookup.
+   */
+  editIssueCredits(issues: unknown, changes: unknown, mode: unknown): number {
+    if (!Array.isArray(issues)) throw new Error("No issues to change.");
+    if (mode !== "replace" && mode !== "add") throw new Error("Replace or add?");
+    const c = (changes && typeof changes === "object" ? changes : {}) as Record<string, unknown>;
+    const typed: Partial<Record<CreditField, string[]>> = {};
+    for (const field of CREDIT_FIELDS) {
+      if (!(field in c)) continue;
+      const known = new Map(knownNames(this.issueCredits, field).map((name) => [personKey(name), name]));
+      typed[field] = canonicalNames(c[field], known);
+    }
+    let changed = 0;
+    for (const raw of issues.slice(0, 2000)) {
+      const issue = readIssue(raw);
+      if (!issue) continue;
+      const key = issueReadKey(issue.series, issue.year, issue.number);
+      const current = this.issueCredits[key] ?? {
+        title: null,
+        characters: [],
+        writers: [],
+        artists: [],
+        pageCount: null,
+      };
+      const next: IssueCredits = { ...current, edited: true };
+      for (const field of CREDIT_FIELDS) {
+        const names = typed[field];
+        if (!names) continue;
+        if (mode === "replace") {
+          next[field] = names.slice(0, field === "characters" ? 60 : 10);
+        } else {
+          const merged = new Map(current[field].map((n) => [personKey(n), n]));
+          for (const name of names) if (!merged.has(personKey(name))) merged.set(personKey(name), name);
+          next[field] = [...merged.values()].slice(0, field === "characters" ? 60 : 10);
+        }
+      }
+      this.issueCredits[key] = next;
+      changed++;
+    }
+    if (changed) this.save();
+    return changed;
+  }
+
+  /** Issues read (logged or ticked) whose characters and creators aren't known yet. */
   issuesWithoutCredits(limit = 50): Array<{ series: string; year: number | null; number: number }> {
     const out = new Map<string, { series: string; year: number | null; number: number }>();
-    for (const r of this.readings) {
+    for (const r of [...this.readings, ...this.undatedReads()]) {
       if (out.size >= limit) break;
       if (!this.issueCredits[r.key] && !out.has(r.key)) {
         out.set(r.key, { series: r.series, year: r.year, number: r.number });
@@ -414,6 +510,45 @@ export class BookService {
     }
     if (changed) this.save();
     return changed;
+  }
+
+  /**
+   * Sets the series year of runs written without one — worked out from GCD
+   * (seriesYears.ts) or chosen by you. A run that changed meanwhile, or
+   * already has a year, is left alone. Returns how many were set.
+   */
+  setRunYears(id: string, years: Array<{ index: number; series: string; year: number }>): number {
+    const book = this.books.find((b) => b.id === id);
+    if (!book) throw new Error("That book is no longer on the shelf.");
+    let set = 0;
+    for (const { index, series, year } of years) {
+      const run = book.runs[index];
+      if (!run || run.year !== null || run.series !== series) continue;
+      if (!Number.isInteger(year) || year < 1800 || year > 2200) continue;
+      run.year = year;
+      set++;
+      // What was kept under the yearless issue — read marks, readings, your
+      // names — now belongs to the dated one.
+      if (run.to - run.from > 1500) continue;
+      for (let number = run.from; number <= run.to; number++) {
+        const from = issueReadKey(run.series, null, number);
+        const to = issueReadKey(run.series, year, number);
+        if (this.readIssues.delete(from)) this.readIssues.add(to);
+        for (const reading of this.readings) {
+          if (reading.key === from) Object.assign(reading, { key: to, year });
+        }
+        const credits = this.issueCredits[from];
+        if (credits && (!this.issueCredits[to] || (credits.edited && !this.issueCredits[to].edited))) {
+          this.issueCredits[to] = credits;
+        }
+        if (credits) delete this.issueCredits[from];
+      }
+    }
+    if (set) {
+      book.updatedAt = this.now().toISOString();
+      this.save();
+    }
+    return set;
   }
 
   /** The cover the main process found or you chose. Only an Open Library or chosen-cover address is kept. */

@@ -155,6 +155,16 @@ export function mapGcdIssueDetail(json: unknown, issueId: number): GcdIssueDetai
  * the issue by its number — the plain printing first, then the direct
  * edition, then any variant. Null when GCD has no such series or issue.
  */
+/**
+ * The issue number a GCD descriptor is for: "29", "29 [Direct]", and modern
+ * Marvel's "29 (830)" with the legacy number in brackets are all #29;
+ * "1.1 - Learning to Crawl" isn't #1. Null when it isn't a plain number.
+ */
+export function descriptorNumber(descriptor: string): number | null {
+  const match = descriptor.trim().match(/^(\d+)(?=$|\s*[([])/);
+  return match ? Number(match[1]) : null;
+}
+
 export function pickIssue(
   series: Array<Pick<GcdSeries, "id" | "name" | "yearBegan" | "volumes">>,
   name: string,
@@ -175,7 +185,10 @@ export function pickIssue(
     const hit =
       candidate.volumes.find((v) => v.descriptor === n) ??
       candidate.volumes.find((v) => v.descriptor === `${n} [Direct]`) ??
-      candidate.volumes.find((v) => v.descriptor.startsWith(`${n} [`));
+      candidate.volumes.find(
+        (v) => descriptorNumber(v.descriptor) === number && !v.descriptor.includes("[")
+      ) ??
+      candidate.volumes.find((v) => descriptorNumber(v.descriptor) === number);
     if (hit) return { seriesId: candidate.id, issueId: hit.issueId };
   }
   return null;
@@ -288,6 +301,31 @@ export class GcdCatalog {
       `https://www.comics.org/api/series/name/${encodeURIComponent(query)}/?format=json`
     );
     return mapGcdSeriesSearch(json);
+  }
+
+  /**
+   * The first page of GCD's series by a name, and whether that's all of them
+   * (a page holds 50; "The Amazing Spider-Man" has over 300 worldwide).
+   */
+  async seriesFirstPage(name: string): Promise<{ series: GcdSeries[]; complete: boolean }> {
+    const query = name.trim().replace(/\s+/g, " ");
+    if (query.length < 2 || query.length > 100) return { series: [], complete: true };
+    const json = (await this.get(
+      `https://www.comics.org/api/series/name/${encodeURIComponent(query)}/?format=json`
+    )) as { next?: unknown } | null;
+    return { series: mapGcdSeriesSearch(json), complete: !json?.next };
+  }
+
+  /** GCD's series by a name that began in one year — one small request. */
+  async seriesByYear(name: string, year: number): Promise<GcdSeries[]> {
+    const query = name.trim().replace(/\s+/g, " ");
+    if (query.length < 2 || query.length > 100 || !Number.isInteger(year) || year < 1800 || year > 2200)
+      return [];
+    return mapGcdSeriesSearch(
+      await this.get(
+        `https://www.comics.org/api/series/name/${encodeURIComponent(query)}/year/${year}/?format=json`
+      )
+    );
   }
 
   async getVolume(issueId: unknown): Promise<GcdVolume> {

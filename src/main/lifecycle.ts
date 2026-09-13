@@ -88,6 +88,7 @@ import {
   averageDeck,
   compareWithReferences,
   nameKey,
+  workOutRunYears,
   checkDeck,
   deckStats,
   balanceColours,
@@ -105,6 +106,7 @@ import {
   zoneLabel,
   zonesFor,
 } from "../collections";
+import type { AmbiguousRun } from "../collections";
 import { FileDeckStore } from "./deckStore";
 import { chooseCoverFile, registerCoverProtocol, removeCoverFile } from "./coverStore";
 import { checkForUpdates, getUpdateState, installUpdate, startUpdater } from "./updater";
@@ -1065,6 +1067,10 @@ function registerIpcHandlers(): void {
       bookService.logReadings(issues, readOn, minutes, bookId)
   );
   ipcMain.handle("nimbus:remove-issue-reading", (_event, id: unknown) => bookService.removeReading(id));
+  // Your own characters, writers and artists for issues (bookService.editIssueCredits).
+  ipcMain.handle("nimbus:edit-issue-credits", (_event, issues: unknown, changes: unknown, mode: unknown) =>
+    bookService.editIssueCredits(issues, changes, mode)
+  );
   ipcMain.handle("nimbus:set-minutes-per-issue", (_event, minutes: unknown) =>
     bookService.setMinutesPerIssue(minutes)
   );
@@ -1178,9 +1184,71 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
     typeof isbn === "string" && isbn.length <= 20 ? wikipediaCollections.findByIsbn([isbn]) : null
   );
-  ipcMain.handle("nimbus:add-book", (_event, input: unknown) => bookService.add(input));
+  // Runs written without a series year ("Amazing Spider-Man #29-31") are
+  // placed in the right volume from GCD, in the background after a comic is
+  // saved (src/collections/books/seriesYears.ts). What can't be settled is
+  // kept here for the book's page to ask about.
+  const notifyBooksChanged = () => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
+  };
+  const bookYears = new Map<
+    string,
+    { working: boolean; settled: number; ambiguous: AmbiguousRun[]; paused: string | null }
+  >();
+  const workOutBookYears = async (id: string) => {
+    const book = bookService.get(id);
+    if (book.kind !== "comic" || !book.runs.some((run) => run.year === null)) {
+      bookYears.delete(id);
+      return null;
+    }
+    const current = bookYears.get(id);
+    if (current?.working) return current;
+    bookYears.set(id, { working: true, settled: 0, ambiguous: [], paused: null });
+    notifyBooksChanged();
+    let publicationYear: number | null = null;
+    if (book.source?.startsWith("gcd:")) {
+      try {
+        const volume = await gcdCatalog.getVolume(Number(book.source.slice(4)));
+        const year = Number(volume.publicationDate?.slice(0, 4));
+        publicationYear = Number.isInteger(year) && year > 1800 ? year : null;
+      } catch {
+        // The era then comes from the book's runs alone.
+      }
+    }
+    const result = await workOutRunYears(book.runs, book.publisher, gcdCatalog, publicationYear);
+    const settled = bookService.setRunYears(
+      id,
+      [...result.years].map(([index, year]) => ({ index, series: book.runs[index].series, year }))
+    );
+    const state = { working: false, settled, ambiguous: result.ambiguous, paused: result.paused };
+    bookYears.set(id, state);
+    notifyBooksChanged();
+    return state;
+  };
+  const afterSave = (saved: { book: { id: string } }) => {
+    void workOutBookYears(saved.book.id).catch((err) =>
+      logger.warn("Could not work out series years", { error: String(err) })
+    );
+    return saved;
+  };
+  ipcMain.handle("nimbus:add-book", (_event, input: unknown) => afterSave(bookService.add(input)));
   ipcMain.handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
-    bookService.update(String(id ?? ""), input)
+    afterSave(bookService.update(String(id ?? ""), input))
+  );
+  ipcMain.handle("nimbus:get-book-years", (_event, id: unknown) => bookYears.get(String(id ?? "")) ?? null);
+  ipcMain.handle("nimbus:work-out-book-years", (_event, id: unknown) => workOutBookYears(String(id ?? "")));
+  ipcMain.handle(
+    "nimbus:set-run-year",
+    (_event, id: unknown, index: unknown, series: unknown, year: unknown) => {
+      const bookId = String(id ?? "");
+      if (!Number.isInteger(index) || typeof series !== "string" || !Number.isInteger(year)) {
+        throw new Error("Choose the series' year.");
+      }
+      const set = bookService.setRunYears(bookId, [{ index: index as number, series, year: year as number }]);
+      const state = bookYears.get(bookId);
+      if (state) state.ambiguous = state.ambiguous.filter((a) => a.index !== index);
+      return set;
+    }
   );
   ipcMain.handle("nimbus:remove-book", (_event, id: unknown) => {
     const removed = bookService.remove(String(id ?? ""));

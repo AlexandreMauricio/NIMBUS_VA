@@ -17,6 +17,14 @@ import type { GcdIssueDetail } from "./gcd";
 export const DEFAULT_MINUTES_PER_ISSUE = 12;
 export const MAX_READINGS = 50_000;
 
+/** An issue ticked as read with no reading logged — read once, day unknown. */
+export interface UndatedRead {
+  key: string;
+  series: string;
+  year: number | null;
+  number: number;
+}
+
 export interface IssueReading {
   id: string;
   /** bookService.issueReadKey — the same issue in any book. */
@@ -39,6 +47,51 @@ export interface IssueCredits {
   writers: string[];
   artists: string[];
   pageCount: number | null;
+  /** Changed by you: a GCD lookup no longer replaces it. */
+  edited?: boolean;
+}
+
+export type CreditField = "characters" | "writers" | "artists";
+export const CREDIT_FIELDS: CreditField[] = ["characters", "writers", "artists"];
+
+/**
+ * How names are matched: "Venom", "venom" and "VENOM" are one; so are
+ * "Spider-Man" and "Spider Man". Accents, capitals and punctuation don't
+ * make a different person.
+ */
+export function personKey(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+/** Every name known for a field, one spelling each — the first seen, which is GCD's when it had it. */
+export function knownNames(credits: Record<string, IssueCredits>, field: CreditField): string[] {
+  const names = new Map<string, string>();
+  for (const c of Object.values(credits)) {
+    for (const name of c[field]) if (!names.has(personKey(name))) names.set(personKey(name), name);
+  }
+  return [...names.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Names as you typed them, cleaned and put in the spelling already known —
+ * typing "venom" gives the "Venom" GCD's issues use — without repeats.
+ */
+export function canonicalNames(typed: unknown, known: Map<string, string>): string[] {
+  if (!Array.isArray(typed)) return [];
+  const out = new Map<string, string>();
+  for (const raw of typed.slice(0, 80)) {
+    if (typeof raw !== "string") continue;
+    const name = raw.replace(/\s+/g, " ").trim().slice(0, 80);
+    const key = personKey(name);
+    if (!key || out.has(key)) continue;
+    out.set(key, known.get(key) ?? name);
+  }
+  return [...out.values()];
 }
 
 const ARTIST_ROLES = /^(penciler|inker|artist)$/i;
@@ -96,16 +149,20 @@ export interface ReadingStats {
   byCharacter: TimeLine[];
   byWriter: TimeLine[];
   byArtist: TimeLine[];
+  /** Issues ticked as read without a logged reading — each counted once at the estimate. */
+  undated: number;
   /** Different issues read whose characters and creators aren't known yet. */
   withoutCredits: number;
   recent: IssueReading[];
 }
 
+/** Adds a reading's time to a name — matched by personKey, shown in the first spelling seen. */
 function tally(map: Map<string, TimeLine>, name: string, minutes: number): void {
-  const line = map.get(name) ?? { name, minutes: 0, readings: 0 };
+  const key = personKey(name) || name;
+  const line = map.get(key) ?? { name, minutes: 0, readings: 0 };
   line.minutes += minutes;
   line.readings += 1;
-  map.set(name, line);
+  map.set(key, line);
 }
 
 const top = (map: Map<string, TimeLine>, limit: number): TimeLine[] =>
@@ -115,7 +172,9 @@ export function readingStats(
   readings: IssueReading[],
   credits: Record<string, IssueCredits>,
   today: string,
-  limit = 10
+  limit = 10,
+  undated: UndatedRead[] = [],
+  minutesPerIssue = DEFAULT_MINUTES_PER_ISSUE
 ): ReadingStats {
   const month = today.slice(0, 7);
   const year = today.slice(0, 4);
@@ -127,24 +186,31 @@ export function readingStats(
   let total = 0;
   let thisMonth = 0;
   let thisYear = 0;
-  for (const r of readings) {
+  // A ticked issue with no logged reading is one reading of unknown day: it
+  // counts towards time and who you've read, not this month or this year.
+  const dated = new Set(readings.map((r) => r.key));
+  const undatedReads = undated.filter((u) => !dated.has(u.key));
+  const all = [...readings, ...undatedReads.map((u) => ({ ...u, readOn: "", minutes: minutesPerIssue }))];
+  for (const r of all) {
     total += r.minutes;
-    if (r.readOn.startsWith(month)) thisMonth += r.minutes;
-    if (r.readOn.startsWith(year)) thisYear += r.minutes;
+    if (r.readOn && r.readOn.startsWith(month)) thisMonth += r.minutes;
+    if (r.readOn && r.readOn.startsWith(year)) thisYear += r.minutes;
     perIssue.set(r.key, (perIssue.get(r.key) ?? 0) + 1);
     tally(series, r.year ? `${r.series} (${r.year})` : r.series, r.minutes);
     const c = credits[r.key];
     if (!c) continue;
-    for (const name of c.characters) tally(characters, name, r.minutes);
-    for (const name of c.writers) tally(writers, name, r.minutes);
-    // Someone who pencilled and inked the issue is one artist, once.
-    for (const name of new Set(c.artists)) tally(artists, name, r.minutes);
+    // One person twice on an issue (pencils and inks, "Venom" and "venom") counts once.
+    const once = (names: string[]) => [...new Map(names.map((n) => [personKey(n) || n, n])).values()];
+    for (const name of once(c.characters)) tally(characters, name, r.minutes);
+    for (const name of once(c.writers)) tally(writers, name, r.minutes);
+    for (const name of once(c.artists)) tally(artists, name, r.minutes);
   }
   return {
     totalMinutes: total,
     readings: readings.length,
     issues: perIssue.size,
     reread: [...perIssue.values()].filter((n) => n > 1).length,
+    undated: undatedReads.length,
     thisMonthMinutes: thisMonth,
     thisYearMinutes: thisYear,
     bySeries: top(series, limit),

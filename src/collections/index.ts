@@ -37,8 +37,12 @@ export {
   readingStats,
   formatReadingTime,
   DEFAULT_MINUTES_PER_ISSUE,
+  personKey,
+  knownNames,
+  canonicalNames,
+  CREDIT_FIELDS,
 } from "./books/readings";
-export type { IssueReading, IssueCredits, ReadingStats, TimeLine } from "./books/readings";
+export type { IssueReading, IssueCredits, ReadingStats, TimeLine, UndatedRead } from "./books/readings";
 export {
   WikipediaCollections,
   findContentsByIsbn,
@@ -47,6 +51,8 @@ export {
   WIKIPEDIA_LISTS,
 } from "./books/wikipedia";
 export { parseRuns, formatRuns } from "./books/runs";
+export { workOutRunYears, yearCandidates, resolveRunYears, pickForEra } from "./books/seriesYears";
+export type { AmbiguousRun, YearCandidate, WorkedOutYears } from "./books/seriesYears";
 export * from "./decks/types";
 export { synergyFinders, parseSynergyContext, edhrecSlug, mtgThemes } from "./catalogs/synergy";
 export type { SynergyContext, SynergyResult, SynergyCard, SynergyFinder } from "./catalogs/synergy";

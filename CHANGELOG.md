@@ -18,6 +18,61 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.0 — 2026-09-14
+
+The milestone since 0.5.0: the collections grew up — comics you can read,
+log and look up properly, and decks you can build, understand and compare.
+
+- **Comics keep their volumes apart.** Contents copied from Wikipedia or
+  GCD's notes rarely say a series' year, so "Amazing Spider-Man #29–31" in
+  an Absolute Carnage omnibus was taken for the 1960s issues in an Epic
+  Collection — counted as owned twice, and opening a 1965 story. Now, after
+  a comic is saved, NIMBUS works out each yearless run's volume from the
+  Grand Comics Database: English series from the book's publisher that have
+  those issues; a single match is the answer, and several are narrowed by
+  the book's era (its other runs — Absolute Carnage is 2019, so Spider-Man
+  is the 2018 volume). It asks for as few pages as it can, since GCD pauses
+  busy clients. What it can't settle is asked on the book's page — the
+  volumes GCD offered, or a year you type — and an issue without a year
+  says so on its page.
+- **Modern issue pages are found.** GCD writes today's Marvel issues as
+  "29 (830)", with the legacy number; those issues' pages weren't being
+  found at all.
+- **Read without a date still counts.** An issue ticked as read with no
+  logged reading counts as one reading at the minutes-per-issue estimate —
+  in total time and in time with each series, character, writer and artist
+  (not in this month or this year). Stats shows how many were read on an
+  unknown day, and "Look them up on GCD" covers them too.
+- **Sort the shelf and a series.** A series' books can be ordered by the
+  comics they collect — the earliest series year and issue of each book,
+  so the 1960s Epic Collections come before an omnibus of a 2019 event —
+  or by title and volume, recently added, or reading progress; the shelf's
+  groups by name, the comics they collect, recently added or progress.
+  Both are remembered.
+- **Add your own characters and creators.** On an issue's page, edit its
+  characters, writers and artists (names as chips, with the names already
+  known suggested), or add names to a stretch of a book's issues at once.
+  A name typed differently takes the known spelling — "venom" is the
+  "Venom" GCD's issues use — so reading stats count them together, and a
+  later GCD lookup never replaces what you edited. When a run gets its
+  year, its read marks, readings and names move with it.
+- Since 0.5.0:
+  - **Calendar**: recurring events repeat; upcoming all-day events show
+    their date.
+  - **Weather**: find the location by city name.
+  - **Routines**: a Recent decisions panel.
+  - **Decks**: each deck's curve, card types and game counts; a guided
+    deck builder (game, colours or leader, ranked playstyles, cards by role,
+    copies 4-3-2-1 with odds and suggestions, Magic colour balance by mana
+    symbols); card pages with cards that work well together; and Commander
+    decks compared with EDHREC's average decks and the deckbuilding
+    guidelines.
+  - **Books**: a reading log with reading time by series, character, writer
+    and artist.
+  - **Checks run on GitHub** for every push.
+
+---
+
 ## 0.5.21 — 2026-09-13
 
 - **Compare a Commander deck with EDHREC's average decks.** On a Commander
