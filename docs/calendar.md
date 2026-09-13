@@ -41,9 +41,18 @@ code isolated behind it.
   dropping the event. "Today" is always the system's local zone.
 - **Parser** ([icsParser.ts](../src/context/providers/calendar/icsParser.ts)):
   deliberately minimal — UID, SUMMARY, DTSTART/DTEND, LOCATION,
-  `X-WR-CALNAME`, line unfolding, text unescaping. **Recurrence (`RRULE`)
-  is not expanded**: a recurring event appears once, at its literal first
-  occurrence. A malformed event is skipped, never thrown.
+  `X-WR-CALNAME`, line unfolding, text unescaping. A malformed event is
+  skipped, never thrown; a `STATUS:CANCELLED` one is dropped.
+- **Recurrence** ([icsRecurrence.ts](../src/context/providers/calendar/icsRecurrence.ts)):
+  `RRULE`s are expanded over the window the provider can show (two days
+  back to the Calendar tab's 90-day horizon). Occurrences are generated in
+  the event's own wall-clock time, so a weekly 09:00 meeting stays at
+  09:00 across DST. Supported: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`,
+  `INTERVAL`, `COUNT`, `UNTIL`, `BYDAY` (with ordinals like `2TU`, `-1FR`),
+  `BYMONTHDAY`, `BYMONTH`, `BYSETPOS`, `WKST`; `EXDATE`s are removed, and a
+  moved or cancelled single occurrence (a `RECURRENCE-ID` event) replaces
+  the generated one. Anything else (`HOURLY`, `BYWEEKNO`, `RDATE`…) keeps
+  the single literal occurrence.
 - **Settings** (`UserPreferences.calendar`): a master `enabled` switch (off
   by default) and a `feeds` list (`id`, `label`, `address`, `enabled`),
   merged into one `CalendarContext`. Managed in Settings → Calendar; a

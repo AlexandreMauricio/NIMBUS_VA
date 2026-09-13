@@ -18,6 +18,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.11 — 2026-09-13
+
+- **Recurring calendar events repeat.** A weekly standup, a monthly
+  "second Tuesday" meeting or a yearly birthday now shows on every day it
+  happens — in Today, the Calendar tab, the briefing and Attention —
+  instead of once, on its first date. Times stay put across daylight
+  saving changes; skipped dates (`EXDATE`) are left out, and a single
+  occurrence that was moved or cancelled shows as moved or not at all.
+  Cancelled events are dropped. Rules NIMBUS can't expand (hourly,
+  week-number) still show once.
+
+---
+
 ## 0.5.10 — 2026-09-13
 
 - **Read single issues, and books follow.** Every issue in a book has a

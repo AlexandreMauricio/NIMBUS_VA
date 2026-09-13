@@ -424,3 +424,32 @@ test("the Calendar tab's list reaches months ahead, while the briefing's stays o
     "the tab shows next month too, but not a year out"
   );
 });
+
+test("a weekly recurring event shows up today and next week, not only on its first date", async () => {
+  const now = new Date("2026-07-15T08:00:00.000Z"); // a Wednesday
+  const raw = ics(
+    "BEGIN:VEVENT",
+    "UID:standup",
+    "SUMMARY:Standup",
+    "DTSTART:20260101T120000Z",
+    "DTEND:20260101T121500Z",
+    "RRULE:FREQ=WEEKLY;BYDAY=WE",
+    "END:VEVENT"
+  );
+  const provider = new CalendarProvider(
+    () => config(),
+    stubSourceFactory({ "feed://personal": raw }),
+    () => now
+  );
+
+  const ctx = await provider.getContext();
+  assert.deepEqual(
+    ctx.todayEvents.map((e) => e.startsAt),
+    ["2026-07-15T12:00:00.000Z"]
+  );
+  assert.deepEqual(
+    ctx.laterEvents.map((e) => e.startsAt),
+    ["2026-07-22T12:00:00.000Z"]
+  );
+  assert.equal(ctx.nextEvent?.startsAt, "2026-07-15T12:00:00.000Z");
+});

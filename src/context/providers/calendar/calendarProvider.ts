@@ -18,6 +18,7 @@ const LOOKAHEAD_DAYS = 7; // how far ahead "laterEvents" looks
  */
 const UPCOMING_DAYS = 90;
 const MAX_UPCOMING_EVENTS = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface CalendarFeedConfig {
   id: string;
@@ -105,7 +106,7 @@ export class CalendarProvider implements ContextProvider<CalendarContext> {
     const now = this.now();
 
     const results = await Promise.allSettled(
-      enabledFeeds.map((feed) => this.fetchFeedEvents(feed, timezone))
+      enabledFeeds.map((feed) => this.fetchFeedEvents(feed, timezone, now))
     );
 
     const allEvents: CalendarEvent[] = [];
@@ -148,10 +149,22 @@ export class CalendarProvider implements ContextProvider<CalendarContext> {
     ];
   }
 
-  private async fetchFeedEvents(feed: CalendarFeedConfig, timezone: string): Promise<CalendarEvent[]> {
+  private async fetchFeedEvents(
+    feed: CalendarFeedConfig,
+    timezone: string,
+    now: Date
+  ): Promise<CalendarEvent[]> {
     const source = this.sourceFactory(feed.address);
     const raw = await source.fetchRaw();
-    const parsed = parseIcs(raw, timezone);
+    // Recurring events are expanded over everything buildContext can show:
+    // from yesterday (an overnight event still going on) to past the
+    // Calendar tab's horizon.
+    const parsed = parseIcs(raw, timezone, {
+      expand: {
+        from: new Date(now.getTime() - 2 * DAY_MS),
+        to: new Date(now.getTime() + (UPCOMING_DAYS + 2) * DAY_MS),
+      },
+    });
 
     if (parsed.skippedCount > 0) {
       logger.debug(`Calendar feed "${feed.label}" had unparseable events`, {

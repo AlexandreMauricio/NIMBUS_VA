@@ -41,6 +41,7 @@ src/
                                    weatherCodes [1]
       calendar/                   calendarProvider [1]; icsCalendarSource [3]
                                    (http(s) or a local .ics file); icsParser,
+                                   icsRecurrence,
                                    icsTimeUtils [1]
       email/                      emailProvider, emailImportance, types [1];
                                    imapEmailSource [3] (read-only IMAP)

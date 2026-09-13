@@ -1,3 +1,4 @@
+import { expandRecurrence, CivilDate } from "./icsRecurrence";
 import { resolveTimeZone, zonedTimeToUtcMs } from "./icsTimeUtils";
 
 export interface ParsedIcsEvent {
@@ -17,20 +18,41 @@ export interface ParsedIcsCalendar {
   skippedCount: number;
 }
 
+export interface ParseIcsOptions {
+  /**
+   * Expand recurring events (RRULE) into their occurrences starting in
+   * [from, to). Without it, a recurring event appears once, at its
+   * literal DTSTART.
+   */
+  expand?: { from: Date; to: Date };
+}
+
+type Property = { value: string; params: Record<string, string> };
+type EventFields = Record<string, Property>;
+interface EventBlock {
+  fields: EventFields;
+  /** EXDATE may repeat; every other property NIMBUS reads appears once. */
+  exdates: Property[];
+}
+
 /**
  * A deliberately minimal RFC 5545 (iCalendar) parser — just enough to
  * read the fields NIMBUS's CalendarContext needs (see
  * src/context/providers/calendar/types.ts): UID, SUMMARY, DTSTART,
- * DTEND, LOCATION, and the feed-level X-WR-CALNAME.
+ * DTEND, LOCATION, STATUS, RRULE/EXDATE/RECURRENCE-ID, and the
+ * feed-level X-WR-CALNAME.
  *
- * Deliberately NOT implemented (out of scope for this feature): RRULE
- * recurrence expansion, VALARM, VTIMEZONE component parsing (TZID values
- * are resolved via the IANA database through Intl instead — see
+ * Recurrence: with `options.expand`, an RRULE is expanded into its
+ * occurrences inside that window (see icsRecurrence.ts), minus EXDATEs,
+ * with moved or cancelled single occurrences (a VEVENT sharing the UID
+ * and carrying RECURRENCE-ID) replacing the generated one. A rule the
+ * expander doesn't support keeps the single literal occurrence. RDATE is
+ * not read.
+ *
+ * Deliberately NOT implemented: VALARM, VTIMEZONE component parsing (TZID
+ * values are resolved via the IANA database through Intl instead — see
  * icsTimeUtils.ts — which covers the common case of a TZID naming a real
- * IANA zone, but not custom VTIMEZONE definitions), attendees, and
- * multi-value properties. A recurring event will appear once, using its
- * first/literal DTSTART — see README/ARCHITECTURE for this documented as
- * a known limitation.
+ * IANA zone, but not custom VTIMEZONE definitions), and attendees.
  *
  * Malformed input degrades gracefully: an unparseable VEVENT is skipped
  * (counted in `skippedCount`), never thrown — parsing one bad event must
@@ -38,31 +60,29 @@ export interface ParsedIcsCalendar {
  * caller. This function is pure (no logging, no I/O) — the caller
  * decides what to do with `skippedCount`.
  */
-export function parseIcs(raw: string, defaultTimeZone: string): ParsedIcsCalendar {
+export function parseIcs(
+  raw: string,
+  defaultTimeZone: string,
+  options: ParseIcsOptions = {}
+): ParsedIcsCalendar {
   const lines = unfoldLines(raw);
 
   let calendarName: string | null = null;
-  const events: ParsedIcsEvent[] = [];
-  let skippedCount = 0;
+  const blocks: EventBlock[] = [];
 
   let inEvent = false;
-  let current: Record<string, { value: string; params: Record<string, string> }> = {};
+  let current: EventBlock = { fields: {}, exdates: [] };
 
   for (const line of lines) {
     if (line === "BEGIN:VEVENT") {
       inEvent = true;
-      current = {};
+      current = { fields: {}, exdates: [] };
       continue;
     }
 
     if (line === "END:VEVENT") {
       inEvent = false;
-      const parsed = finalizeEvent(current, defaultTimeZone);
-      if (parsed) {
-        events.push(parsed);
-      } else {
-        skippedCount++;
-      }
+      blocks.push(current);
       continue;
     }
 
@@ -75,11 +95,111 @@ export function parseIcs(raw: string, defaultTimeZone: string): ParsedIcsCalenda
     }
 
     if (inEvent) {
-      current[property.name] = { value: property.value, params: property.params };
+      const entry = { value: property.value, params: property.params };
+      if (property.name === "EXDATE") current.exdates.push(entry);
+      else current.fields[property.name] = entry;
+    }
+  }
+
+  // Moved/cancelled single occurrences, by UID, keyed by the instant they replace.
+  const overridden = new Map<string, Set<number>>();
+  for (const { fields } of blocks) {
+    const uid = fields.UID?.value?.trim();
+    if (!uid || !fields["RECURRENCE-ID"]) continue;
+    const ms = instantOf(fields["RECURRENCE-ID"], defaultTimeZone);
+    if (ms === null) continue;
+    if (!overridden.has(uid)) overridden.set(uid, new Set());
+    overridden.get(uid)?.add(ms);
+  }
+
+  const events: ParsedIcsEvent[] = [];
+  let skippedCount = 0;
+  for (const { fields, exdates } of blocks) {
+    const parsed = finalizeEvent(fields, defaultTimeZone);
+    if (!parsed) {
+      skippedCount++;
+      continue;
+    }
+    if (fields.STATUS?.value.trim().toUpperCase() === "CANCELLED") continue;
+    if (options.expand && fields.RRULE && !fields["RECURRENCE-ID"]) {
+      events.push(
+        ...expandEvent(parsed, fields, exdates, defaultTimeZone, options.expand, overridden.get(parsed.uid))
+      );
+    } else {
+      events.push(parsed);
     }
   }
 
   return { calendarName, events, skippedCount };
+}
+
+/** A recurring event's occurrences in the window, or the event itself if its rule can't be expanded. */
+function expandEvent(
+  event: ParsedIcsEvent,
+  fields: EventFields,
+  exdates: Property[],
+  defaultTimeZone: string,
+  window: { from: Date; to: Date },
+  overridden: Set<number> | undefined
+): ParsedIcsEvent[] {
+  const dtstart = fields.DTSTART;
+  const startMs = new Date(event.startsAt).getTime();
+  const durationMs = new Date(event.endsAt).getTime() - startMs;
+  const start = civilParts(dtstart.value);
+  if (!start) return [event];
+
+  const toMs = (date: CivilDate): number =>
+    instantOf({ value: formatCivil(date, dtstart.value), params: dtstart.params }, defaultTimeZone) ?? NaN;
+
+  const excluded = new Set<number>(overridden ?? []);
+  for (const exdate of exdates) {
+    for (const value of exdate.value.split(",")) {
+      const ms = instantOf({ value: value.trim(), params: exdate.params }, defaultTimeZone);
+      if (ms !== null) excluded.add(ms);
+    }
+  }
+
+  const starts = expandRecurrence({
+    rrule: fields.RRULE.value,
+    start,
+    startMs,
+    toMs,
+    parseUntil: (value) => {
+      const ms = instantOf({ value, params: dtstart.params }, defaultTimeZone);
+      // A date-only UNTIL on a timed event includes that whole day.
+      return ms !== null && /^\d{8}$/.test(value) && !event.isAllDay ? ms + 24 * 60 * 60 * 1000 - 1 : ms;
+    },
+    // An occurrence that started before the window but is still going on counts.
+    window: { fromMs: window.from.getTime() - Math.max(0, durationMs), toMs: window.to.getTime() },
+  });
+  if (starts === null) return [event];
+
+  return starts
+    .filter((ms) => !Number.isNaN(ms) && !excluded.has(ms))
+    .map((ms) => ({
+      ...event,
+      startsAt: new Date(ms).toISOString(),
+      endsAt: new Date(ms + durationMs).toISOString(),
+    }));
+}
+
+function civilParts(value: string): CivilDate | null {
+  const m = value.match(/^(\d{4})(\d{2})(\d{2})/);
+  return m ? { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) } : null;
+}
+
+/** An occurrence's date written in DTSTART's own form (same time of day, same Z or not). */
+function formatCivil(date: CivilDate, dtstartValue: string): string {
+  const ymd = `${String(date.year).padStart(4, "0")}${String(date.month).padStart(2, "0")}${String(date.day).padStart(2, "0")}`;
+  return ymd + dtstartValue.slice(8);
+}
+
+function instantOf(property: Property, defaultTimeZone: string): number | null {
+  try {
+    return new Date(parseDateTimeValue(property.value, property.params, defaultTimeZone).iso).getTime();
+  } catch {
+    return null;
+  }
 }
 
 function unfoldLines(raw: string): string[] {
@@ -119,10 +239,7 @@ function unescapeText(value: string): string {
   return value.replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
 }
 
-function finalizeEvent(
-  fields: Record<string, { value: string; params: Record<string, string> }>,
-  defaultTimeZone: string
-): ParsedIcsEvent | null {
+function finalizeEvent(fields: EventFields, defaultTimeZone: string): ParsedIcsEvent | null {
   const uid = fields.UID?.value?.trim();
   const dtstart = fields.DTSTART;
   if (!uid || !dtstart) return null;

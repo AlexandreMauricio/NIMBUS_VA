@@ -131,8 +131,9 @@ which modules are portable "Core" versus Windows-specific.
   domains; a trigger set to match `domain`/`url` never fires.
 - Application detection sees processes **starting and stopping**, not
   which window is in the foreground. Polling is every 5 seconds.
-- Calendar does **not expand recurring events** (`RRULE`); a recurring
-  event appears once, at its first occurrence. Only common Windows
+- Calendar expands common recurring events (daily/weekly/monthly/yearly
+  rules, exceptions and moved occurrences), but not `RDATE` or hourly
+  and week-number rules — those appear once. Only common Windows
   timezone names are mapped; unknown ones fall back to local time.
 - Calendar, email and task data refresh on a **cache timer** (no push).
 - Todoist "reminders" are just a task's specific due time; completed
