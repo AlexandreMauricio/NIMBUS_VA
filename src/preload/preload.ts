@@ -310,6 +310,7 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:set-deck-card-quantity", id, sourceId, zone, quantity),
   moveDeckCard: (id: string, sourceId: string, from: string, to: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:move-deck-card", id, sourceId, from, to),
+  refreshDeckCards: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:refresh-deck-cards", id),
   importDecklist: (id: string, text: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:import-decklist", id, text),
   onDecksChanged: (callback: () => void): (() => void) => {

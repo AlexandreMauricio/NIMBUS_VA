@@ -5,6 +5,7 @@
  * Core (src/collections/decks/); this only asks the preload bridge.
  */
 import { openCardPage } from "./cardPage";
+import { DeckStatsUI, deckShape } from "./deckCharts";
 
 type Game = "mtg" | "pokemon" | "yugioh" | "lorcana" | "onepiece";
 type Zone = "main" | "side" | "extra" | "leader";
@@ -35,6 +36,7 @@ interface DeckView {
     ownedTotal: number;
   };
   decklist: string;
+  stats: DeckStatsUI;
 }
 
 interface DecksBridge {
@@ -50,6 +52,7 @@ interface DecksBridge {
   addDeckCard(id: string, sourceId: string, zone: Zone | null): Promise<unknown>;
   setDeckCardQuantity(id: string, sourceId: string, zone: Zone, quantity: number): Promise<unknown>;
   moveDeckCard(id: string, sourceId: string, from: Zone, to: Zone): Promise<unknown>;
+  refreshDeckCards(id: string): Promise<{ updated: number; failed: number }>;
   importDecklist(
     id: string,
     text: string
@@ -218,6 +221,21 @@ export function initDecksTab(): void {
       );
     }
     editor.appendChild(summary);
+
+    // The deck's shape: curve, kinds, the counts this game's players check.
+    editor.appendChild(
+      deckShape(view.stats, (button) => {
+        button.disabled = true;
+        button.textContent = "Looking the cards up…";
+        void act(async () => {
+          const result = await bridge().refreshDeckCards(id);
+          if (result.failed)
+            showError(
+              `Couldn't reach the card database for ${result.failed} card${result.failed === 1 ? "" : "s"} — try again in a moment.`
+            );
+        });
+      })
+    );
 
     // Against the collection.
     const owned = make("div", "deck-owned");

@@ -42,4 +42,6 @@ export { parseRuns, formatRuns } from "./books/runs";
 export * from "./decks/types";
 export { DeckService, parseDeck } from "./decks/deckService";
 export { checkDeck, compareWithCollection } from "./decks/rules";
+export { deckStats, curveBuckets, bucketIndex, countsOnCurve, KIND_LABELS } from "./decks/stats";
+export type { DeckStats, StatBar, StatCard, CurveBucket } from "./decks/stats";
 export { parseDecklist, formatDecklist, sameCardName } from "./decks/decklist";

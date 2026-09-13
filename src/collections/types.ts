@@ -76,6 +76,27 @@ export interface CardRulesInfo {
   colors: string[];
   /** Yu-Gi-Oh! TCG: 0 forbidden, 1 limited, 2 semi-limited; null unrestricted. */
   banLimit: number | null;
+  /**
+   * What a curve counts: Magic's mana value, Lorcana's ink cost, a One
+   * Piece card's cost, a Yu-Gi-Oh! monster's level or rank. Null when the
+   * card has none — a Pokémon card, a spell or trap, a leader. Missing on
+   * cards saved before 0.5.16.
+   */
+  cost: number | null;
+  /**
+   * The card's broad kind within its game, lower case: Magic's land,
+   * creature, instant, sorcery, artifact, enchantment, planeswalker or
+   * battle; Lorcana's character, action, song, item or location; One
+   * Piece's leader, character, event or stage; Pokémon's pokemon, trainer
+   * or energy; Yu-Gi-Oh!'s monster, spell or trap. Null when unknown.
+   */
+  kind: string | null;
+  /**
+   * Game facts deck guidance counts, lower case: "basic" (a basic land or
+   * energy), "inkable", "counter" and "trigger" (One Piece), "stage1",
+   * "stage2", "ex", "supporter", "item", "tool", "stadium" (Pokémon).
+   */
+  traits: string[];
 }
 
 /** A card's full page. */

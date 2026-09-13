@@ -3692,3 +3692,99 @@ details.context-card > summary .context-card-title {
 .books-issue-read .books-issue-title {
   color: var(--color-neutral-400);
 }
+
+/* ---------- Deck shape: curve and counts (deckCharts.ts) ---------- */
+
+.deck-shape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+  margin-bottom: var(--space-3);
+}
+
+.deck-shape:empty {
+  display: none;
+}
+
+.deck-shape-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 14rem;
+  flex: 1;
+}
+
+.deck-curve {
+  margin: 0;
+}
+
+.deck-curve-bars {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  height: 9rem;
+  margin-top: var(--space-2);
+}
+
+.deck-curve-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 2.2rem;
+}
+
+.deck-curve-area {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.deck-curve-fill {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--color-accent-500);
+}
+
+.deck-curve-fill.deck-curve-under {
+  background: color-mix(in srgb, var(--color-accent-500) 45%, transparent);
+}
+
+.deck-curve-fill.deck-curve-over {
+  background: var(--color-warning);
+}
+
+.deck-curve-target {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  border-top: 2px dashed var(--color-text);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.deck-curve-count,
+.deck-curve-label {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-neutral-400);
+  white-space: nowrap;
+}
+
+.deck-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  font-size: 0.8rem;
+  color: var(--color-neutral-400);
+}
+
+.deck-count strong {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}

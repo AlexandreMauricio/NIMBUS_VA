@@ -18,6 +18,20 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.16 — 2026-09-13
+
+- **Decks show their curve.** A deck's page now draws its shape: the
+  mana curve (Magic, without lands), ink curve (Lorcana), cost curve (One
+  Piece) or monster levels by tributes (Yu-Gi-Oh!), with the average cost;
+  how many of each kind of card it has (creatures, lands, songs, events,
+  trainers…); and the counts each game cares about — inkable cards,
+  counters and triggers, Basic/Stage 1/Stage 2 Pokémon and Supporters.
+  Cards now keep their cost and kind when added. Cards added before this
+  version are counted apart, and **Update card data** fetches them again.
+  This is the groundwork for the deck builder helper.
+
+---
+
 ## 0.5.15 — 2026-09-13
 
 - **Upcoming all-day events say which day they're on.** The Calendar

@@ -153,6 +153,17 @@ search each name and take the first exact match. Every catalog request
 retries on 429 Too Many Requests. Names that don't exist are listed;
 names that couldn't be looked up are put back in the import box.
 
+**A deck's shape.** Each card keeps its cost, its kind and a few game
+facts from its card page ([stats.ts](../src/collections/decks/stats.ts)),
+and the deck page draws them: the curve — Magic's mana value without
+lands, Lorcana's ink cost, One Piece's cost, Yu-Gi-Oh! monsters by level
+(no tribute, one, two) — with the average, the count of each kind of card,
+and what each game's players check: Lorcana's inkable cards, One Piece's
+counters and triggers, Pokémon's Basic/Stage 1/Stage 2 and Supporters,
+Items and Stadiums. Pokémon has no curve. Cards added before 0.5.16 have
+none of this saved; the page counts them apart and offers **Update card
+data**, which looks each one up again.
+
 ## Not yet
 
 - Set completion ("78 of 102"), and card language or condition.

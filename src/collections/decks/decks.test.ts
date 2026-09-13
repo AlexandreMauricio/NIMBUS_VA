@@ -102,7 +102,17 @@ function detail(
     stats: [],
     legalities: [],
     artist: null,
-    rules: { copyKey: name, unlimitedCopies: false, zone: "main", colors: [], banLimit: null, ...overrides },
+    rules: {
+      copyKey: name,
+      unlimitedCopies: false,
+      zone: "main",
+      colors: [],
+      banLimit: null,
+      cost: null,
+      kind: null,
+      traits: [],
+      ...overrides,
+    },
   };
 }
 

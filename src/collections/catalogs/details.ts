@@ -92,8 +92,29 @@ export function mapScryfallDetail(json: unknown): CardDetail | null {
       zone: "main",
       colors,
       banLimit: null,
+      cost: typeof c.cmc === "number" && Number.isFinite(c.cmc) ? c.cmc : null,
+      kind: mtgKind(typeLine),
+      traits: /\bbasic\b.*\bland\b/i.test(typeLine ?? "") ? ["basic"] : [],
     },
   };
+}
+
+/** The kind a Magic card counts as, from its (front face's) type line. A land creature is a creature. */
+export function mtgKind(typeLine: string | null): string | null {
+  const front = (typeLine ?? "").split("//")[0].toLowerCase();
+  for (const kind of [
+    "creature",
+    "planeswalker",
+    "battle",
+    "land",
+    "instant",
+    "sorcery",
+    "artifact",
+    "enchantment",
+  ]) {
+    if (new RegExp(`\\b${kind}\\b`).test(front)) return kind;
+  }
+  return null;
 }
 
 // -------------------------------------------------------------- Yu-Gi-Oh!
@@ -148,6 +169,9 @@ export function mapYgoprodeckDetail(json: unknown, sourceId: string): CardDetail
       zone: /fusion|synchro|xyz|link/i.test(frame) ? "extra" : "main",
       colors: [],
       banLimit: banTcg ? (YGO_BAN_LIMIT[banTcg] ?? null) : null,
+      cost: typeof c.level === "number" && Number.isInteger(c.level) ? c.level : null,
+      kind: /spell/i.test(type ?? "") ? "spell" : /trap/i.test(type ?? "") ? "trap" : type ? "monster" : null,
+      traits: [],
     },
   };
 }
@@ -217,8 +241,22 @@ export function mapTcgdexDetail(json: unknown): CardDetail | null {
       zone: "main",
       colors: types,
       banLimit: null,
+      cost: null,
+      kind: category ? category.toLowerCase().replace("é", "e") : null,
+      traits: pokemonTraits(c, name, category),
     },
   };
+}
+
+function pokemonTraits(c: Record<string, unknown>, name: string, category: string | null): string[] {
+  const traits: string[] = [];
+  const stage = asString(c.stage)?.toLowerCase().replace(/\s+/g, "");
+  if (stage) traits.push(stage);
+  const trainerType = asString(c.trainerType)?.toLowerCase();
+  if (trainerType) traits.push(trainerType);
+  if (category === "Energy" && asString(c.energyType) === "Normal") traits.push("basic");
+  if (/\bex$/i.test(name)) traits.push("ex");
+  return traits;
 }
 
 // ---------------------------------------------------------------- Lorcana
@@ -266,8 +304,24 @@ export function mapLorcastDetail(json: unknown): CardDetail | null {
       status: String(status).replace("_", " "),
     })),
     artist: Array.isArray(c.illustrators) ? (c.illustrators as string[]).join(", ") : null,
-    rules: { copyKey: fullName, unlimitedCopies: false, zone: "main", colors: inks, banLimit: null },
+    rules: {
+      copyKey: fullName,
+      unlimitedCopies: false,
+      zone: "main",
+      colors: inks,
+      banLimit: null,
+      cost: typeof c.cost === "number" && Number.isFinite(c.cost) ? c.cost : null,
+      kind: lorcanaKind(c.type),
+      traits: c.inkwell === true ? ["inkable"] : [],
+    },
   };
+}
+
+/** A song is an action that characters can sing; it counts as its own kind. */
+function lorcanaKind(type: unknown): string | null {
+  const types = Array.isArray(type) ? (type as unknown[]).map((t) => String(t).toLowerCase()) : [];
+  if (types.includes("song")) return "song";
+  return types[0] ?? null;
 }
 
 // -------------------------------------------------------------- One Piece
@@ -313,8 +367,21 @@ export function mapOptcgDetail(json: unknown, sourceId: string): CardDetail | nu
       zone: type === "Leader" ? "leader" : "main",
       colors,
       banLimit: null,
+      cost: type === "Leader" ? null : wholeNumber(c.card_cost),
+      kind: type ? type.toLowerCase() : null,
+      traits: [
+        ...((wholeNumber(c.counter_amount) ?? 0) > 0 ? ["counter"] : []),
+        ...(/\[Trigger\]/i.test(asString(c.card_text) ?? "") ? ["trigger"] : []),
+      ],
     },
   };
+}
+
+/** "3", 3 or "3.0" as 3; anything else (null, "-", "") as null. */
+function wholeNumber(value: unknown): number | null {
+  const n =
+    typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) ? Math.round(n) : null;
 }
 
 // ---------------------------------------------------------------- fetchers

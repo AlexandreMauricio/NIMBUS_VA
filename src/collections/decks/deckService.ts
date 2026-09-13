@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { logger } from "../../logging/logger";
-import { CardDetail, TcgGame, isTcgGame } from "../types";
+import { CardDetail, CardRulesInfo, TcgGame, isTcgGame } from "../types";
 import {
   DECK_FORMATS,
   Deck,
@@ -15,6 +15,10 @@ import {
 } from "./types";
 
 const ZONES: DeckZone[] = ["main", "side", "extra", "leader"];
+
+function copyRules(rules: CardRulesInfo): CardRulesInfo {
+  return { ...rules, colors: [...rules.colors], traits: [...(rules.traits ?? [])] };
+}
 
 function text(value: unknown, max: number): string | null {
   return typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ").slice(0, max) : null;
@@ -52,6 +56,18 @@ function parseDeckCard(raw: unknown): DeckCard | null {
         ? rules.colors.filter((c): c is string => typeof c === "string").slice(0, 10)
         : [],
       banLimit: Number.isInteger(rules.banLimit) ? (rules.banLimit as number) : null,
+      // Cards saved before 0.5.16 have none of these: unknown until refreshed.
+      cost:
+        typeof rules.cost === "number" && Number.isFinite(rules.cost) && rules.cost >= 0 && rules.cost <= 100
+          ? rules.cost
+          : null,
+      kind: text(rules.kind, 30)?.toLowerCase() ?? null,
+      traits: Array.isArray(rules.traits)
+        ? rules.traits
+            .filter((t): t is string => typeof t === "string" && t.length <= 30)
+            .map((t) => t.toLowerCase())
+            .slice(0, 10)
+        : [],
     },
   };
 }
@@ -212,10 +228,30 @@ export class DeckService {
         number: card.number,
         imageUrl: card.imageUrl,
         typeLine: card.typeLine,
-        rules: { ...card.rules, colors: [...card.rules.colors] },
+        rules: copyRules(card.rules),
       });
     }
     return this.touch(deck);
+  }
+
+  /**
+   * Replaces the saved snapshot of cards the deck already holds with fresh
+   * card data — for cards saved before costs and kinds were kept. Only
+   * cards in the deck, matched by id, are touched; quantities and zones stay.
+   */
+  refreshCards(id: string, details: CardDetail[]): Deck {
+    const deck = this.find(id);
+    let changed = false;
+    for (const detail of details) {
+      if (detail.game !== deck.game) continue;
+      for (const card of deck.cards.filter((c) => c.sourceId === detail.sourceId)) {
+        card.typeLine = detail.typeLine;
+        card.imageUrl = detail.imageUrl ?? card.imageUrl;
+        card.rules = copyRules(detail.rules);
+        changed = true;
+      }
+    }
+    return changed ? this.touch(deck) : this.copy(deck);
   }
 
   /** Sets how many copies are in a zone; 0 takes the card out. */
@@ -260,7 +296,7 @@ export class DeckService {
   private copy(deck: Deck): Deck {
     return {
       ...deck,
-      cards: deck.cards.map((c) => ({ ...c, rules: { ...c.rules, colors: [...c.rules.colors] } })),
+      cards: deck.cards.map((c) => ({ ...c, rules: copyRules(c.rules) })),
     };
   }
 

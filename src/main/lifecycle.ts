@@ -84,6 +84,7 @@ import {
   isCoverUrl,
   TCG_GAMES,
   checkDeck,
+  deckStats,
   compareWithCollection,
   detailFetchers,
   scryfallCardsByName,
@@ -746,7 +747,27 @@ function registerIpcHandlers(): void {
       zones: zonesFor(deck.game, deck.format).map((zone) => ({ zone, label: zoneLabel(deck.game, zone) })),
       collection: compareWithCollection(deck, collectionService.list()),
       decklist: formatDecklist(deck, deck.game),
+      stats: deckStats(deck.game, deck.cards, ["main", "leader"]),
     };
+  });
+  // Cards saved before costs and kinds were kept get fresh card data, one
+  // paced lookup per card — only for cards already in the deck.
+  ipcMain.handle("nimbus:refresh-deck-cards", async (_event, id: unknown) => {
+    const deck = deckService.get(String(id ?? ""));
+    const stale = [
+      ...new Set(deck.cards.filter((card) => card.rules.kind === null).map((card) => card.sourceId)),
+    ];
+    const details = [];
+    let failed = 0;
+    for (const sourceId of stale) {
+      try {
+        details.push(await catalogService.getDetail(deck.game, sourceId));
+      } catch {
+        failed++;
+      }
+    }
+    deckService.refreshCards(deck.id, details);
+    return { updated: details.length, failed };
   });
   ipcMain.handle("nimbus:create-deck", (_event, input: unknown) => deckService.create(input));
   ipcMain.handle("nimbus:update-deck", (_event, id: unknown, changes: unknown) =>
