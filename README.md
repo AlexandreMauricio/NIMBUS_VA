@@ -460,6 +460,9 @@ every `dist/**/*.test.js` under Node's built-in test runner), and
 processes through credential save/load cycles in a throwaway data
 directory). There is no separate check for Markdown.
 
+GitHub Actions runs the same `npm run check` on Windows for every push to
+`main` and every pull request ([.github/workflows/check.yml](.github/workflows/check.yml)).
+
 ## Logs, settings and data
 
 Everything is written under Electron's per-user data directory

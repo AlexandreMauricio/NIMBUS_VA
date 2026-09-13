@@ -18,6 +18,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.12 — 2026-09-13
+
+- **Checks run on GitHub.** A workflow (`.github/workflows/check.yml`)
+  runs `npm run check` — lint, format, every test and the Electron
+  credential test — on Windows for each push to `main` and each pull
+  request, so a broken build is caught before a release is cut.
+
+---
+
 ## 0.5.11 — 2026-09-13
 
 - **Recurring calendar events repeat.** A weekly standup, a monthly
