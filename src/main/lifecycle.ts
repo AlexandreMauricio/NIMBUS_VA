@@ -81,9 +81,9 @@ import {
   checkDeck,
   compareWithCollection,
   detailFetchers,
+  scryfallCardsByName,
   formatDecklist,
   parseDecklist,
-  sameCardName,
   zoneLabel,
   zonesFor,
 } from "../collections";
@@ -771,18 +771,25 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:import-decklist", async (_event, id: unknown, text: unknown) => {
     const deck = deckService.get(String(id ?? ""));
     const { lines, unread } = parseDecklist(typeof text === "string" ? text.slice(0, 20_000) : "");
+    const kept = lines.slice(0, 250);
+    const lookup = await catalogService.lookupByNames(
+      deck.game,
+      kept.map((line) => line.name)
+    );
+    const zones = zonesFor(deck.game, deck.format);
     let added = 0;
-    const notFound: string[] = [];
-    for (const line of lines.slice(0, 150)) {
-      try {
-        const found = await catalogService.search(deck.game, line.name);
-        const match = found.find((card) => sameCardName(card.name, line.name));
-        if (!match) {
-          notFound.push(line.name);
-          continue;
+    // Lines that didn't make it, as decklist text — put back in the import
+    // box so "Import" again retries just those.
+    const retry: string[] = [];
+    for (const line of kept) {
+      const detail = lookup.found.get(line.name.toLowerCase());
+      if (!detail) {
+        if (lookup.failed.some((name) => name.toLowerCase() === line.name.toLowerCase())) {
+          retry.push(`${line.quantity} ${line.name}`);
         }
-        const detail = await catalogService.getDetail(deck.game, match.sourceId);
-        const zones = zonesFor(deck.game, deck.format);
+        continue;
+      }
+      try {
         deckService.addCard(
           deck.id,
           detail,
@@ -790,11 +797,12 @@ function registerIpcHandlers(): void {
           Math.min(line.quantity, 99)
         );
         added += line.quantity;
-      } catch {
-        notFound.push(line.name);
+      } catch (err) {
+        retry.push(`${line.quantity} ${line.name}`);
+        logger.warn("Could not add an imported card", { error: String(err) });
       }
     }
-    return { added, notFound, unread };
+    return { added, notFound: lookup.notFound, failed: lookup.failed, retry: retry.join("\n"), unread };
   });
 
   // Books (src/collections/books/): comics collected editions and manga.
@@ -1445,7 +1453,8 @@ export function startApp(): void {
     ],
     Date.now,
     undefined,
-    detailFetchers()
+    detailFetchers(),
+    { mtg: (names) => scryfallCardsByName(names) }
   );
   deckService = new DeckService(new FileDeckStore());
   deckService.onChange(() => {

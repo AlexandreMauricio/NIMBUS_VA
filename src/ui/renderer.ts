@@ -27,7 +27,7 @@ import { initCollectionsTab } from "./collectionsTab";
 import { initBooksTab } from "./booksTab";
 import { initDecksTab } from "./decksTab";
 import { initCardPage } from "./cardPage";
-import { initHomeWeek } from "./homeWeek";
+import { initHomeWeek, refreshUsageList, USAGE_PROMOTION_EVENT, UsagePromotion } from "./homeWeek";
 import { initUpdateSettings } from "./updateSettings";
 import { initWeatherTab } from "./weatherTab";
 import { initSidebarGroups } from "./sidebarGroups";
@@ -4449,16 +4449,50 @@ async function initActivitySettings(): Promise<void> {
 
     // "Make it an activity?" answered yes: this form, with the program
     // filled in. Nothing is saved until the user presses "Add activity".
-    window.nimbus.onOpenActivityEditor(({ application, name, source }) => {
-      switchToTab("routines");
-      document.getElementById("routinesTabActivitiesBtn")?.click();
+    const prefillEditor = (application: string, name: string, source?: "application" | "website") => {
       resetForm();
       nameInput.value = name;
       sourceSelect.value = source === "website" ? "website" : "application";
       sourceSelect.dispatchEvent(new Event("change"));
       valueInput.value = application;
+      nameInput.scrollIntoView({ behavior: "smooth", block: "center" });
       nameInput.focus();
       nameInput.select();
+    };
+    window.nimbus.onOpenActivityEditor(({ application, name, source }) => {
+      switchToTab("routines");
+      document.getElementById("routinesTabActivitiesBtn")?.click();
+      prefillEditor(application, name, source);
+    });
+
+    // From "What NIMBUS has counted this week" (homeWeek.ts): a new activity
+    // opens this form filled in; "Add to" saves a rule for an existing
+    // activity straight away, with that activity's icon and priority.
+    window.addEventListener(USAGE_PROMOTION_EVENT, async (event) => {
+      const promotion = (event as CustomEvent<UsagePromotion>).detail;
+      if (promotion.kind === "new") {
+        prefillEditor(promotion.value, promotion.name, promotion.source);
+        return;
+      }
+      const current = await window.nimbus.getActivitySettings();
+      const sibling = current.mappings.find((m) => m.activity === promotion.activity);
+      if (!sibling) return;
+      const mapping: ActivityMapping = {
+        id: `activity-${Date.now()}`,
+        enabled: true,
+        activity: sibling.activity,
+        icon: sibling.icon,
+        source: promotion.source,
+        value: promotion.value,
+        matchMode: promotion.source === "application" ? "exact" : "contains",
+        priority: sibling.priority,
+      };
+      try {
+        render(await window.nimbus.updateActivitySettings({ mappings: [...current.mappings, mapping] }));
+        refreshUsageList();
+      } catch (err) {
+        showError(`Couldn't save that activity: ${String(err)}`);
+      }
     });
 
     graceInput.addEventListener("change", async () => {
@@ -4503,6 +4537,7 @@ async function initActivitySettings(): Promise<void> {
       try {
         render(await window.nimbus.updateActivitySettings({ mappings }));
         resetForm();
+        refreshUsageList();
       } catch (err) {
         // The main process validates before saving; show why rather than
         // failing silently.

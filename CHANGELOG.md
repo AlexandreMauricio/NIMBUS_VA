@@ -18,6 +18,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.6 — 2026-09-13
+
+- **Promote what was counted.** Routines → Activities lists what NIMBUS
+  counted this week, open by default, and every app or site there has
+  **New activity** (the form below, filled in) and **Add to…** (a rule
+  for an existing activity, saved at once with its icon and priority) —
+  no need to wait for the suggestion.
+- **Decklist imports stay inside the card databases' rate limits.** Magic
+  imports use Scryfall's bulk lookup — up to 75 names a request, so a
+  100-card Commander deck is 2 requests instead of 200, where before
+  Scryfall started refusing after about 40 cards. Every card database
+  request now waits and retries on "too many requests" (honouring
+  Retry-After), Magic searches are spaced to Scryfall's 2 a second, and
+  cards that couldn't be looked up are left in the import box to try
+  again — listed apart from names that don't exist. Double-faced cards
+  match by their front name.
+
 ## 0.5.5 — 2026-09-13
 
 - **Fix: websites in a second browser window weren't counted.** NIMBUS

@@ -1,5 +1,13 @@
 import { CardDetail, CardStat, TcgGame } from "../types";
-import { FetchLike, asPrice, asString, getCatalogJson, httpsOrNull } from "./http";
+import {
+  CATALOG_HEADERS,
+  FetchLike,
+  asPrice,
+  asString,
+  fetchWithRetry,
+  getCatalogJson,
+  httpsOrNull,
+} from "./http";
 
 /**
  * A card's full page, per game: rules text, stats, legality, the large
@@ -343,4 +351,40 @@ export function detailFetchers(fetchFn: FetchLike = fetch): Record<TcgGame, Deta
       );
     },
   };
+}
+
+/** Scryfall's /cards/collection takes at most this many identifiers a request. */
+export const SCRYFALL_COLLECTION_BATCH = 75;
+
+/**
+ * Magic cards by exact name, many at once — one request per 75 names
+ * instead of a search and a lookup for each card, which is what a
+ * 100-card Commander import needs to stay inside Scryfall's rate limit.
+ * Returns each found card (Scryfall's default printing) and the names it
+ * doesn't know.
+ */
+export async function scryfallCardsByName(
+  names: string[],
+  fetchFn: FetchLike = fetch
+): Promise<{ found: CardDetail[]; notFound: string[] }> {
+  const found: CardDetail[] = [];
+  const notFound: string[] = [];
+  for (let i = 0; i < names.length; i += SCRYFALL_COLLECTION_BATCH) {
+    const batch = names.slice(i, i + SCRYFALL_COLLECTION_BATCH);
+    const response = await fetchWithRetry(fetchFn, "https://api.scryfall.com/cards/collection", {
+      method: "POST",
+      headers: { ...CATALOG_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify({ identifiers: batch.map((name) => ({ name })) }),
+    });
+    if (!response.ok) throw new Error(`The card database answered ${response.status}.`);
+    const json = (await response.json()) as { data?: unknown[]; not_found?: Array<{ name?: unknown }> };
+    for (const card of Array.isArray(json.data) ? json.data : []) {
+      const detail = mapScryfallDetail(card);
+      if (detail) found.push(detail);
+    }
+    for (const missing of Array.isArray(json.not_found) ? json.not_found : []) {
+      if (typeof missing?.name === "string") notFound.push(missing.name);
+    }
+  }
+  return { found, notFound };
 }

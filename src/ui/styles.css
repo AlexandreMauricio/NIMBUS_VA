@@ -2993,3 +2993,9 @@ details.context-card > summary .context-card-title {
   gap: var(--space-2);
   padding: 4px 0;
 }
+
+.usage-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}

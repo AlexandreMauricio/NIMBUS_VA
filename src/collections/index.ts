@@ -13,6 +13,7 @@ export {
   mapTcgdexDetail,
   mapLorcastDetail,
   mapOptcgDetail,
+  scryfallCardsByName,
 } from "./catalogs/details";
 export * from "./books/types";
 export { BookService, parseBook } from "./books/bookService";

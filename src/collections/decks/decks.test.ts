@@ -283,3 +283,94 @@ test("decks survive a restart; bad saved cards are dropped; changing format move
   assert.throws(() => restarted.service.create({ game: "chess", name: "x" }), /Choose a game/);
   assert.throws(() => restarted.service.addCard(deck.id, detail("pokemon", "Pikachu")), /different game/);
 });
+
+// ------------------------------------------------ imports within rate limits
+
+test("a 429 is waited out and retried, honouring Retry-After", async () => {
+  const { fetchWithRetry, catalogRetry } = await import("../catalogs/http");
+  const waits: number[] = [];
+  const original = catalogRetry.sleep;
+  catalogRetry.sleep = async (ms) => {
+    waits.push(ms);
+  };
+  try {
+    let calls = 0;
+    const response = await fetchWithRetry(
+      async () => {
+        calls++;
+        return calls < 3
+          ? new Response("", { status: 429, headers: calls === 1 ? { "Retry-After": "2" } : {} })
+          : new Response("{}", { status: 200 });
+      },
+      "https://api.scryfall.com/x",
+      {}
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(waits, [2000, 2000]);
+    const gaveUp = await fetchWithRetry(async () => new Response("", { status: 429 }), "https://x", {});
+    assert.equal(gaveUp.status, 429, "gives up after 3 retries");
+  } finally {
+    catalogRetry.sleep = original;
+  }
+});
+
+test("a Commander import looks Magic cards up 75 names a request", async () => {
+  const { scryfallCardsByName } = await import("../catalogs/details");
+  const names = Array.from({ length: 100 }, (_, i) => `Card ${i}`);
+  const bodies: Array<{ identifiers: Array<{ name: string }> }> = [];
+  const result = await scryfallCardsByName(names, async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    bodies.push(body);
+    const data = body.identifiers
+      .filter((id: { name: string }) => id.name !== "Card 7")
+      .map((id: { name: string }) => ({
+        id: id.name.replace(" ", "-"),
+        name: id.name,
+        type_line: "Instant",
+      }));
+    const notFound = body.identifiers.filter((id: { name: string }) => id.name === "Card 7");
+    return new Response(JSON.stringify({ data, not_found: notFound }), { status: 200 });
+  });
+  assert.deepEqual(
+    bodies.map((b) => b.identifiers.length),
+    [75, 25]
+  );
+  assert.equal(result.found.length, 99);
+  assert.deepEqual(result.notFound, ["Card 7"]);
+});
+
+test("lookupByNames matches double-faced fronts and separates not found from unreachable", async () => {
+  const { CatalogService } = await import("../catalogService");
+  const bulk = async () => ({
+    found: [
+      mapScryfallDetail({
+        id: "d1",
+        name: "Delver of Secrets // Insectile Aberration",
+        type_line: "Creature",
+      })!,
+      mapScryfallDetail({ id: "s1", name: "Sol Ring", type_line: "Artifact" })!,
+    ],
+    notFound: ["Nope"],
+  });
+  const service = new CatalogService([], Date.now, async () => {}, {}, { mtg: bulk });
+  const result = await service.lookupByNames("mtg", ["Delver of Secrets", "sol ring", "Nope"]);
+  assert.equal(result.found.get("delver of secrets")?.sourceId, "d1");
+  assert.equal(result.found.get("sol ring")?.sourceId, "s1");
+  assert.deepEqual(result.notFound, ["Nope"]);
+  assert.ok(service.resolve("mtg", "s1"), "found cards can be added like search results");
+
+  const down = new CatalogService(
+    [],
+    Date.now,
+    async () => {},
+    {},
+    {
+      mtg: async () => {
+        throw new Error("The card database answered 500.");
+      },
+    }
+  );
+  const failed = await down.lookupByNames("mtg", ["Sol Ring"]);
+  assert.deepEqual(failed.failed, ["Sol Ring"]);
+  assert.deepEqual(failed.notFound, []);
+});

@@ -25,6 +25,7 @@ interface UsageView {
   trackingOn: boolean;
   presence: string | null;
   entries: Array<{
+    key: string;
     name: string;
     source: "app" | "website";
     daysUsed: number;
@@ -36,7 +37,22 @@ interface UsageView {
 interface WeekBridge {
   getWeeklySummary(): Promise<WeekView>;
   getUsage(): Promise<UsageView>;
+  getActivitySettings(): Promise<{ mappings: Array<{ activity: string; icon?: string }> }>;
 }
+
+/**
+ * What a counted row asks the Activities editor (renderer.ts) to do —
+ * "new" fills the form in; "addTo" saves a rule for an existing activity.
+ */
+export interface UsagePromotion {
+  kind: "new" | "addTo";
+  source: "application" | "website";
+  /** What the rule matches: the executable, or the site's name in titles. */
+  value: string;
+  name: string;
+  activity?: string;
+}
+export const USAGE_PROMOTION_EVENT = "nimbus:usage-promotion";
 
 function bridge(): WeekBridge {
   return (window as unknown as { nimbus: WeekBridge }).nimbus;
@@ -182,6 +198,13 @@ async function renderUsage(): Promise<void> {
     list.appendChild(make("p", "collection-meta", "Nothing counted in the last 7 days."));
     return;
   }
+  const activities = [
+    ...new Map(
+      (await bridge().getActivitySettings()).mappings.map((m) => [m.activity.toLowerCase(), m.activity])
+    ).values(),
+  ].sort((a, b) => a.localeCompare(b));
+  const promote = (detail: UsagePromotion) =>
+    window.dispatchEvent(new CustomEvent<UsagePromotion>(USAGE_PROMOTION_EVENT, { detail }));
   for (const entry of view.entries.slice(0, 40)) {
     const row = make("div", "usage-row");
     row.append(
@@ -197,8 +220,33 @@ async function renderUsage(): Promise<void> {
         STATUS_TEXT[entry.status]
       )
     );
+    if (entry.status !== "activity") {
+      const source = entry.source === "website" ? "website" : "application";
+      const value = entry.source === "website" ? entry.name : entry.key;
+      const actions = make("span", "usage-actions");
+      const create = make("button", "btn btn-ghost", "New activity");
+      create.type = "button";
+      create.addEventListener("click", () => promote({ kind: "new", source, value, name: entry.name }));
+      actions.appendChild(create);
+      if (activities.length) {
+        const addTo = make("select", "select");
+        addTo.appendChild(new Option("Add to…", ""));
+        for (const name of activities) addTo.appendChild(new Option(name, name));
+        addTo.addEventListener("change", () => {
+          if (addTo.value) promote({ kind: "addTo", source, value, name: entry.name, activity: addTo.value });
+        });
+        actions.appendChild(addTo);
+      }
+      row.appendChild(actions);
+    }
     list.appendChild(row);
   }
+}
+
+/** Redraws the counted list if it's open — after an activity is added from it. */
+export function refreshUsageList(): void {
+  const details = document.querySelector<HTMLDetailsElement>(".usage-details");
+  if (details?.open) void renderUsage();
 }
 
 export function initHomeWeek(): void {
@@ -209,4 +257,5 @@ export function initHomeWeek(): void {
   document.querySelector(".usage-details")?.addEventListener("toggle", (event) => {
     if ((event.target as HTMLDetailsElement).open) void renderUsage();
   });
+  refreshUsageList();
 }

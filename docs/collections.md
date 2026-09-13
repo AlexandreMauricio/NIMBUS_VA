@@ -105,8 +105,11 @@ warnings are worth a look.
 A deck is compared with the owned cards in your collection by name, in
 any printing (One Piece by card number). Decklists import as
 `4 Lightning Bolt` lines with `Sideboard` / `Extra` / `Commander` /
-`Leader` headings; each name is searched and the first exact match added,
-and names that aren't found are listed.
+`Leader` headings. Magic names are looked up in bulk through Scryfall's
+`/cards/collection` (75 a request, its default printing); other games
+search each name and take the first exact match. Every catalog request
+retries on 429 Too Many Requests. Names that don't exist are listed;
+names that couldn't be looked up are put back in the import box.
 
 ## Not yet
 

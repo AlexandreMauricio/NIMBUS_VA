@@ -15,7 +15,7 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
  * success is a real failure and throws.
  */
 export async function getCatalogJson(url: string, fetchFn: FetchLike): Promise<unknown | null> {
-  const response = await fetchFn(url, { headers: CATALOG_HEADERS, signal: httpTimeoutSignal(15_000) });
+  const response = await fetchWithRetry(fetchFn, url, { headers: CATALOG_HEADERS });
   if (response.status === 404 || response.status === 400) return null;
   if (!response.ok) throw new Error(`The card database answered ${response.status}.`);
   return response.json();
@@ -35,4 +35,28 @@ export function asPrice(value: unknown): number | null {
 
 export function httpsOrNull(value: unknown): string | null {
   return typeof value === "string" && /^https:\/\//i.test(value) ? value : null;
+}
+
+/** Tries after the first when a catalog says "too many requests". */
+const RATE_LIMIT_RETRIES = 3;
+const MAX_RETRY_WAIT_MS = 10_000;
+
+/** How retries wait — replaceable so tests don't sleep. */
+export const catalogRetry = {
+  sleep: (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+/**
+ * A catalog request that waits and tries again on 429 Too Many Requests —
+ * honouring Retry-After when the catalog sends one, otherwise 1, 2, then
+ * 4 seconds. Other failures are returned as they are.
+ */
+export async function fetchWithRetry(fetchFn: FetchLike, url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetchFn(url, { ...init, signal: httpTimeoutSignal(15_000) });
+    if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES) return response;
+    const retryAfter = Number(response.headers?.get?.("retry-after"));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt;
+    await catalogRetry.sleep(Math.min(MAX_RETRY_WAIT_MS, wait));
+  }
 }

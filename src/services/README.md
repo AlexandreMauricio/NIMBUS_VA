@@ -16,7 +16,7 @@ status, ...) almost certainly belongs there, following the weather
 provider as a template, not here.
 
 `services/` is for things that don't fit that shape — a capability that
-*acts* rather than *reports* (e.g. a future automation engine, an LLM
+_acts_ rather than _reports_ (e.g. a future automation engine, an LLM
 service that drafts responses), or that doesn't map onto "one snapshot's
 worth of data" at all. If and when something like that is built, per the
 architecture doc:

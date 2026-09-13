@@ -50,7 +50,10 @@ interface DecksBridge {
   addDeckCard(id: string, sourceId: string, zone: Zone | null): Promise<unknown>;
   setDeckCardQuantity(id: string, sourceId: string, zone: Zone, quantity: number): Promise<unknown>;
   moveDeckCard(id: string, sourceId: string, from: Zone, to: Zone): Promise<unknown>;
-  importDecklist(id: string, text: string): Promise<{ added: number; notFound: string[]; unread: string[] }>;
+  importDecklist(
+    id: string,
+    text: string
+  ): Promise<{ added: number; notFound: string[]; failed: string[]; retry: string; unread: string[] }>;
   searchCardCatalog(
     game: Game,
     query: string
@@ -102,6 +105,8 @@ export function initDecksTab(): void {
   let renderCount = 0;
   // The last import's result, kept across redraws (each added card redraws the deck).
   let importMessage = "";
+  // What's in the import box, kept across redraws — after an import, the lines to try again.
+  let importDraft = "";
 
   const showError = (message: string | null): void => {
     errorEl.textContent = message ?? "";
@@ -140,6 +145,7 @@ export function initDecksTab(): void {
       item.addEventListener("click", () => {
         selectedId = deck.id;
         importMessage = "";
+        importDraft = "";
         void refresh();
       });
       list.appendChild(item);
@@ -344,6 +350,8 @@ export function initDecksTab(): void {
       copy.textContent = "Copied";
     });
     const importBox = make("textarea", "input deck-text");
+    importBox.value = importDraft;
+    importBox.addEventListener("input", () => (importDraft = importBox.value));
     importBox.placeholder =
       "Paste a decklist — e.g.\n4 Lightning Bolt\n20 Mountain\n\nSideboard\n2 Pyroblast";
     const importBtn = make("button", "btn btn-secondary", "Import into this deck");
@@ -358,8 +366,12 @@ export function initDecksTab(): void {
         importMessage =
           `Added ${result.added} card${result.added === 1 ? "" : "s"}.` +
           (result.notFound.length ? ` Not found: ${result.notFound.join(", ")}.` : "") +
-          (result.unread.length ? ` Couldn't read: ${result.unread.join(", ")}.` : "");
-        if (result.added) importBox.value = "";
+          (result.unread.length ? ` Couldn't read: ${result.unread.join(", ")}.` : "") +
+          (result.failed.length
+            ? ` Couldn't reach the card database for ${result.failed.length} — they're left in the box; import again in a moment.`
+            : "");
+        importDraft = result.retry;
+        importBox.value = importDraft;
         await refresh(false);
       } catch (err) {
         importMessage = errorText(err);

@@ -1,5 +1,6 @@
 import { logger } from "../logging/logger";
 import { DetailFetcher } from "./catalogs/details";
+import { sameCardName } from "./decks/decklist";
 import {
   CardDetail,
   CardCatalog,
@@ -15,8 +16,27 @@ const RESULT_CACHE_MS = 10 * 60_000;
 /** How long a search result can still be added to the collection. */
 const RESOLVABLE_MS = 60 * 60_000;
 const MAX_RESOLVABLE = 3000;
-/** The least time between two requests to the same catalog — Scryfall asks for 50–100 ms. */
+/** The least time between two requests to the same catalog. */
 const MIN_REQUEST_GAP_MS = 150;
+/** Scryfall allows about 2 requests a second on its search endpoints. */
+const GAME_REQUEST_GAP_MS: Partial<Record<TcgGame, number>> = { mtg: 550 };
+
+/** Cards by exact name, many per request — for games whose catalog offers it. */
+export type BulkNameLookup = (names: string[]) => Promise<{ found: CardDetail[]; notFound: string[] }>;
+
+export interface NameLookupResult {
+  /** Found cards, keyed by the name as asked for, lowercased. */
+  found: Map<string, CardDetail>;
+  /** Names the catalog doesn't have. */
+  notFound: string[];
+  /** Names that couldn't be looked up just now — worth trying again. */
+  failed: string[];
+}
+
+/** A double-faced Magic card is "Front // Back"; a decklist often names only the front. */
+function nameMatches(cardName: string, asked: string): boolean {
+  return sameCardName(cardName, asked) || sameCardName(cardName.split(" // ")[0], asked);
+}
 
 /**
  * Searches the card catalogs, one per game, and remembers what it found.
@@ -38,7 +58,8 @@ export class CatalogService {
     catalogs: CardCatalog[],
     private readonly now: () => number = Date.now,
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
-    private readonly detailFetchers: Partial<Record<TcgGame, DetailFetcher>> = {}
+    private readonly detailFetchers: Partial<Record<TcgGame, DetailFetcher>> = {},
+    private readonly bulkByName: Partial<Record<TcgGame, BulkNameLookup>> = {}
   ) {
     for (const catalog of catalogs) this.catalogs.set(catalog.game, catalog);
   }
@@ -107,6 +128,57 @@ export class CatalogService {
     return { ...detail };
   }
 
+  /**
+   * Cards by exact name — what a decklist import needs. Uses the game's
+   * bulk lookup when it has one (Magic: 75 names a request); otherwise a
+   * paced search and card lookup per name. Every card found becomes
+   * resolvable, like a search result.
+   */
+  async lookupByNames(game: unknown, names: string[]): Promise<NameLookupResult> {
+    if (!isTcgGame(game)) throw new Error("Choose a game.");
+    const unique = [...new Map(names.map((n) => [n.toLowerCase(), n])).values()].slice(0, 250);
+    const result: NameLookupResult = { found: new Map(), notFound: [], failed: [] };
+    const remember = (asked: string, detail: CardDetail) => {
+      result.found.set(asked.toLowerCase(), detail);
+      const key = `${game}|${detail.sourceId}`;
+      this.details.set(key, { at: this.now(), detail });
+      this.resolvable.set(key, { at: this.now(), card: detail });
+    };
+
+    const bulk = this.bulkByName[game];
+    if (bulk) {
+      try {
+        await this.pace(game);
+        const { found } = await bulk(unique);
+        for (const asked of unique) {
+          const match = found.find((card) => nameMatches(card.name, asked));
+          if (match) remember(asked, match);
+          else result.notFound.push(asked);
+        }
+      } catch (err) {
+        logger.warn("Bulk card lookup failed", { game, error: String(err) });
+        result.failed.push(...unique);
+      }
+      return result;
+    }
+
+    for (const asked of unique) {
+      try {
+        const cards = await this.search(game, asked);
+        const match = cards.find((card) => nameMatches(card.name, asked));
+        if (!match) {
+          result.notFound.push(asked);
+          continue;
+        }
+        remember(asked, await this.getDetail(game, match.sourceId));
+      } catch (err) {
+        if (/doesn't have that card|at least|at most/i.test(String(err))) result.notFound.push(asked);
+        else result.failed.push(asked);
+      }
+    }
+    return result;
+  }
+
   /** A card from a recent search, by its game and catalog id — or null. */
   resolve(game: unknown, sourceId: unknown): CatalogCard | null {
     if (!isTcgGame(game) || typeof sourceId !== "string") return null;
@@ -117,7 +189,8 @@ export class CatalogService {
 
   private async pace(game: TcgGame): Promise<void> {
     const last = this.lastRequestAt.get(game);
-    const wait = last === undefined ? 0 : MIN_REQUEST_GAP_MS - (this.now() - last);
+    const gap = GAME_REQUEST_GAP_MS[game] ?? MIN_REQUEST_GAP_MS;
+    const wait = last === undefined ? 0 : gap - (this.now() - last);
     if (wait > 0) await this.sleep(wait);
     this.lastRequestAt.set(game, this.now());
   }
