@@ -4320,3 +4320,131 @@ details.context-card > summary .context-card-title {
   height: 100%;
   background: var(--color-accent-500);
 }
+
+/* ---------- Decks: compare with average decks (deckCompare.ts) ---------- */
+
+.deck-compare {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.deck-compare-summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.deck-compare-body,
+.deck-compare-results,
+.deck-compare-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.deck-compare-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.deck-compare-variant {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.deck-compare-scroll {
+  overflow-x: auto;
+}
+
+.deck-compare-table {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  min-width: 100%;
+}
+
+.deck-compare-table th,
+.deck-compare-table td {
+  padding: 0.35rem 0.6rem;
+  text-align: right;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-divider) 60%, transparent);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.deck-compare-table tr:first-child th {
+  color: var(--color-neutral-400);
+  font-weight: 500;
+  white-space: normal;
+  vertical-align: bottom;
+}
+
+.deck-compare-table .deck-compare-row-label {
+  text-align: left;
+  font-weight: 500;
+}
+
+.deck-compare-guideline {
+  color: var(--color-neutral-400);
+}
+
+.deck-compare-low,
+.deck-compare-high {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.deck-compare-ok {
+  color: var(--color-success);
+}
+
+.deck-compare-rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.deck-compare-rule {
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-divider);
+}
+
+.deck-compare-rule-ok {
+  border-left-color: var(--color-success);
+}
+
+.deck-compare-rule-low,
+.deck-compare-rule-high {
+  border-left-color: var(--color-warning);
+}
+
+.deck-compare-verdict {
+  color: var(--color-neutral-400);
+}
+
+.deck-compare-missing {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 2px var(--space-3);
+}
+
+.deck-compare-card {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+}
+
+.deck-compare-card .deck-card-name {
+  padding: 0;
+  text-align: left;
+}
+
+.deck-compare-only {
+  line-height: 1.7;
+}

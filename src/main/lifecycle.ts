@@ -84,6 +84,10 @@ import {
   isCoverUrl,
   TCG_GAMES,
   creditsFromGcd,
+  commanderReferences,
+  averageDeck,
+  compareWithReferences,
+  nameKey,
   checkDeck,
   deckStats,
   balanceColours,
@@ -827,6 +831,83 @@ function registerIpcHandlers(): void {
       };
     }
   );
+  // Comparing a Commander deck with EDHREC's average decks for its commander
+  // (src/collections/catalogs/edhrec.ts, decks/compare.ts). Pages are kept
+  // six hours; only the commander's name goes to EDHREC.
+  const edhrecCache = new Map<string, { at: number; value: Promise<unknown> }>();
+  const edhrec = <T>(key: string, load: () => Promise<T>): Promise<T> => {
+    const hit = edhrecCache.get(key);
+    if (hit && Date.now() - hit.at < 6 * 60 * 60_000) return hit.value as Promise<T>;
+    const value = load().catch((err) => {
+      edhrecCache.delete(key);
+      throw err;
+    });
+    edhrecCache.set(key, { at: Date.now(), value });
+    return value;
+  };
+  const commanderOf = (id: unknown) => {
+    const deck = deckService.get(String(id ?? ""));
+    if (deck.game !== "mtg" || deck.format !== "commander") {
+      throw new Error("Comparing with average decks works for Magic Commander decks.");
+    }
+    const commander = deck.cards.find((card) => card.zone === "leader");
+    if (!commander) throw new Error("Put the deck's commander in the Commander zone first.");
+    return { deck, commander };
+  };
+  ipcMain.handle("nimbus:deck-compare-options", async (_event, id: unknown) => {
+    const { commander } = commanderOf(id);
+    const name = commander.name.split(" // ")[0];
+    return edhrec(`refs|${name}`, () => commanderReferences(name));
+  });
+  ipcMain.handle("nimbus:deck-compare", async (_event, id: unknown, variantIds: unknown) => {
+    const { deck, commander } = commanderOf(id);
+    const name = commander.name.split(" // ")[0];
+    const refs = await edhrec(`refs|${name}`, () => commanderReferences(name));
+    const wanted = Array.isArray(variantIds)
+      ? variantIds.filter((v): v is string => typeof v === "string")
+      : [];
+    const chosen = refs.variants.filter((v) => wanted.includes(v.id)).slice(0, 5);
+    if (!chosen.length) chosen.push(refs.variants[0]);
+    const references = [];
+    for (const variant of chosen) {
+      references.push(await edhrec(`deck|${refs.slug}|${variant.id}`, () => averageDeck(refs.slug, variant)));
+    }
+    const mine = deck.cards
+      .filter((card) => card.zone === "main")
+      .map((card) => ({ name: card.name, quantity: card.quantity }));
+    // Every card's text and type, through the catalog service (Scryfall, 75 names a request).
+    const names = [...new Set([...mine, ...references.flatMap((r) => r.cards)].map((c) => c.name))];
+    const info = new Map<
+      string,
+      {
+        sourceId: string;
+        name: string;
+        kind: string | null;
+        cost: number | null;
+        text: string | null;
+        imageUrl: string | null;
+      }
+    >();
+    for (let start = 0; start < names.length; start += 250) {
+      const lookup = await catalogService.lookupByNames("mtg", names.slice(start, start + 250));
+      for (const detail of lookup.found.values()) {
+        info.set(nameKey(detail.name), {
+          sourceId: detail.sourceId,
+          name: detail.name,
+          kind: detail.rules.kind,
+          cost: detail.rules.cost,
+          text: detail.text,
+          imageUrl: detail.imageUrl,
+        });
+      }
+    }
+    return {
+      commander: refs.commander,
+      totalDecks: refs.decks,
+      references: references.map((r) => ({ id: r.id, label: r.label, decks: r.decks })),
+      comparison: compareWithReferences(mine, references, info),
+    };
+  });
   let archetypes: { at: number; names: Promise<string[]> } | null = null;
   ipcMain.handle("nimbus:builder-archetypes", () => {
     if (!archetypes || Date.now() - archetypes.at > 24 * 60 * 60_000) {

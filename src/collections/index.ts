@@ -61,6 +61,24 @@ export {
 export type { BrowseFilter, BrowsePage, Browser } from "./catalogs/browse";
 export * from "./decks/builder";
 export * from "./decks/copies";
+export {
+  compareWithReferences,
+  deckProfile,
+  cardRoles,
+  nameKey,
+  COMMANDER_GUIDELINES,
+  ROLE_LABELS,
+} from "./decks/compare";
+export type {
+  ReferenceDeck,
+  ReferenceCard,
+  CompareCardInfo,
+  DeckComparison,
+  DeckProfile,
+  GuidelineRow,
+} from "./decks/compare";
+export { commanderReferences, averageDeck } from "./catalogs/edhrec";
+export type { CommanderReferences, CommanderVariant } from "./catalogs/edhrec";
 export { balanceColours, sourcesNeeded, COLOUR_NAMES } from "./decks/mana";
 export type { ColourLine, ColourBalance, ManaCard } from "./decks/mana";
 export { DeckService, parseDeck } from "./decks/deckService";

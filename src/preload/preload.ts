@@ -314,6 +314,9 @@ contextBridge.exposeInMainWorld("nimbus", {
   builderBrowse: (game: string, filter: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:builder-browse", game, filter),
   builderArchetypes: (): Promise<unknown> => ipcRenderer.invoke("nimbus:builder-archetypes"),
+  deckCompareOptions: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:deck-compare-options", id),
+  deckCompare: (id: string, variants: string[]): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:deck-compare", id, variants),
   cardSynergy: (game: string, sourceId: string, context: Record<string, unknown> | null): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:card-synergy", game, sourceId, context),
   builderCreateDeck: (input: Record<string, unknown>): Promise<unknown> =>

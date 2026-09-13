@@ -208,6 +208,38 @@ Items and Stadiums. Pokémon has no curve. Cards added before 0.5.16 have
 none of this saved; the page counts them apart and offers **Update card
 data**, which looks each one up again.
 
+## Comparing a Commander deck with average decks
+
+A Magic Commander deck with its commander in the Commander zone has
+**Compare with average decks for this commander (EDHREC)** on its page
+([deckCompare.ts](../src/ui/deckCompare.ts),
+[compare.ts](../src/collections/decks/compare.ts),
+[edhrec.ts](../src/collections/catalogs/edhrec.ts)). It lists EDHREC's
+average decks for the commander — the plain average (with how many
+decklists it's built from), the budget and expensive builds, and the
+average of each popular theme (Krenko: Goblins, Tokens, Aggro…) — and puts
+up to five beside yours:
+
+- **Side by side:** cards, lands, ramp, card draw, targeted removal and board
+  wipes against the usual Commander guidelines (36–38 lands, 10+ ramp, 10+
+  draw, 8+ removal, 2–4 wipes; green when met, amber when not — for every
+  column, so you can see the averages miss them too), the count of each card
+  type, average mana value, and how many of your cards each average plays.
+- **The guidelines, explained**, each with where your deck stands.
+- **Your mana curve** with the first average deck's dashed over it.
+- **Cards they agree on that you don't play** — with one deck, all its cards;
+  with several, those in at least half — each with how many decks play it,
+  opening its card page, and **Add**.
+- **Only in yours:** your cards none of them play.
+
+Ramp, draw, removal and wipes are estimated from each card's rules text
+(mana abilities and land search, "draw a card", "destroy/exile target…",
+"destroy all…"; a cycling land isn't card draw), so they're close, not
+exact. EDHREC's pages are public JSON, not an official API; they're kept six
+hours, and only the commander's name is sent. Cards' text comes from
+Scryfall by name through the catalog service, so added cards are resolvable
+like any search result.
+
 ## The deck builder helper
 
 **Build a deck with the helper** (top of the Decks tab) walks through a

@@ -18,6 +18,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.21 — 2026-09-13
+
+- **Compare a Commander deck with EDHREC's average decks.** On a Commander
+  deck's page, choose up to five average decks for its commander — the
+  average, budget and expensive builds, and each popular theme — and see
+  them side by side with yours: lands, ramp, card draw, removal and board
+  wipes against the Commander guidelines (with why each matters and where
+  you stand), card types, average mana value and shared cards; your curve
+  against the average's; the cards they agree on that you don't play, with
+  **Add**; and the cards only you play.
+
+---
+
 ## 0.5.20 — 2026-09-13
 
 - **A reading log for comics.** Log when you read single issues — on a

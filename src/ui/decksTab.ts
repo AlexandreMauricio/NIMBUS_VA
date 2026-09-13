@@ -7,6 +7,7 @@
 import { openCardPage } from "./cardPage";
 import { ColourLineUI, DeckStatsUI, deckShape } from "./deckCharts";
 import { openDeckBuilder } from "./deckBuilder";
+import { deckCompareSection } from "./deckCompare";
 
 type Game = "mtg" | "pokemon" | "yugioh" | "lorcana" | "onepiece";
 type Zone = "main" | "side" | "extra" | "leader";
@@ -251,6 +252,11 @@ export function initDecksTab(): void {
         view.staleCards
       )
     );
+
+    // A Commander deck beside EDHREC's average decks for its commander.
+    if (deck.game === "mtg" && deck.format === "commander") {
+      editor.appendChild(deckCompareSection(id, () => void refresh()));
+    }
 
     // Against the collection.
     const owned = make("div", "deck-owned");
