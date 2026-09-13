@@ -77,6 +77,7 @@ import {
   DeckService,
   DeckZone,
   GcdCatalog,
+  WikipediaCollections,
   coverUrlForIsbn,
   isCoverUrl,
   TCG_GAMES,
@@ -137,6 +138,7 @@ let catalogService: CatalogService;
 let bookService: BookService;
 let deckService: DeckService;
 let gcdCatalog: GcdCatalog;
+let wikipediaCollections: WikipediaCollections;
 
 /** A routine suggestion the user answered — reinforces that routine's acceptance pattern. */
 function rememberRoutineDecision(
@@ -849,7 +851,25 @@ function registerIpcHandlers(): void {
     return true;
   });
   ipcMain.handle("nimbus:search-comic-series", (_event, name: unknown) => gcdCatalog.searchSeries(name));
-  ipcMain.handle("nimbus:get-comic-volume", (_event, issueId: unknown) => gcdCatalog.getVolume(issueId));
+  // A GCD volume, with its contents from Wikipedia's lists when GCD has none.
+  ipcMain.handle("nimbus:get-comic-volume", async (_event, issueId: unknown) => {
+    const volume = await gcdCatalog.getVolume(issueId);
+    if (volume.runs.length || !volume.isbn)
+      return { ...volume, contentsFrom: volume.runs.length ? "gcd" : null };
+    try {
+      const found = await wikipediaCollections.findByIsbn([volume.isbn]);
+      if (found) return { ...volume, runs: found.runs, unread: found.unread, contentsFrom: found.list };
+    } catch (err) {
+      logger.debug("No contents from Wikipedia", { error: String(err) });
+    }
+    return { ...volume, contentsFrom: null };
+  });
+  // Contents for a book by its ISBN — for books typed in by hand, or found on
+  // GCD before this lookup existed. The ISBN never leaves the PC: the lists
+  // are downloaded whole and matched here.
+  ipcMain.handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
+    typeof isbn === "string" && isbn.length <= 20 ? wikipediaCollections.findByIsbn([isbn]) : null
+  );
   ipcMain.handle("nimbus:add-book", (_event, input: unknown) => bookService.add(input));
   ipcMain.handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
     bookService.update(String(id ?? ""), input)
@@ -1530,6 +1550,7 @@ export function startApp(): void {
   // id is sent).
   bookService = new BookService(new FileBookStore());
   gcdCatalog = new GcdCatalog();
+  wikipediaCollections = new WikipediaCollections();
   bookService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
     void fillBookCovers();

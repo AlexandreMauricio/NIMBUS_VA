@@ -18,6 +18,25 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.8 — 2026-09-13
+
+- **Contents from Wikipedia when GCD has none.** GCD has the ISBN of
+  "Doctor Strange: Master of the Mystic Arts Omnibus Vol. 1" but not what
+  it collects. Wikipedia's lists of Marvel Omnibuses, Epic Collections and
+  Masterworks, and DC Omnibuses have a row per edition with its contents
+  and every printing's ISBN — so a volume picked from GCD without
+  contents is matched there by ISBN, and "Find contents by ISBN" does the
+  same for a book typed in or already on the shelf. The lists are
+  downloaded whole and matched on the PC; the ISBN isn't sent.
+- **GCD search ignores a trailing "Vol 1" or "#1"** — series names never
+  include one, so "Master of the Mystic Arts Omnibus Vol 1" found nothing.
+- **Printings aren't counted as volumes**: a series with "1" and
+  "1 [Direct]" reads "1 volume (2 printings)", and the direct-market one
+  says so.
+- **Runs read Wikipedia's style**: "Strange Tales #110–111, 114–146",
+  "Doctor Strange (vol. 2) #53" as its own series, and everything after
+  "material from" marked partial.
+
 ## 0.5.7 — 2026-09-13
 
 - **Books, redesigned** from the Claude Design mockups — four pages deep:

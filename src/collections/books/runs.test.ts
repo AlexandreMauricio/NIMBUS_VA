@@ -81,3 +81,34 @@ test("series keys ignore case, punctuation and a leading 'The', but keep the yea
   assert.equal(seriesKey("The Amazing Spider-Man", 1963), seriesKey("amazing spider man", 1963));
   assert.notEqual(seriesKey("Thor", 1966), seriesKey("Thor", 1998));
 });
+
+test("Wikipedia's style: continued number lists, volumes, and material from several series", () => {
+  assert.deepEqual(parseRuns("Strange Tales #110–111, 114–146; Amazing Spider-Man Annual #2"), {
+    runs: [
+      { series: "Strange Tales", year: null, from: 110, to: 111, partial: false },
+      { series: "Strange Tales", year: null, from: 114, to: 146, partial: false },
+      { series: "Amazing Spider-Man Annual", year: null, from: 2, to: 2, partial: false },
+    ],
+    unread: [],
+  });
+  const wca = parseRuns(
+    "West Coast Avengers (1985) #17–41, Annual #2–3; Avengers Annual #16; material from Fantastic Four #19 and Doctor Strange (vol. 2) #53"
+  );
+  assert.deepEqual(
+    wca.runs.map(
+      (r) => `${r.partial ? "part of " : ""}${r.series}${r.year ? ` (${r.year})` : ""} #${r.from}-${r.to}`
+    ),
+    [
+      "West Coast Avengers (1985) #17-41",
+      "West Coast Avengers Annual (1985) #2-3",
+      "Avengers Annual #16-16",
+      "part of Fantastic Four #19-19",
+      "part of Doctor Strange vol. 2 #53-53",
+    ]
+  );
+  // A volume written back parses to itself.
+  assert.deepEqual(parseRuns(formatRuns(wca.runs)).runs, wca.runs);
+  // Everything after "material from" is material, across ";" too.
+  assert.equal(parseRuns("Thor #5; material from Thor #1; Hulk #2").runs[2].partial, true);
+  assert.equal(parseRuns("Thor #5; material from Thor #1; Hulk #2").runs[0].partial, false);
+});

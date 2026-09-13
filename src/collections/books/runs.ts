@@ -16,30 +16,38 @@ export interface ParsedRuns {
   unread: string[];
 }
 
-/** Splits on separators that are outside parentheses: "(Marvel, 1966 series)" stays whole. */
-function splitTopLevel(text: string): string[] {
-  const parts: string[] = [];
+/**
+ * Splits on separators that are outside parentheses: "(Marvel, 1966 series)"
+ * stays whole. Each part remembers whether " and " or "," joined it to the
+ * one before — "material from A #1 and B #2" is material from both.
+ */
+function splitTopLevel(text: string): Array<{ text: string; continues: boolean }> {
+  const parts: Array<{ text: string; continues: boolean }> = [];
   let depth = 0;
   let current = "";
+  let continues = false;
+  const push = (next: boolean) => {
+    if (current.trim()) parts.push({ text: current.trim(), continues });
+    current = "";
+    continues = next;
+  };
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === "(") depth++;
     if (ch === ")") depth = Math.max(0, depth - 1);
     if (depth === 0 && (ch === ";" || ch === ",")) {
-      parts.push(current);
-      current = "";
+      push(ch === ",");
       continue;
     }
     if (depth === 0 && text.slice(i, i + 5).toLowerCase() === " and ") {
-      parts.push(current);
-      current = "";
+      push(true);
       i += 4;
       continue;
     }
     current += ch;
   }
-  parts.push(current);
-  return parts.map((part) => part.trim()).filter(Boolean);
+  push(false);
+  return parts;
 }
 
 /** "#1-17", "#15", "#1–3", "#83 - 100" → [from, to]. */
@@ -53,13 +61,18 @@ function readNumbers(text: string): Array<[number, number]> {
   return ranges;
 }
 
-/** "The Amazing Spider-Man (Marvel, 1963 series)" → name and year; "Thor (1966)" too. */
+/**
+ * "The Amazing Spider-Man (Marvel, 1963 series)" → name and year; "Thor
+ * (1966)" too. "Doctor Strange (vol. 2)" keeps its volume in the name —
+ * it's a different series from the first.
+ */
 function readSeries(raw: string): { series: string; year: number | null } {
   let year: number | null = null;
   const withoutParens = raw.replace(/\(([^)]*)\)/g, (_all, inside: string) => {
     const found = inside.match(/\b(1[89]\d\d|20\d\d)\b/);
     if (found && year === null) year = Number(found[1]);
-    return " ";
+    const volume = inside.match(/\bvol(?:ume)?\.?\s*(\d+)\b/i);
+    return volume ? ` vol. ${volume[1]} ` : " ";
   });
   const series = withoutParens.replace(/\s+/g, " ").trim();
   return { series, year };
@@ -82,16 +95,29 @@ export function parseRuns(text: string): ParsedRuns {
   if (typeof text !== "string" || !text.trim()) return { runs, unread };
 
   let previous: { series: string; year: number | null } | null = null;
+  let previousPartial = false;
 
-  for (let part of splitTopLevel(contentsOf(text))) {
-    let partial = false;
+  for (const piece of splitTopLevel(contentsOf(text))) {
+    let part = piece.text;
+    // "…; material from A #1; B #2 and C #3": lists put partial reprints
+    // last, so everything after "material from" is material too.
+    let partial: boolean = previousPartial;
     part = part.replace(/^and\s+/i, "");
     if (/^(?:some\s+)?material\s+from\s+/i.test(part)) {
       partial = true;
       part = part.replace(/^(?:some\s+)?material\s+from\s+/i, "");
     }
+    previousPartial = partial;
 
     const hash = part.indexOf("#");
+    // "Strange Tales #110–111, 114–146": bare numbers continue the series before.
+    if (hash === -1 && previous && piece.continues && /^\d+\s*(?:[-–—]\s*\d+)?$/.test(part)) {
+      for (const [from, to] of readNumbers(part)) {
+        runs.push({ series: previous.series, year: previous.year, from, to, partial });
+        if (runs.length >= MAX_RUNS_PER_BOOK) return { runs, unread };
+      }
+      continue;
+    }
     if (hash === -1) {
       // "(1966-1968)" left over after the numbers, and similar, isn't contents.
       if (/\d/.test(part) && !/^\(?\s*\d{4}\s*[-–]\s*\d{4}\s*\)?$/.test(part)) unread.push(part);

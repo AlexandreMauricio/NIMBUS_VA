@@ -22,6 +22,13 @@ export type { GcdIssueDetail } from "./books/gcd";
 export { computeCoverage, bookLabel } from "./books/coverage";
 export { bookIssues, bookOverlap, groupShelf, shelfName, shelfStats } from "./books/shelf";
 export { coverUrlForIsbn, isCoverUrl } from "./books/bookService";
+export {
+  WikipediaCollections,
+  findContentsByIsbn,
+  toIsbn13,
+  wikitextToPlain,
+  WIKIPEDIA_LISTS,
+} from "./books/wikipedia";
 export { parseRuns, formatRuns } from "./books/runs";
 export * from "./decks/types";
 export { DeckService, parseDeck } from "./decks/deckService";

@@ -248,7 +248,14 @@ export class GcdCatalog {
   ) {}
 
   async searchSeries(name: unknown): Promise<GcdSeries[]> {
-    const query = typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
+    // GCD matches series names, and "Vol 1" or "#1" is never part of one.
+    const query =
+      typeof name === "string"
+        ? name
+            .trim()
+            .replace(/\s+/g, " ")
+            .replace(/[\s,:-]*(?:vol(?:ume)?\.?\s*\d+|#\s*\d+|v\d+)\s*$/i, "")
+        : "";
     if (query.length < 2) throw new Error("Type at least 2 characters.");
     if (query.length > 100) throw new Error("Searches are at most 100 characters.");
     const json = await this.get(

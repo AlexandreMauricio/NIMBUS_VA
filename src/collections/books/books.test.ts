@@ -197,3 +197,19 @@ test("malformed saved books and runs are dropped, not half-used", () => {
   );
   assert.equal(books[0].runs.length, 1, "the backwards and nameless runs are dropped");
 });
+
+test("a GCD series search drops a trailing volume number — GCD names never include one", async () => {
+  const urls: string[] = [];
+  const gcd = new GcdCatalog(
+    async (url) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ count: 0, results: [] }), { status: 200 });
+    },
+    Date.now,
+    async () => {}
+  );
+  await gcd.searchSeries("Master of the Mystic Arts Omnibus Vol 1");
+  await gcd.searchSeries("Thor Epic Collection #3");
+  assert.ok(urls[0].includes("/name/Master%20of%20the%20Mystic%20Arts%20Omnibus/"));
+  assert.ok(urls[1].includes("/name/Thor%20Epic%20Collection/"));
+});

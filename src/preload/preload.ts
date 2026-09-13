@@ -323,6 +323,7 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:search-comic-series", name),
   getComicVolume: (issueId: number): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-comic-volume", issueId),
+  findBookContents: (isbn: string): Promise<unknown> => ipcRenderer.invoke("nimbus:find-book-contents", isbn),
   getComicIssue: (series: string, year: number | null, number: number): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-comic-issue", series, year, number),
   openComicLink: (site: "locg" | "gcd", lookup: { text?: string; gcdIssueId?: number }): Promise<boolean> =>

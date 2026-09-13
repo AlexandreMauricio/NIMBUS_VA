@@ -74,6 +74,18 @@ nothing for Devir's Portuguese manga, which is typed in by hand. GCD is a
 volunteer project: requests are spaced a second apart and kept for a day,
 and only the series name or a numeric volume id is sent.
 
+**When GCD has no contents — Wikipedia's lists.** Many omnibuses have an
+ISBN on GCD but no note or story list ("Doctor Strange: Master of the
+Mystic Arts Omnibus Vol. 1" has neither). Wikipedia's _Marvel Omnibus_,
+_Marvel Epic Collection_, _Marvel Masterworks_ and _DC Omnibus_ list
+pages have a row per edition with its contents and every printing's ISBN
+([wikipedia.ts](../src/collections/books/wikipedia.ts)). A GCD volume
+without contents is looked up there by ISBN; "Find contents by ISBN" does
+the same on the form and on a book's page. The pages are downloaded whole
+through Wikipedia's API (kept for a day) and matched locally — the ISBN
+isn't sent. Wikipedia often leaves out series years ("Journey into
+Mystery #83–109"); add one if the same name has two series.
+
 **Typing runs.** `Series (year) #from-to`, separated by `;` or `,`.
 `Annual #1` after a series means that series' annual; a bare `#140-145`
 continues the series before it; `material from X #3` marks a partial

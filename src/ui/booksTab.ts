@@ -44,6 +44,16 @@ interface GcdVolumeUI {
   runs: Book["runs"];
   unread: string[];
   notes: string | null;
+  /** Where the contents came from: "gcd", a Wikipedia list's name, or null if neither had them. */
+  contentsFrom: string | null;
+}
+
+interface ContentsUI {
+  list: string;
+  title: string | null;
+  contents: string;
+  runs: Book["runs"];
+  unread: string[];
 }
 
 interface BooksBridge {
@@ -53,6 +63,7 @@ interface BooksBridge {
   searchComicSeries(name: string): Promise<GcdSeriesUI[]>;
   getComicVolume(issueId: number): Promise<GcdVolumeUI>;
   getComicIssue(series: string, year: number | null, number: number): Promise<GcdIssueDetail | null>;
+  findBookContents(isbn: string): Promise<ContentsUI | null>;
   openComicLink(site: "locg" | "gcd", lookup: { text?: string; gcdIssueId?: number }): Promise<boolean>;
   addBook(input: Record<string, unknown>): Promise<{ book: Book; unread: string[] }>;
   updateBook(id: string, input: Record<string, unknown>): Promise<{ book: Book; unread: string[] }>;
@@ -205,6 +216,8 @@ export function initBooksTab(): void {
   const formError = byId<HTMLElement>("bookFormError");
   const saveBtn = byId<HTMLButtonElement>("bookSaveBtn");
   const cancelBtn = byId<HTMLButtonElement>("bookCancelBtn");
+  const findContentsBtn = byId<HTMLButtonElement>("bookFindContentsBtn");
+  const findContentsStatus = byId<HTMLElement>("bookFindContentsStatus");
 
   let books: Book[] = [];
   let coverage: SeriesCoverage[] = [];
@@ -640,9 +653,34 @@ export function initBooksTab(): void {
       if (truncated) card.appendChild(make("p", "books-small", "The list stops here — it's very long."));
       detailView.appendChild(card);
     } else if (book.kind === "comic") {
-      detailView.appendChild(
+      const none = make("div", "books-actions books-actions-start");
+      none.appendChild(
         make("p", "feed-empty", "No issues entered for this book — Edit details to add what it collects.")
       );
+      if (book.isbn) {
+        const find = make("button", "btn btn-secondary", "Find contents by ISBN");
+        find.type = "button";
+        const note = make("span", "books-small");
+        find.addEventListener("click", async () => {
+          find.disabled = true;
+          note.textContent = "Looking through Wikipedia's lists…";
+          try {
+            const found = await bridge().findBookContents(book.isbn!);
+            if (!found) {
+              note.textContent = "Not in Wikipedia's lists — Edit details to type the runs.";
+              find.disabled = false;
+              return;
+            }
+            await bridge().updateBook(book.id, { runs: formatRuns(found.runs) });
+            await load();
+          } catch (err) {
+            note.textContent = errorText(err);
+            find.disabled = false;
+          }
+        });
+        none.append(find, note);
+      }
+      detailView.appendChild(none);
     }
 
     const actions = make("div", "books-actions");
@@ -900,6 +938,7 @@ export function initBooksTab(): void {
 
   function openForm(values: Partial<Book> & { runsText?: string }, message: string | null): void {
     form.hidden = false;
+    findContentsStatus.textContent = "";
     heading.textContent = editingId ? "Edit book" : "Add a book";
     show(notice, message);
     show(formError, null);
@@ -941,6 +980,17 @@ export function initBooksTab(): void {
     go(returnTo);
   }
 
+  /**
+   * "1 volume (2 printings)": GCD lists a direct-market or variant printing
+   * ("1 [Direct]") as its own entry, which reads like a second volume.
+   */
+  function volumeCount(series: GcdSeriesUI): string {
+    const volumes = new Set(series.volumes.map((v) => v.descriptor.replace(/\s*\[[^\]]*\]\s*$/, "")));
+    const printings = series.volumes.length;
+    const label = `${volumes.size} ${volumes.size === 1 ? "volume" : "volumes"}`;
+    return printings > volumes.size ? `${label} (${printings} printings)` : label;
+  }
+
   async function searchSeries(): Promise<void> {
     searchBtn.disabled = true;
     show(searchStatus, "Searching the Grand Comics Database…");
@@ -956,7 +1006,7 @@ export function initBooksTab(): void {
         const pick = make(
           "button",
           "btn btn-ghost book-pick",
-          `${series.name}${series.yearBegan ? ` (${series.yearBegan})` : ""} — ${series.volumes.length} vol.`
+          `${series.name}${series.yearBegan ? ` (${series.yearBegan})` : ""} — ${volumeCount(series)}`
         );
         pick.type = "button";
         pick.addEventListener("click", () => showVolumes(series));
@@ -974,7 +1024,12 @@ export function initBooksTab(): void {
     show(searchStatus, `${series.name}: pick a volume`);
     volumeResults.replaceChildren();
     for (const entry of series.volumes) {
-      const pick = make("button", "btn btn-ghost book-pick", entry.descriptor);
+      // "1 [Direct]" is the same volume with the direct-market cover.
+      const pick = make(
+        "button",
+        "btn btn-ghost book-pick",
+        entry.descriptor.replace(/\s*\[Direct\]\s*$/i, " — direct market cover")
+      );
       pick.type = "button";
       pick.addEventListener("click", async () => {
         show(searchStatus, "Reading that volume from GCD…");
@@ -995,10 +1050,8 @@ export function initBooksTab(): void {
               runs: found.runs,
             },
             found.runs.length
-              ? found.unread.length
-                ? `Filled in from GCD's note, except: ${found.unread.join(", ")}. Check it matches your copy.`
-                : "Contents filled in from GCD's note. Check it matches your copy."
-              : "GCD doesn't list what this volume collects — type the issue runs below."
+              ? `Contents filled in from ${found.contentsFrom === "gcd" ? "GCD's note" : `Wikipedia's ${found.contentsFrom} list`}${found.unread.length ? `, except: ${found.unread.join(", ")}` : ""}. Check it matches your copy.`
+              : "Neither GCD nor Wikipedia's lists say what this volume collects — type the issue runs below."
           );
         } catch (err) {
           show(searchStatus, errorText(err));
@@ -1081,6 +1134,29 @@ export function initBooksTab(): void {
       : "From the title";
   });
   runs.addEventListener("input", renderPreview);
+  findContentsBtn.addEventListener("click", async () => {
+    if (!isbn.value.trim()) {
+      findContentsStatus.textContent = "Type the ISBN first.";
+      return;
+    }
+    findContentsBtn.disabled = true;
+    findContentsStatus.textContent =
+      "Looking through Wikipedia's lists of omnibuses, Epic Collections and Masterworks…";
+    try {
+      const found = await bridge().findBookContents(isbn.value.trim());
+      if (!found) {
+        findContentsStatus.textContent = "Not in Wikipedia's lists — type the runs by hand.";
+      } else {
+        runs.value = formatRuns(found.runs);
+        renderPreview();
+        findContentsStatus.textContent = `Found in Wikipedia's ${found.list} list${found.title ? ` as "${found.title}"` : ""}. Check it matches your copy.`;
+      }
+    } catch (err) {
+      findContentsStatus.textContent = errorText(err);
+    } finally {
+      findContentsBtn.disabled = false;
+    }
+  });
   saveBtn.addEventListener("click", () => void save());
   cancelBtn.addEventListener("click", leaveAdd);
 
