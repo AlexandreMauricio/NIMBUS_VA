@@ -23,7 +23,7 @@ import { OPENING_HAND, drawChance, explainCopies, suggestCopies } from "../colle
 import { curveBuckets } from "../collections/decks/stats";
 import { DECK_FORMATS } from "../collections/decks/types";
 import type { CardRulesInfo, TcgGame } from "../collections/types";
-import { openCardPage } from "./cardPage";
+import { PlannableCard, openCardPage } from "./cardPage";
 import { colourBalanceBlock, countRow, curveChart } from "./deckCharts";
 
 interface Candidate {
@@ -474,8 +474,15 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
     render();
   }
 
+  /** A card's page, with cards that work well with it — addable straight to the plan. */
   function openCard(card: Candidate): void {
-    void openCardPage(game, card.sourceId);
+    void openCardPage(game, card.sourceId, {
+      synergyContext: { identity: game === "yugioh" ? [] : identity, legality },
+      isAdded: (id) => plan.has(id),
+      onAdd: (picked: PlannableCard) => {
+        if (!plan.has(picked.sourceId)) addToPlan(picked);
+      },
+    });
   }
 
   function candidateTile(

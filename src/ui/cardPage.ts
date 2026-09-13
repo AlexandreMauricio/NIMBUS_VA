@@ -1,7 +1,8 @@
 /**
- * A card's page — opened from Cards or Decks. The large image, rules text,
- * stats and legality from the card's database, how many you own, which
- * decks use it, and the ways to add it. Everything shown comes from the
+ * A card's page — opened from Cards, Decks or the deck builder. The large
+ * image, rules text, stats and legality from the card's database, how many
+ * you own, which decks use it, the ways to add it, and cards that work well
+ * with it (catalogs/synergy.ts) — each opening its own page. Everything shown comes from the
  * main process (nimbus:get-card-detail); images come from the catalogs'
  * own hosts, named in the page's Content Security Policy.
  */
@@ -26,13 +27,55 @@ interface CardPageView {
     stats: Array<{ label: string; value: string }>;
     legalities: Array<{ format: string; status: string }>;
     artist: string | null;
+    rules: CardRules;
   };
   owned: number;
   inDecks: Array<{ deckId: string; name: string; quantity: number }>;
   decks: Array<{ id: string; name: string }>;
 }
 
+/** The card facts the deck builder plans with (collections/types.ts CardRulesInfo). */
+interface CardRules {
+  copyKey: string;
+  unlimitedCopies: boolean;
+  zone: "main" | "extra" | "leader";
+  colors: string[];
+  banLimit: number | null;
+  cost: number | null;
+  kind: string | null;
+  traits: string[];
+  pips?: Record<string, number>;
+  produces?: string[];
+}
+
+/** A card as the deck builder holds it — what "Add to deck plan" hands over. */
+export interface PlannableCard {
+  sourceId: string;
+  name: string;
+  imageUrl: string | null;
+  setName: string | null;
+  typeLine: string | null;
+  text: string | null;
+  rules: CardRules;
+  owned: number;
+}
+
+interface SynergyView {
+  source: string;
+  cards: Array<PlannableCard & { reason: string }>;
+}
+
+export interface CardPageOptions {
+  /** The deck builder's colours and legality, so suggestions fit the plan. */
+  synergyContext?: { identity: string[]; legality: string };
+  /** Offered as "Add to deck plan" on the card and on each suggestion. */
+  onAdd?(card: PlannableCard): void;
+  /** Whether a card is already in the plan. */
+  isAdded?(sourceId: string): boolean;
+}
+
 interface CardPageBridge {
+  cardSynergy(game: Game, sourceId: string, context: Record<string, unknown> | null): Promise<SynergyView>;
   getCardDetail(game: Game, sourceId: string): Promise<CardPageView>;
   addToCollection(
     game: Game,
@@ -65,7 +108,11 @@ function close(): void {
   }
 }
 
-export async function openCardPage(game: Game, sourceId: string): Promise<void> {
+export async function openCardPage(
+  game: Game,
+  sourceId: string,
+  options: CardPageOptions = {}
+): Promise<void> {
   const overlay = document.getElementById("cardPage") as HTMLElement;
   overlay.replaceChildren();
   overlay.hidden = false;
@@ -180,10 +227,87 @@ export async function openCardPage(game: Game, sourceId: string): Promise<void> 
     });
     actions.append(select, addToDeck);
   }
+  if (options.onAdd) {
+    const onAdd = options.onAdd;
+    const inPlan = options.isAdded?.(d.sourceId) ?? false;
+    const plan = make("button", "btn btn-primary", inPlan ? "In the deck plan" : "Add to deck plan");
+    plan.type = "button";
+    plan.disabled = inPlan;
+    plan.addEventListener("click", () => {
+      onAdd({
+        sourceId: d.sourceId,
+        name: d.name,
+        imageUrl: d.imageUrl,
+        setName: d.setName,
+        typeLine: d.typeLine,
+        text: d.text,
+        rules: d.rules,
+        owned: view.owned,
+      });
+      plan.disabled = true;
+      plan.textContent = "In the deck plan";
+    });
+    actions.prepend(plan);
+  }
   actions.appendChild(status);
   body.appendChild(actions);
   layout.appendChild(body);
   panel.appendChild(layout);
+  panel.appendChild(synergySection(d.game, d.sourceId, d.name, options));
+}
+
+/** "Works well with": loads after the page shows, so a slow lookup never holds the card up. */
+function synergySection(game: Game, sourceId: string, name: string, options: CardPageOptions): HTMLElement {
+  const section = make("section", "card-synergy");
+  section.appendChild(make("h3", "card-synergy-title", `Works well with ${name}`));
+  const status = make("p", "collection-meta", "Looking for cards that work with it…");
+  section.appendChild(status);
+  const grid = make("div", "card-synergy-grid");
+  section.appendChild(grid);
+  void bridge()
+    .cardSynergy(game, sourceId, options.synergyContext ?? null)
+    .then((result) => {
+      status.textContent = result.cards.length
+        ? result.source
+        : "No clear synergies found for this card — it may simply be good on its own.";
+      for (const card of result.cards) {
+        const tile = make("div", "card-synergy-card");
+        if (card.imageUrl) {
+          const img = make("img", "card-synergy-image");
+          img.src = card.imageUrl;
+          img.alt = "";
+          img.loading = "lazy";
+          img.referrerPolicy = "no-referrer";
+          tile.appendChild(img);
+        }
+        const info = make("div", "card-synergy-info");
+        const open = make("button", "btn btn-ghost deck-card-name", card.name);
+        open.type = "button";
+        if (card.text) open.title = card.text;
+        open.addEventListener("click", () => void openCardPage(game, card.sourceId, options));
+        info.append(open, make("span", "card-synergy-reason", card.reason));
+        if (card.owned) info.appendChild(make("span", "collection-meta", `You own ${card.owned}`));
+        if (options.onAdd) {
+          const onAdd = options.onAdd;
+          const added = options.isAdded?.(card.sourceId) ?? false;
+          const add = make("button", "btn btn-secondary", added ? "In the plan" : "Add");
+          add.type = "button";
+          add.disabled = added;
+          add.addEventListener("click", () => {
+            onAdd(card);
+            add.disabled = true;
+            add.textContent = "In the plan";
+          });
+          info.appendChild(add);
+        }
+        tile.appendChild(info);
+        grid.appendChild(tile);
+      }
+    })
+    .catch((err) => {
+      status.textContent = String(err).replace(/^.*Error: /, "");
+    });
+  return section;
 }
 
 export function initCardPage(): void {

@@ -4164,3 +4164,58 @@ details.context-card > summary .context-card-title {
 .builder-colour-fill.builder-colour-g {
   background: #5fae6e;
 }
+
+/* ---------- Card page: works well with (cardPage.ts) ---------- */
+
+.card-synergy {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.card-synergy-title {
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+}
+
+.card-synergy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.card-synergy-card {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.card-synergy-image {
+  width: 3.6rem;
+  height: auto;
+  align-self: flex-start;
+  border-radius: 4px;
+}
+
+.card-synergy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.card-synergy-info .deck-card-name {
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.card-synergy-reason {
+  font-size: 0.75rem;
+  color: var(--color-text);
+}

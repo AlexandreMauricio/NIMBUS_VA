@@ -87,6 +87,8 @@ import {
   deckStats,
   balanceColours,
   browsers,
+  cardSources,
+  synergyFinders,
   ygoArchetypes,
   MTG_BASIC_LANDS,
   POKEMON_BASIC_ENERGY,
@@ -804,6 +806,26 @@ function registerIpcHandlers(): void {
       })),
     };
   });
+  ipcMain.handle(
+    "nimbus:card-synergy",
+    async (_event, game: unknown, sourceId: unknown, context: unknown) => {
+      const result = await catalogService.synergy(game, sourceId, context);
+      return {
+        source: result.source,
+        cards: result.cards.map(({ detail, reason }) => ({
+          sourceId: detail.sourceId,
+          name: detail.name,
+          imageUrl: detail.imageUrl,
+          setName: detail.setName,
+          typeLine: detail.typeLine,
+          text: detail.text ? detail.text.slice(0, 400) : null,
+          rules: detail.rules,
+          owned: ownedCopies(detail.game, detail.name, detail.number),
+          reason,
+        })),
+      };
+    }
+  );
   let archetypes: { at: number; names: Promise<string[]> } | null = null;
   ipcMain.handle("nimbus:builder-archetypes", () => {
     if (!archetypes || Date.now() - archetypes.at > 24 * 60 * 60_000) {
@@ -1689,6 +1711,8 @@ export function startApp(): void {
   // Collections (src/collections/): your cards, and the card databases that
   // look them up. The catalogs are read-only and need no account; only the
   // text of a search is sent to them, never anything from the collection.
+  // Card lists shared by the deck builder's browsing and card synergies.
+  const cardLists = cardSources();
   catalogService = new CatalogService(
     [
       new ScryfallCatalog(),
@@ -1701,7 +1725,8 @@ export function startApp(): void {
     undefined,
     detailFetchers(),
     { mtg: (names) => scryfallCardsByName(names) },
-    browsers()
+    browsers(fetch, Date.now, cardLists),
+    synergyFinders(fetch, cardLists)
   );
   deckService = new DeckService(new FileDeckStore());
   deckService.onChange(() => {

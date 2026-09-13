@@ -2,6 +2,7 @@ import { logger } from "../logging/logger";
 import { BrowsePage, Browser, parseBrowseFilter } from "./catalogs/browse";
 import { DetailFetcher } from "./catalogs/details";
 import { RateLimitedError, waitText } from "./catalogs/http";
+import { SynergyFinder, SynergyResult, parseSynergyContext } from "./catalogs/synergy";
 import { sameCardName } from "./decks/decklist";
 import {
   CardDetail,
@@ -56,6 +57,7 @@ export class CatalogService {
   private readonly lastRequestAt = new Map<TcgGame, number>();
   private readonly details = new Map<string, { at: number; detail: CardDetail | null }>();
   private readonly browsed = new Map<string, { at: number; page: BrowsePage }>();
+  private readonly synergies = new Map<string, { at: number; result: SynergyResult }>();
 
   constructor(
     catalogs: CardCatalog[],
@@ -63,7 +65,8 @@ export class CatalogService {
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
     private readonly detailFetchers: Partial<Record<TcgGame, DetailFetcher>> = {},
     private readonly bulkByName: Partial<Record<TcgGame, BulkNameLookup>> = {},
-    private readonly browsers: Partial<Record<TcgGame, Browser>> = {}
+    private readonly browsers: Partial<Record<TcgGame, Browser>> = {},
+    private readonly synergyFinders: Partial<Record<TcgGame, SynergyFinder>> = {}
   ) {
     for (const catalog of catalogs) this.catalogs.set(catalog.game, catalog);
   }
@@ -224,6 +227,40 @@ export class CatalogService {
     return { ...page, cards: page.cards.map((card) => ({ ...card })) };
   }
 
+  /**
+   * Cards that work well with a card (catalogs/synergy.ts), within the deck
+   * builder's colours when it passes them. Kept for an hour; every card
+   * suggested becomes resolvable, like a search result.
+   */
+  async synergy(game: unknown, sourceId: unknown, rawContext: unknown): Promise<SynergyResult> {
+    const card = await this.getDetail(game, sourceId);
+    const finder = this.synergyFinders[card.game];
+    if (!finder) return { cards: [], source: "" };
+    const context = parseSynergyContext(rawContext);
+    const key = `${card.game}|${card.sourceId}|${JSON.stringify(context)}`;
+    const hit = this.synergies.get(key);
+    let result: SynergyResult;
+    if (hit && this.now() - hit.at < RESOLVABLE_MS) {
+      result = hit.result;
+    } else {
+      await this.pace(card.game);
+      try {
+        result = await finder(card, context);
+      } catch (err) {
+        logger.warn("Finding synergies failed", { game: card.game, error: String(err) });
+        throw new Error("The card database couldn't be reached. Try again in a moment.");
+      }
+      this.synergies.set(key, { at: this.now(), result });
+    }
+    const at = this.now();
+    for (const { detail } of result.cards) {
+      const cardKey = `${card.game}|${detail.sourceId}`;
+      this.details.set(cardKey, { at, detail });
+      this.resolvable.set(cardKey, { at, card: detail });
+    }
+    return { ...result, cards: result.cards.map((c) => ({ ...c, detail: { ...c.detail } })) };
+  }
+
   /** A card from a recent search, by its game and catalog id — or null. */
   resolve(game: unknown, sourceId: unknown): CatalogCard | null {
     if (!isTcgGame(game) || typeof sourceId !== "string") return null;
@@ -243,6 +280,8 @@ export class CatalogService {
   private prune(now: number): void {
     for (const [key, entry] of this.cache) if (now - entry.at >= RESULT_CACHE_MS) this.cache.delete(key);
     for (const [key, entry] of this.browsed) if (now - entry.at >= RESULT_CACHE_MS) this.browsed.delete(key);
+    for (const [key, entry] of this.synergies)
+      if (now - entry.at >= RESOLVABLE_MS) this.synergies.delete(key);
     for (const [key, entry] of this.resolvable)
       if (now - entry.at > RESOLVABLE_MS) this.resolvable.delete(key);
     // Oldest first, when a long session searched a lot.

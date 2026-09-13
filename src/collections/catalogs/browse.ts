@@ -180,9 +180,18 @@ export function lorcastBrowseQuery(f: BrowseFilter): string {
 
 // ---------------------------------------------------------------- browse
 
-export function browsers(fetchFn: FetchLike = fetch, now: () => number = Date.now): Record<TcgGame, Browser> {
+/** Card lists fetched once and kept a while — shared by browsing and synergy (synergy.ts). */
+export interface CardSources {
+  /** GET JSON, remembered for 10 minutes. */
+  json(url: string): Promise<unknown>;
+  /** Every One Piece card, one per card number, downloaded once a day. */
+  onePieceCards(): Promise<CardDetail[]>;
+}
+
+export function cardSources(fetchFn: FetchLike = fetch, now: () => number = Date.now): CardSources {
   const lists = memo<unknown>(LIST_CACHE_MS, now);
   const daily = memo<unknown>(DAY_MS, now);
+  const json = (url: string) => lists(url, () => getCatalogJson(url, fetchFn));
 
   const onePieceCards = async (): Promise<CardDetail[]> => {
     const [sets, starters] = await Promise.all([
@@ -208,6 +217,16 @@ export function browsers(fetchFn: FetchLike = fetch, now: () => number = Date.no
     return [...byNumber.values()];
   };
 
+  return { json, onePieceCards };
+}
+
+export function browsers(
+  fetchFn: FetchLike = fetch,
+  now: () => number = Date.now,
+  sources: CardSources = cardSources(fetchFn, now)
+): Record<TcgGame, Browser> {
+  const onePieceCards = () => sources.onePieceCards();
+
   return {
     mtg: async (f) => {
       const url =
@@ -224,8 +243,8 @@ export function browsers(fetchFn: FetchLike = fetch, now: () => number = Date.no
 
     lorcana: async (f) => {
       const query = lorcastBrowseQuery(f);
-      const json = (await lists(`lorcana|${query}`, () =>
-        getCatalogJson(`https://api.lorcast.com/v0/cards/search?q=${encodeURIComponent(query)}`, fetchFn)
+      const json = (await sources.json(
+        `https://api.lorcast.com/v0/cards/search?q=${encodeURIComponent(query)}`
       )) as { results?: unknown[] } | null;
       const inks = new Set(f.identity.map((i) => i.toLowerCase()));
       const cards = (json?.results ?? [])
@@ -260,7 +279,7 @@ export function browsers(fetchFn: FetchLike = fetch, now: () => number = Date.no
             );
       const briefs: Array<{ id: string; name: string }> = [];
       for (const url of urls) {
-        const list = await lists(url, () => getCatalogJson(url, fetchFn));
+        const list = await sources.json(url);
         for (const raw of Array.isArray(list) ? list : []) {
           const id = asString((raw as Record<string, unknown>).id);
           const name = asString((raw as Record<string, unknown>).name);
@@ -281,9 +300,9 @@ export function browsers(fetchFn: FetchLike = fetch, now: () => number = Date.no
           slice
             .slice(i, i + 6)
             .map((b) =>
-              lists(`tcgdex-card|${b.id}`, () =>
-                getCatalogJson(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(b.id)}`, fetchFn)
-              ).then(mapTcgdexDetail, () => null)
+              sources
+                .json(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(b.id)}`)
+                .then(mapTcgdexDetail, () => null)
             )
         );
         cards.push(...batch.filter((c): c is CardDetail => c !== null));
@@ -300,7 +319,7 @@ export function browsers(fetchFn: FetchLike = fetch, now: () => number = Date.no
       else if (f.text.length >= 2)
         url = `https://db.ygoprodeck.com/api/v7/cardinfo.php?fname=${encodeURIComponent(f.text)}`;
       else url = "https://db.ygoprodeck.com/api/v7/cardinfo.php?staple=yes";
-      const json = (await lists(url, () => getCatalogJson(url, fetchFn))) as { data?: unknown[] } | null;
+      const json = (await sources.json(url)) as { data?: unknown[] } | null;
       const cards = (json?.data ?? [])
         .map((c) => mapYgoprodeckDetail({ data: [c] }, String((c as Record<string, unknown>).id ?? "")))
         .filter((c): c is CardDetail => c !== null && /^\d+$/.test(c.sourceId))

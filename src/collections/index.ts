@@ -40,6 +40,9 @@ export {
 } from "./books/wikipedia";
 export { parseRuns, formatRuns } from "./books/runs";
 export * from "./decks/types";
+export { synergyFinders, parseSynergyContext, edhrecSlug, mtgThemes } from "./catalogs/synergy";
+export type { SynergyContext, SynergyResult, SynergyCard, SynergyFinder } from "./catalogs/synergy";
+export { cardSources } from "./catalogs/browse";
 export {
   browsers,
   parseBrowseFilter,

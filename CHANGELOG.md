@@ -18,6 +18,26 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.19 — 2026-09-13
+
+- **Cards that work well together.** Every card page now ends with
+  "Works well with", each suggestion with its reason and its own page:
+  - **Magic:** EDHREC's cards that are played with it far more often than
+    usual, then cards sharing its themes (tokens, sacrifice, its creature
+    type, spells, ramp, death and enters triggers…), most played first.
+  - **Lorcana:** cards that name it or its classifications, Shift partners,
+    and songs and Singers.
+  - **One Piece:** cards of the types it searches for and cards that reward
+    its types.
+  - **Pokémon:** its evolution line.
+  - **Yu-Gi-Oh!:** cards that mention it, then its archetype.
+- **Click any card in the deck builder** — in the results or in your plan —
+  to open its page. Suggestions stay within the plan's colours and
+  legality, and the card and each suggestion can be added to the plan from
+  there.
+
+---
+
 ## 0.5.18 — 2026-09-13
 
 - **How many copies, explained.** The deck builder's plan now has "How

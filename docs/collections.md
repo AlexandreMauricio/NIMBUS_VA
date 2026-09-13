@@ -133,6 +133,31 @@ you own and which decks use it. `nimbus:get-card-detail` takes a game and
 catalog id only; the main process fetches the card from that game's
 database (`catalogs/details.ts`) and caches it for an hour.
 
+**Works well with.** Every card page ends with cards that work well with
+it, each with its reason ([synergy.ts](../src/collections/catalogs/synergy.ts)),
+loaded after the page shows. Each suggestion opens its own page.
+
+- **Magic:** EDHREC's "High Lift" cards for it first — cards that appear in
+  decks with it far more often than their popularity alone explains (from
+  EDHREC's public card pages; their data is Commander decklists, so a few
+  picks lean that way). Then Scryfall searches for its themes, most played
+  first: its creature type, tokens, +1/+1 counters, sacrifice, the
+  graveyard, lifegain, spells, artifacts, ramp, death triggers (sacrifice
+  outlets), enters abilities (flicker), and what rewards its own kind.
+  Human is too common to count as a theme.
+- **Lorcana:** cards that name the character or a classification it has
+  or rewards ("Princess"), its other versions to Shift onto, Singers for a
+  song and songs for a Singer.
+- **One Piece:** cards of the types its text looks for ("Straw Hat Crew"
+  type), cards that reward its types, and cards that name it.
+- **Pokémon:** its evolution line, Standard-legal.
+- **Yu-Gi-Oh!:** cards that mention it by name, then its archetype.
+
+From the deck builder, the card page keeps suggestions to the plan's
+colours (and, for Magic, legality), and both the card and each suggestion
+have **Add to deck plan**. Only card names and themes are sent; results are
+kept for an hour, and suggested cards become resolvable like search results.
+
 ## Decks
 
 `decks/` holds decks (`decks.json`), each with zones by game and format:
