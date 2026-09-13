@@ -18,6 +18,27 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.4 — 2026-09-13
+
+- **Home redesign.** The day on the left (briefing, current activity,
+  feed); the week on the right. **Your week** adds up the last 7 days —
+  time per activity with a bar per day, the most-used apps and websites,
+  what you added to Cards, Books and Decks, and what's coming up — in
+  plain sentences built from those numbers (`src/summary/`).
+- **In-app updates.** An installed NIMBUS checks the project's GitHub
+  Releases 30 seconds after starting and every 6 hours, downloads a newer
+  version in the background, and offers **Restart to update** in
+  Settings → Updates (or installs it when NIMBUS next quits). Data in
+  %APPDATA%
+  imbus is kept. `npm run release` builds and publishes a
+  release (needs a `GH_TOKEN`); `npm run package` still only builds.
+  Running from source doesn't update itself.
+- **"What NIMBUS has counted this week"** in Settings → Activity: every
+  app and website the tally has seen, days and time, and why each is or
+  isn't being suggested — already an activity, declined, resting, not
+  enough yet, or "will be suggested". It also says when the switch is
+  off, which stops all counting.
+
 ## 0.5.3 — 2026-09-13
 
 - **Card pages.** Click a card in Cards or Decks to open its page: the

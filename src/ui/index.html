@@ -235,101 +235,114 @@
             <button class="btn btn-secondary" id="regenerateBriefingBtn">Regenerate</button>
           </div>
 
-          <div id="briefing">
-            <p class="briefing-status">Preparing your briefing&hellip;</p>
-          </div>
-
-          <div id="nowPlayingCard" class="now-playing-card" hidden>
-            <button
-              class="now-playing-clickzone"
-              id="nowPlayingClickzone"
-              type="button"
-              title="Choose a playlist to play"
-            >
-              <div class="now-playing-art" id="nowPlayingArt"></div>
-              <div class="now-playing-info">
-                <div class="card-kicker" id="nowPlayingKicker">Spotify</div>
-                <div class="now-playing-title" id="nowPlayingTitle">Nothing is playing</div>
-                <div class="now-playing-artist" id="nowPlayingArtist"></div>
-                <div class="now-playing-progress-row">
-                  <span class="now-playing-time" id="nowPlayingElapsed"></span>
-                  <div class="now-playing-progress-track">
-                    <div class="now-playing-progress-fill" id="nowPlayingProgressFill"></div>
-                  </div>
-                  <span class="now-playing-time" id="nowPlayingDuration"></span>
-                </div>
-                <div class="now-playing-error" id="nowPlayingError" hidden></div>
+          <div class="home-grid">
+            <div class="home-main">
+              <div id="briefing">
+                <p class="briefing-status">Preparing your briefing&hellip;</p>
               </div>
-            </button>
-            <div class="now-playing-controls">
-              <button class="now-playing-btn" id="nowPlayingPrevBtn" title="Previous" type="button">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                  <polygon points="8,2 8,14 1,8" />
-                  <polygon points="15,2 15,14 8,8" />
-                </svg>
-              </button>
-              <button
-                class="now-playing-btn now-playing-btn-primary"
-                id="nowPlayingPlayPauseBtn"
-                title="Play/Pause"
-                type="button"
-              ></button>
-              <button class="now-playing-btn" id="nowPlayingNextBtn" title="Next" type="button">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                  <polygon points="1,2 1,14 8,8" />
-                  <polygon points="8,2 8,14 15,8" />
-                </svg>
-              </button>
-              <input
-                type="range"
-                id="nowPlayingVolumeSlider"
-                min="0"
-                max="100"
-                class="now-playing-volume"
-                title="Volume"
-              />
-            </div>
-            <div class="now-playing-playlist-dropdown" id="nowPlayingPlaylistDropdown" hidden></div>
-          </div>
 
-          <!-- What NIMBUS believes is happening now. Hidden entirely
+              <!-- What NIMBUS believes is happening now. Hidden entirely
                until there is an activity, so a user who hasn't set up
                mappings sees no empty scaffolding. -->
-          <div class="activity-card current-activity-card" id="currentActivityCard" hidden>
-            <div class="activity-header">
-              <h6 class="kicker">Current activity</h6>
-              <span class="tag tag-accent" id="currentActivityDuration"></span>
-            </div>
-            <div class="current-activity-main">
-              <span class="current-activity-icon" id="currentActivityIcon"></span>
-              <div>
-                <div class="current-activity-name" id="currentActivityName"></div>
-                <div class="current-activity-source" id="currentActivitySource"></div>
+              <div class="activity-card current-activity-card" id="currentActivityCard" hidden>
+                <div class="activity-header">
+                  <h6 class="kicker">Current activity</h6>
+                  <span class="tag tag-accent" id="currentActivityDuration"></span>
+                </div>
+                <div class="current-activity-main">
+                  <span class="current-activity-icon" id="currentActivityIcon"></span>
+                  <div>
+                    <div class="current-activity-name" id="currentActivityName"></div>
+                    <div class="current-activity-source" id="currentActivitySource"></div>
+                  </div>
+                </div>
+                <!-- Spotify and the timer are shown from their own existing
+                 state; this card references them, it does not own them. -->
+                <div class="current-activity-context" id="currentActivityContext"></div>
+              </div>
+
+              <div class="activity-card">
+                <div class="activity-header">
+                  <h6 class="kicker">Activity</h6>
+                  <span class="tag tag-neutral" id="activityCount">0 events</span>
+                </div>
+                <div class="feed" id="feed">
+                  <p class="feed-empty">
+                    No other activity yet. This is where NIMBUS will surface messages and notifications once
+                    those systems are connected.
+                  </p>
+                </div>
               </div>
             </div>
-            <!-- Spotify and the timer are shown from their own existing
-                 state; this card references them, it does not own them. -->
-            <div class="current-activity-context" id="currentActivityContext"></div>
-          </div>
+            <aside class="home-side">
+              <div class="activity-card home-week" id="homeWeekCard">
+                <div class="activity-header">
+                  <h6 class="kicker">Your week</h6>
+                  <span class="tag tag-neutral" id="homeWeekRange"></span>
+                </div>
+                <div id="homeWeek"><p class="collection-meta">Adding up the week&hellip;</p></div>
+              </div>
 
-          <div class="activity-card">
-            <div class="activity-header">
-              <h6 class="kicker">Activity</h6>
-              <span class="tag tag-neutral" id="activityCount">0 events</span>
-            </div>
-            <div class="feed" id="feed">
-              <p class="feed-empty">
-                No other activity yet. This is where NIMBUS will surface messages and notifications once those
-                systems are connected.
-              </p>
-            </div>
-          </div>
+              <div id="nowPlayingCard" class="now-playing-card" hidden>
+                <button
+                  class="now-playing-clickzone"
+                  id="nowPlayingClickzone"
+                  type="button"
+                  title="Choose a playlist to play"
+                >
+                  <div class="now-playing-art" id="nowPlayingArt"></div>
+                  <div class="now-playing-info">
+                    <div class="card-kicker" id="nowPlayingKicker">Spotify</div>
+                    <div class="now-playing-title" id="nowPlayingTitle">Nothing is playing</div>
+                    <div class="now-playing-artist" id="nowPlayingArtist"></div>
+                    <div class="now-playing-progress-row">
+                      <span class="now-playing-time" id="nowPlayingElapsed"></span>
+                      <div class="now-playing-progress-track">
+                        <div class="now-playing-progress-fill" id="nowPlayingProgressFill"></div>
+                      </div>
+                      <span class="now-playing-time" id="nowPlayingDuration"></span>
+                    </div>
+                    <div class="now-playing-error" id="nowPlayingError" hidden></div>
+                  </div>
+                </button>
+                <div class="now-playing-controls">
+                  <button class="now-playing-btn" id="nowPlayingPrevBtn" title="Previous" type="button">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                      <polygon points="8,2 8,14 1,8" />
+                      <polygon points="15,2 15,14 8,8" />
+                    </svg>
+                  </button>
+                  <button
+                    class="now-playing-btn now-playing-btn-primary"
+                    id="nowPlayingPlayPauseBtn"
+                    title="Play/Pause"
+                    type="button"
+                  ></button>
+                  <button class="now-playing-btn" id="nowPlayingNextBtn" title="Next" type="button">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                      <polygon points="1,2 1,14 8,8" />
+                      <polygon points="8,2 8,14 15,8" />
+                    </svg>
+                  </button>
+                  <input
+                    type="range"
+                    id="nowPlayingVolumeSlider"
+                    min="0"
+                    max="100"
+                    class="now-playing-volume"
+                    title="Volume"
+                  />
+                </div>
+                <div class="now-playing-playlist-dropdown" id="nowPlayingPlaylistDropdown" hidden></div>
+              </div>
 
-          <div class="activity-card" id="activityHistoryCard" hidden>
-            <div class="activity-header">
-              <h6 class="kicker">Recent activity</h6>
-            </div>
-            <div id="activityHistoryList"></div>
+              <div class="activity-card" id="activityHistoryCard" hidden>
+                <div class="activity-header">
+                  <h6 class="kicker">Recent activity</h6>
+                </div>
+                <div id="activityHistoryList"></div>
+              </div>
+            </aside>
           </div>
 
           <button class="btn btn-ghost btn-spaced" id="minimizeBtn">Minimize to tray</button>
@@ -1222,6 +1235,15 @@
                   <span class="track"></span>
                 </span>
               </label>
+              <details class="usage-details">
+                <summary class="setting-title">What NIMBUS has counted this week</summary>
+                <p class="setting-desc">
+                  An app or website is offered once it's used on 3 of the last 7 days, or 5 hours in all — and
+                  only time while you're at the PC counts. A website is counted under the last part of its tab
+                  title; if a site puts its name first, look for it under a page name here.
+                </p>
+                <div id="activityUsageList" class="usage-list"></div>
+              </details>
 
               <div class="manual-location-fields">
                 <div id="activityMappingList" class="calendar-feed-list"></div>
@@ -1673,6 +1695,17 @@
               <span class="track"></span>
             </span>
           </label>
+
+          <h6 class="kicker">Updates</h6>
+          <p class="setting-note" id="updateStatus">Checking&hellip;</p>
+          <div class="memory-actions">
+            <button class="btn btn-secondary" id="updateCheckBtn" type="button" hidden>
+              Check for updates
+            </button>
+            <button class="btn btn-primary" id="updateInstallBtn" type="button" hidden>
+              Restart to update
+            </button>
+          </div>
 
           <h6 class="kicker">Presence</h6>
           <p class="setting-note" id="presenceStatus">Checking&hellip;</p>

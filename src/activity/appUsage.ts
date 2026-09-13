@@ -53,6 +53,19 @@ export interface AppUsageStateStore {
 }
 
 /** Opened on at least this many of the last seven days… */
+/** What a tracker has counted this week, for Settings and the weekly summary. */
+export interface UsageEntry {
+  key: string;
+  name: string;
+  source: "app" | "website";
+  /** "YYYY-MM-DD" → minutes, the last 7 days only. */
+  days: Record<string, number>;
+  daysUsed: number;
+  minutesUsed: number;
+  /** Why it is or isn't being offered as an activity. */
+  status: "activity" | "declined" | "snoozed" | "candidate" | "counting";
+}
+
 export const FREQUENT_DAYS = 3;
 /** …or used for at least this long in them. */
 export const FREQUENT_MINUTES = 5 * 60;
@@ -216,6 +229,38 @@ export class AppUsageTracker {
       });
     }
     return result.sort((a, b) => b.daysUsed - a.daysUsed || b.minutesUsed - a.minutesUsed);
+  }
+
+  /** Everything counted in the last 7 days, whether or not it would be suggested. */
+  usage(): UsageEntry[] {
+    const nowMs = this.now().getTime();
+    const since = this.dayKey(nowMs - (WINDOW_DAYS - 1) * DAY_MS);
+    const mappings = this.getMappings().map((m) => ({ ...m, enabled: true }));
+    const result: UsageEntry[] = [];
+    for (const [executable, record] of Object.entries(this.state.apps)) {
+      const days = Object.fromEntries(Object.entries(record.dayMinutes).filter(([day]) => day >= since));
+      const daysUsed = Object.keys(days).length;
+      if (!daysUsed) continue;
+      const minutesUsed = Math.round(Object.values(days).reduce((sum, m) => sum + m, 0));
+      result.push({
+        key: executable,
+        name: record.name ?? executable.replace(/\.exe$/, ""),
+        source: "app",
+        days,
+        daysUsed,
+        minutesUsed,
+        status: this.isAlreadyAnActivity(executable, mappings)
+          ? "activity"
+          : record.never
+            ? "declined"
+            : record.snoozedUntil && Date.parse(record.snoozedUntil) > nowMs
+              ? "snoozed"
+              : daysUsed >= FREQUENT_DAYS || minutesUsed >= FREQUENT_MINUTES
+                ? "candidate"
+                : "counting",
+      });
+    }
+    return result.sort((a, b) => b.minutesUsed - a.minutesUsed);
   }
 
   /** "Not now": a week's rest the first time; never again the second. */

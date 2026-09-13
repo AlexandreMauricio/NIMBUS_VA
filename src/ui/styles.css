@@ -2893,3 +2893,103 @@ details.context-card > summary .context-card-title {
   resize: vertical;
   margin: 4px 0;
 }
+
+/* Home: the day on the left, the week on the right. */
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.home-main,
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.home-main > *,
+.home-side > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.week-highlights {
+  margin: 0 0 var(--space-2);
+  padding-left: 18px;
+  line-height: 1.55;
+}
+
+.week-heading {
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 4px 0;
+}
+
+.week-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.week-row-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.week-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.week-bar {
+  width: 7px;
+  border-radius: 2px;
+  background: var(--color-accent-500);
+}
+
+.week-bar-empty {
+  background: var(--color-divider);
+}
+
+.week-event {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+.usage-details {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.usage-details summary {
+  cursor: pointer;
+}
+
+.usage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 0;
+}

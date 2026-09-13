@@ -280,6 +280,19 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.on("nimbus:presence-changed", listener);
     return () => ipcRenderer.removeListener("nimbus:presence-changed", listener);
   },
+  /** In-app updates from GitHub Releases (installed builds only). */
+  getUpdateState: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-update-state"),
+  checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke("nimbus:check-for-updates"),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke("nimbus:install-update"),
+  onUpdateStateChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:update-state-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:update-state-changed", listener);
+  },
+  /** What the app and website tallies have counted this week. */
+  getUsage: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-usage"),
+  /** The Home page's "Your week". */
+  getWeeklySummary: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-weekly-summary"),
   /** Card pages and decks. Cards are named by game and catalog id only. */
   getCardDetail: (game: string, sourceId: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:get-card-detail", game, sourceId),

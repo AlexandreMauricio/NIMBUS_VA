@@ -2,6 +2,7 @@ import { localCalendarDate, localTimeZone } from "../context/providers/calendar/
 import { logger } from "../logging/logger";
 import { detectActivity } from "./activityDetector";
 import { ActivityMapping } from "./types";
+import type { UsageEntry } from "./appUsage";
 
 /**
  * The website counterpart of appUsage.ts — "You use YouTube a lot. Make it
@@ -252,6 +253,38 @@ export class SiteUsageTracker {
       });
     }
     return result.sort((a, b) => b.daysUsed - a.daysUsed || b.minutesUsed - a.minutesUsed);
+  }
+
+  /** Everything counted in the last 7 days, whether or not it would be suggested. */
+  usage(): UsageEntry[] {
+    const nowMs = this.now().getTime();
+    const since = this.dayKey(nowMs - (WINDOW_DAYS - 1) * DAY_MS);
+    const mappings = this.getMappings().map((m) => ({ ...m, enabled: true }));
+    const result: UsageEntry[] = [];
+    for (const [key, record] of Object.entries(this.state.sites)) {
+      const days = Object.fromEntries(Object.entries(record.dayMinutes).filter(([day]) => day >= since));
+      const daysUsed = Object.keys(days).length;
+      if (!daysUsed) continue;
+      const minutesUsed = Math.round(Object.values(days).reduce((sum, m) => sum + m, 0));
+      result.push({
+        key,
+        name: record.name,
+        source: "website",
+        days,
+        daysUsed,
+        minutesUsed,
+        status: this.isAlreadyAnActivity(record.name, mappings)
+          ? "activity"
+          : record.never
+            ? "declined"
+            : record.snoozedUntil && Date.parse(record.snoozedUntil) > nowMs
+              ? "snoozed"
+              : daysUsed >= SITE_FREQUENT_DAYS || minutesUsed >= SITE_FREQUENT_MINUTES
+                ? "candidate"
+                : "counting",
+      });
+    }
+    return result.sort((a, b) => b.minutesUsed - a.minutesUsed);
   }
 
   /** "Not now": a week's rest the first time; never again the second. */

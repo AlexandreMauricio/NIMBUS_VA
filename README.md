@@ -346,8 +346,7 @@ with a message saying so.
 
 Writes `release\NIMBUS-Setup-<version>.exe` — a per-user installer (no
 admin prompt), with Start-menu and desktop shortcuts. Copy it to any
-Windows PC and run it; updating later means running a newer installer over
-it. Your data is untouched by install, update or uninstall: it lives in
+Windows PC and run it. Your data is untouched by install, update or uninstall: it lives in
 `%APPDATA%\nimbus\`.
 
 The installer is **not code-signed**, so SmartScreen shows "Windows
@@ -356,6 +355,24 @@ protected your PC" the first time — More info → Run anyway.
 An installed NIMBUS looks for an optional `.env` (Spotify's Client ID)
 beside its own `NIMBUS.exe`, at `%APPDATA%\nimbus\.env`, or wherever
 `NIMBUS_ENV_FILE` points.
+
+### Updates
+
+An installed NIMBUS updates itself from this repository's GitHub
+Releases: it checks shortly after starting and every 6 hours, downloads
+a newer version in the background, and Settings → Updates offers
+**Restart to update**. To publish one, bump the version and run:
+
+```bash
+npm run release
+```
+
+with a GitHub token (`GH_TOKEN`, repo scope) in the environment — it
+builds the installer and uploads it with `latest.yml` to a draft release;
+publish the draft on GitHub to make it available. Updating needs the
+releases to be readable without signing in, so the repository (or a
+separate releases repository set in `build.publish`) must be public.
+Running a newer installer by hand still works too.
 
 ### Run from source
 
@@ -474,8 +491,7 @@ Beyond the "implemented but limited" list above:
 - **The installer is unsigned**: Windows SmartScreen warns on first run
   until enough people install it, which for a personal build is never.
   Code signing needs a paid certificate.
-- **No auto-update**: a new version means running the new installer.
-  Running from source, "Start with Windows" registers `electron.exe` with
+- Running from source, "Start with Windows" registers `electron.exe` with
   the app folder as its argument rather than a NIMBUS-branded entry — so
   moving the folder means switching that setting off and on again.
 - **Single main window**; multi-window scenarios aren't handled.

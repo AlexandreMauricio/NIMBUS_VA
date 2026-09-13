@@ -88,6 +88,9 @@ import {
   zonesFor,
 } from "../collections";
 import { FileDeckStore } from "./deckStore";
+import { checkForUpdates, getUpdateState, installUpdate, startUpdater } from "./updater";
+import { buildWeeklySummary } from "../summary/weeklySummary";
+import type { CalendarEvent } from "../context/providers/calendar/types";
 import { FileBookStore } from "./bookStore";
 import {
   ActivityService,
@@ -1115,6 +1118,36 @@ function registerIpcHandlers(): void {
   // process/window/folder data the desktop activity monitor saw on its
   // most recent poll, or null if it isn't running. Same information the
   // monitor already reads for matching; nothing new is exposed.
+  ipcMain.handle("nimbus:get-update-state", () => getUpdateState());
+  ipcMain.handle("nimbus:check-for-updates", () => checkForUpdates());
+  ipcMain.handle("nimbus:install-update", () => installUpdate());
+  ipcMain.handle("nimbus:get-usage", () => ({
+    enabled: settings.userPreferences.activity.suggestFrequentApps === true,
+    trackingOn: settings.userPreferences.activity.enabled || settings.userPreferences.routines.enabled,
+    presence: presenceService?.update().state ?? null,
+    entries: [...(appUsage?.usage() ?? []), ...(siteUsage?.usage() ?? [])].sort(
+      (a, b) => b.daysUsed - a.daysUsed || b.minutesUsed - a.minutesUsed
+    ),
+  }));
+  ipcMain.handle("nimbus:get-weekly-summary", async () => {
+    const calendar = (await contextService.getSnapshot()).providers.calendar;
+    const calendarData =
+      calendar && calendar.status === "ok" && calendar.data
+        ? (calendar.data as { upcomingEvents?: CalendarEvent[]; events?: CalendarEvent[] })
+        : null;
+    return buildWeeklySummary(
+      {
+        sessions: activityService.getRecentSessions(),
+        usage: [...(appUsage?.usage() ?? []), ...(siteUsage?.usage() ?? [])],
+        cardsAdded: collectionService.list(),
+        booksAdded: bookService.list(),
+        decks: deckService.list(),
+        upcoming: calendarData?.upcomingEvents ?? calendarData?.events ?? [],
+      },
+      new Date(),
+      Intl.DateTimeFormat().resolvedOptions().timeZone
+    );
+  });
   ipcMain.handle("nimbus:get-activity-snapshot", () => activityMonitor?.getLastSnapshot() ?? null);
 
   ipcMain.handle("nimbus:get-active-suggestions", () => routineService.getActiveSuggestions());
@@ -1319,6 +1352,7 @@ function openActivityEditor(
 export function startApp(): void {
   settings = loadSettings();
   registerIpcHandlers();
+  startUpdater();
 
   // Registered here (rather than in src/context/index.ts) because, unlike
   // dateTime/system, weather needs live settings — those only exist once
