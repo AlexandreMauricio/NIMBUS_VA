@@ -3457,3 +3457,16 @@ details.context-card > summary .context-card-title {
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
+
+.book-edition-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  white-space: normal;
+}
+
+.book-edition-title {
+  font-weight: 600;
+}

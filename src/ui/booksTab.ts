@@ -56,6 +56,13 @@ interface ContentsUI {
   unread: string[];
 }
 
+interface EditionUI extends ContentsUI {
+  bookTitle: string;
+  volume: string | null;
+  format: Book["format"];
+  isbn: string | null;
+}
+
 interface BooksBridge {
   getBooks(
     filter: Record<string, unknown>
@@ -64,6 +71,7 @@ interface BooksBridge {
   getComicVolume(issueId: number): Promise<GcdVolumeUI>;
   getComicIssue(series: string, year: number | null, number: number): Promise<GcdIssueDetail | null>;
   findBookContents(isbn: string): Promise<ContentsUI | null>;
+  searchBookEditions(query: string): Promise<EditionUI[]>;
   openComicLink(site: "locg" | "gcd", lookup: { text?: string; gcdIssueId?: number }): Promise<boolean>;
   addBook(input: Record<string, unknown>): Promise<{ book: Book; unread: string[] }>;
   updateBook(id: string, input: Record<string, unknown>): Promise<{ book: Book; unread: string[] }>;
@@ -197,6 +205,8 @@ export function initBooksTab(): void {
   const searchStatus = byId<HTMLElement>("bookSearchStatus");
   const seriesResults = byId<HTMLElement>("bookSeriesResults");
   const volumeResults = byId<HTMLElement>("bookVolumeResults");
+  const editionStatus = byId<HTMLElement>("bookEditionStatus");
+  const editionResults = byId<HTMLElement>("bookEditionResults");
   const form = byId<HTMLElement>("bookForm");
   const heading = byId<HTMLElement>("bookFormHeading");
   const notice = byId<HTMLElement>("bookFormNotice");
@@ -968,7 +978,9 @@ export function initBooksTab(): void {
     form.hidden = true;
     seriesResults.replaceChildren();
     volumeResults.replaceChildren();
+    editionResults.replaceChildren();
     show(searchStatus, null);
+    show(editionStatus, null);
     go({ view: "add" });
     query.focus();
   }
@@ -991,16 +1003,63 @@ export function initBooksTab(): void {
     return printings > volumes.size ? `${label} (${printings} printings)` : label;
   }
 
+  /** Wikipedia's lists, searched beside GCD — and the way in while GCD is unavailable. */
+  async function searchEditions(text: string): Promise<void> {
+    editionResults.replaceChildren();
+    show(editionStatus, "Looking through Wikipedia's lists of omnibuses, Epic Collections and Masterworks…");
+    try {
+      const found = await bridge().searchBookEditions(text);
+      show(editionStatus, found.length ? "In Wikipedia's lists — with what each collects:" : null);
+      for (const edition of found) {
+        const pick = make("button", "btn btn-ghost book-pick book-edition-pick");
+        pick.type = "button";
+        pick.append(
+          make(
+            "span",
+            "book-edition-title",
+            `${edition.bookTitle}${edition.volume ? ` · ${edition.volume}` : ""}`
+          ),
+          make("span", "books-small", edition.contents)
+        );
+        pick.addEventListener("click", () => {
+          editingId = null;
+          source = null;
+          seriesResults.replaceChildren();
+          volumeResults.replaceChildren();
+          editionResults.replaceChildren();
+          show(searchStatus, null);
+          show(editionStatus, null);
+          openForm(
+            {
+              kind: "comic",
+              title: edition.bookTitle,
+              volume: edition.volume,
+              format: edition.format,
+              publisher: edition.list.startsWith("DC") ? "DC" : "Marvel",
+              isbn: edition.isbn,
+              runs: edition.runs,
+            },
+            `Filled in from Wikipedia's ${edition.list} list${edition.unread.length ? `, except: ${edition.unread.join(", ")}` : ""}. Check it matches your copy.`
+          );
+        });
+        editionResults.appendChild(pick);
+      }
+    } catch (err) {
+      show(editionStatus, errorText(err));
+    }
+  }
+
   async function searchSeries(): Promise<void> {
     searchBtn.disabled = true;
     show(searchStatus, "Searching the Grand Comics Database…");
     seriesResults.replaceChildren();
     volumeResults.replaceChildren();
+    void searchEditions(query.value);
     try {
       const found = await bridge().searchComicSeries(query.value);
       show(
         searchStatus,
-        found.length ? "Pick a series:" : "No series by that name on GCD. You can add it by hand."
+        found.length ? "On the Grand Comics Database — pick a series:" : "No series by that name on GCD."
       );
       for (const series of found) {
         const pick = make(

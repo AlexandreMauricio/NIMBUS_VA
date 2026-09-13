@@ -867,6 +867,10 @@ function registerIpcHandlers(): void {
   // Contents for a book by its ISBN — for books typed in by hand, or found on
   // GCD before this lookup existed. The ISBN never leaves the PC: the lists
   // are downloaded whole and matched here.
+  // Editions by title from Wikipedia's lists — searched on the PC; nothing is sent.
+  ipcMain.handle("nimbus:search-book-editions", (_event, query: unknown) =>
+    wikipediaCollections.search(query)
+  );
   ipcMain.handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
     typeof isbn === "string" && isbn.length <= 20 ? wikipediaCollections.findByIsbn([isbn]) : null
   );

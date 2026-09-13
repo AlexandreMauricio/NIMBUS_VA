@@ -18,6 +18,21 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.9 — 2026-09-13
+
+- **Adding a book works while GCD is unavailable.** The search also looks
+  through Wikipedia's lists of Marvel Omnibuses, Epic Collections and
+  Masterworks and DC Omnibuses by title — each result shows what it
+  collects, and picking one fills in the title, volume, format, ISBN and
+  runs. The lists are downloaded and searched on the PC.
+- **A long pause is said at once.** When a database asks NIMBUS to wait
+  longer than 10 seconds ("Retry-After: 855"), it stops and says "try
+  again in about 14 minutes" instead of retrying for half a minute first.
+- **Wikipedia's lists read row by row**: an Epic Collection's second
+  printing no longer takes its cover note for the contents, Masterworks'
+  sortable titles are read, DC's collapsible contents are read whole, and
+  a title spanning several volumes carries down to each.
+
 ## 0.5.8 — 2026-09-13
 
 - **Contents from Wikipedia when GCD has none.** GCD has the ISBN of

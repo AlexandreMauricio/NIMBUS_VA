@@ -17,6 +17,7 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 export async function getCatalogJson(url: string, fetchFn: FetchLike): Promise<unknown | null> {
   const response = await fetchWithRetry(fetchFn, url, { headers: CATALOG_HEADERS });
   if (response.status === 404 || response.status === 400) return null;
+  if (response.status === 429) throw new RateLimitedError(retryAfterSeconds(response));
   if (!response.ok) throw new Error(`The card database answered ${response.status}.`);
   return response.json();
 }
@@ -37,6 +38,28 @@ export function httpsOrNull(value: unknown): string | null {
   return typeof value === "string" && /^https:\/\//i.test(value) ? value : null;
 }
 
+/** A catalog said "too many requests" — and, when it said, for how long. */
+export class RateLimitedError extends Error {
+  constructor(readonly retryAfterSeconds: number | null) {
+    super(
+      `The card database answered 429${retryAfterSeconds ? ` (try again in ${retryAfterSeconds}s)` : ""}.`
+    );
+    this.name = "RateLimitedError";
+  }
+}
+
+function retryAfterSeconds(response: Response): number | null {
+  const value = Number(response.headers?.get?.("retry-after"));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** "about 15 minutes" for 855 seconds. */
+export function waitText(seconds: number | null): string {
+  if (!seconds) return "a few minutes";
+  if (seconds < 90) return "a minute";
+  return `about ${Math.round(seconds / 60)} minutes`;
+}
+
 /** Tries after the first when a catalog says "too many requests". */
 const RATE_LIMIT_RETRIES = 3;
 const MAX_RETRY_WAIT_MS = 10_000;
@@ -55,8 +78,9 @@ export async function fetchWithRetry(fetchFn: FetchLike, url: string, init: Requ
   for (let attempt = 0; ; attempt++) {
     const response = await fetchFn(url, { ...init, signal: httpTimeoutSignal(15_000) });
     if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES) return response;
-    const retryAfter = Number(response.headers?.get?.("retry-after"));
-    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt;
-    await catalogRetry.sleep(Math.min(MAX_RETRY_WAIT_MS, wait));
+    const retryAfter = retryAfterSeconds(response);
+    // Asked to wait longer than is worth sitting through: say so now instead.
+    if (retryAfter !== null && retryAfter * 1000 > MAX_RETRY_WAIT_MS) return response;
+    await catalogRetry.sleep(retryAfter !== null ? retryAfter * 1000 : 1000 * 2 ** attempt);
   }
 }

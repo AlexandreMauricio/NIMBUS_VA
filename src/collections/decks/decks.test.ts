@@ -374,3 +374,32 @@ test("lookupByNames matches double-faced fronts and separates not found from unr
   assert.deepEqual(failed.failed, ["Sol Ring"]);
   assert.deepEqual(failed.notFound, []);
 });
+
+test("asked to wait longer than is worth it, a request stops at once and says how long", async () => {
+  const { fetchWithRetry, catalogRetry, getCatalogJson, RateLimitedError, waitText } =
+    await import("../catalogs/http");
+  const original = catalogRetry.sleep;
+  let slept = 0;
+  catalogRetry.sleep = async () => {
+    slept++;
+  };
+  try {
+    let calls = 0;
+    const limited = async () => {
+      calls++;
+      return new Response("", { status: 429, headers: { "Retry-After": "855" } });
+    };
+    const response = await fetchWithRetry(limited, "https://www.comics.org/api/x", {});
+    assert.equal(response.status, 429);
+    assert.equal(calls, 1, "no retries when the wait is 14 minutes");
+    assert.equal(slept, 0);
+    await assert.rejects(
+      () => getCatalogJson("https://www.comics.org/api/x", limited),
+      (err: unknown) => err instanceof RateLimitedError && err.retryAfterSeconds === 855
+    );
+    assert.equal(waitText(855), "about 14 minutes");
+    assert.equal(waitText(null), "a few minutes");
+  } finally {
+    catalogRetry.sleep = original;
+  }
+});

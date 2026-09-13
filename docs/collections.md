@@ -81,7 +81,7 @@ _Marvel Epic Collection_, _Marvel Masterworks_ and _DC Omnibus_ list
 pages have a row per edition with its contents and every printing's ISBN
 ([wikipedia.ts](../src/collections/books/wikipedia.ts)). A GCD volume
 without contents is looked up there by ISBN; "Find contents by ISBN" does
-the same on the form and on a book's page. The pages are downloaded whole
+the same on the form and on a book's page. The search box also searches the lists by title, beside GCD — so a book can be added while GCD is asking for a pause. The pages are downloaded whole
 through Wikipedia's API (kept for a day) and matched locally — the ISBN
 isn't sent. Wikipedia often leaves out series years ("Journey into
 Mystery #83–109"); add one if the same name has two series.
