@@ -1016,6 +1016,60 @@ button.btn {
   color: var(--color-neutral-400);
 }
 
+.routine-history-list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.routine-history-item {
+  display: grid;
+  grid-template-columns: 9rem minmax(6rem, 14rem) 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.35rem 0 0.35rem 0.6rem;
+  border-left: 2px solid var(--color-divider);
+  font-size: 0.75rem;
+}
+
+.routine-history-item + .routine-history-item {
+  border-top: 1px solid color-mix(in srgb, var(--color-divider) 50%, transparent);
+}
+
+.routine-history-time {
+  color: var(--color-neutral-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.routine-history-name {
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routine-history-outcome {
+  color: var(--color-neutral-400);
+}
+
+.routine-history-item.tone-ok {
+  border-left-color: var(--color-success);
+}
+
+.routine-history-item.tone-skipped {
+  border-left-color: var(--color-neutral-400);
+}
+
+.routine-history-item.tone-failed {
+  border-left-color: var(--color-warning);
+}
+
+.routine-history-item.tone-failed .routine-history-outcome {
+  color: var(--color-warning);
+}
+
 /* ---------- Tasks tab ---------- */
 
 /* Same card-list/grid mechanic as .routine-cards/.routine-card (see

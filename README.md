@@ -138,8 +138,9 @@ which modules are portable "Core" versus Windows-specific.
 - Calendar, email and task data refresh on a **cache timer** (no push).
 - Todoist "reminders" are just a task's specific due time; completed
   tasks are never shown; new tasks always go to the first account.
-- Routine decision history is kept (in memory, 200 entries) and exposed
-  over IPC, but **no screen shows it** yet.
+- Routine decision history (Routines → Recent decisions) is kept in
+  memory only — 200 entries, gone on restart — and refreshes when you
+  open it, not live.
 - The routine model accepts `timerCompleted` as a start trigger, but the
   editor only offers it for the end half.
 - Only **one timer** (or Pomodoro plan) runs at a time.

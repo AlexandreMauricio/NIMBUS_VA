@@ -26,10 +26,10 @@ entirely on top of the [Context architecture](context-system.md). Nothing about
     machine's public IP via [geojs.io](https://www.geojs.io/) (also free,
     no key), cached for 1 hour since location rarely changes.
   - **Manual**: a fixed latitude/longitude/label, set from the Settings
-    tab (**Weather location**) â€” where **Find a place** searches
+    tab (**Weather location**) — where **Find a place** searches
     Open-Meteo's free geocoding API
     ([geocoding.ts](../src/context/providers/weather/geocoding.ts); only
-    the typed name is sent) and picking a result saves it â€” or via
+    the typed name is sent) and picking a result saves it — or via
     `NIMBUS_WEATHER_LAT` /
     `NIMBUS_WEATHER_LON` / `NIMBUS_WEATHER_LOCATION_LABEL` in `.env` as a
     default for headless/dev use before any UI setting is saved. This is

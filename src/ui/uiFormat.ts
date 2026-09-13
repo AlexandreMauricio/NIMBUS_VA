@@ -130,3 +130,35 @@ export function formatEventDateLabel(iso: string, timezone: string): string {
     month: "short",
   }).format(new Date(iso));
 }
+
+/** What each routine history kind (routines/types.ts RoutineHistoryKind) means, in words. */
+const ROUTINE_HISTORY_LABELS: Record<string, string> = {
+  matched: "Matched — suggestion on its way",
+  suggested: "Suggested",
+  accepted: "You accepted the suggestion",
+  dismissed: "You dismissed the suggestion",
+  expired: "Suggestion expired unanswered",
+  autoRan: "Ran automatically",
+  blockedByCooldown: "Skipped — still cooling down",
+  blockedBySession: "Skipped — already ran this session",
+  blockedByConditions: "Skipped — conditions not met",
+  actionsCompleted: "Actions finished",
+};
+
+/** One routine history entry as a line for the Routines tab: its outcome, plus the detail when there is one. */
+export function routineHistoryText(entry: { kind: string; detail?: string }): {
+  outcome: string;
+  tone: "ok" | "skipped" | "failed" | "neutral";
+} {
+  const label = ROUTINE_HISTORY_LABELS[entry.kind] ?? entry.kind;
+  const outcome = entry.detail ? `${label} (${entry.detail})` : label;
+  const failed = /[1-9]\d* failed/.test(entry.detail ?? "");
+  if (failed) return { outcome, tone: "failed" };
+  if (entry.kind.startsWith("blockedBy") || entry.kind === "dismissed" || entry.kind === "expired") {
+    return { outcome, tone: "skipped" };
+  }
+  if (entry.kind === "autoRan" || entry.kind === "actionsCompleted" || entry.kind === "accepted") {
+    return { outcome, tone: "ok" };
+  }
+  return { outcome, tone: "neutral" };
+}

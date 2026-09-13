@@ -18,6 +18,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.14 — 2026-09-13
+
+- **See what your routines decided.** The Routines tab has a **Recent
+  decisions** panel: each suggestion shown, accepted, dismissed or
+  expired, each automatic run with how many actions failed, and each time
+  a routine was skipped for its cooldown, a session or unmet conditions —
+  so "why didn't my routine fire?" has an answer on screen. Failed
+  actions are highlighted. It covers NIMBUS's current run (the last 200).
+- Fixed the weather place search showing "Searchingâ€¦" instead of
+  "Searching…".
+
+---
+
 ## 0.5.13 — 2026-09-13
 
 - **Find your weather location by name.** Settings → Weather location →

@@ -7,6 +7,7 @@ import {
   formatMs,
   formatTaskDue,
   maskAddress,
+  routineHistoryText,
   triggerSummary,
   withSkipIfActiveCondition,
 } from "./uiFormat";
@@ -194,4 +195,39 @@ test("a date label follows the calendar's timezone across a day boundary", () =>
   assert.equal(utc.includes("14"), true);
   assert.equal(tokyo.includes("15"), true);
   assert.notEqual(utc, tokyo);
+});
+
+// ---------------------------------------------------- routineHistoryText
+
+test("routine history entries read as outcomes, with their detail", () => {
+  assert.deepEqual(routineHistoryText({ kind: "autoRan", detail: "2 actions, 0 failed" }), {
+    outcome: "Ran automatically (2 actions, 0 failed)",
+    tone: "ok",
+  });
+  assert.deepEqual(routineHistoryText({ kind: "blockedByCooldown" }), {
+    outcome: "Skipped — still cooling down",
+    tone: "skipped",
+  });
+});
+
+test("a failed action marks the entry as failed, and 10 failed is not 0 failed", () => {
+  assert.equal(
+    routineHistoryText({ kind: "actionsCompleted", detail: "3 actions, 1 failed" }).tone,
+    "failed"
+  );
+  assert.equal(
+    routineHistoryText({ kind: "actionsCompleted", detail: "12 actions, 10 failed" }).tone,
+    "failed"
+  );
+  assert.equal(
+    routineHistoryText({ kind: "actionsCompleted", detail: "wind-down: 1 action, 0 failed" }).tone,
+    "ok"
+  );
+});
+
+test("an unknown history kind still shows, as itself", () => {
+  assert.deepEqual(routineHistoryText({ kind: "somethingNew" }), {
+    outcome: "somethingNew",
+    tone: "neutral",
+  });
 });

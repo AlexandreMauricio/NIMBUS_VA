@@ -1253,6 +1253,17 @@
                 <div id="activitySnapshotContent" class="activity-debug-content"></div>
               </details>
 
+              <details class="activity-debug" id="routineHistoryDetails">
+                <summary>Recent decisions — what each routine did, and why it didn't</summary>
+                <p class="setting-desc">
+                  The last 200 things NIMBUS decided about your routines since it started: suggestions shown
+                  and answered, automatic runs, and the ones skipped for a cooldown, a session or unmet
+                  conditions. Not kept across restarts.
+                </p>
+                <button class="btn btn-ghost" id="refreshRoutineHistoryBtn" type="button">Refresh</button>
+                <ol id="routineHistoryList" class="routine-history-list"></ol>
+              </details>
+
               <div id="routineList" class="routine-cards"></div>
               <p class="feed-empty" id="routineListEmpty" hidden>
                 No routines yet. Click "+ New routine" to create one.

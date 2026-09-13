@@ -5,6 +5,7 @@ import {
   formatMs,
   formatTaskDue,
   maskAddress,
+  routineHistoryText,
   triggerSummary,
   withSkipIfActiveCondition,
 } from "./uiFormat";
@@ -691,7 +692,7 @@ async function initWeatherSettings(): Promise<void> {
       return;
     }
     searchBtn.disabled = true;
-    locationStatus.textContent = "Searchingâ€¦";
+    locationStatus.textContent = "Searching…";
     try {
       const places = await window.nimbus.searchPlaces(query);
       locationStatus.textContent = places.length ? "" : `No places found for "${query}".`;
@@ -3201,6 +3202,65 @@ async function initRoutinesSettings(): Promise<void> {
   refreshActivitySnapshotBtn.addEventListener("click", refreshActivitySnapshot);
   activityDebugDetails.addEventListener("toggle", () => {
     if (activityDebugDetails.open) refreshActivitySnapshot();
+  });
+
+  const routineHistoryDetails = document.getElementById("routineHistoryDetails") as HTMLDetailsElement;
+  const routineHistoryListEl = document.getElementById("routineHistoryList") as HTMLOListElement;
+
+  async function refreshRoutineHistory(): Promise<void> {
+    let entries: RoutineHistoryEntry[];
+    try {
+      entries = await window.nimbus.getRoutineHistory();
+    } catch (err) {
+      console.error("Failed to load routine history", err);
+      routineHistoryListEl.replaceChildren(historyNote("Couldn't load the history."));
+      return;
+    }
+    if (entries.length === 0) {
+      routineHistoryListEl.replaceChildren(
+        historyNote("Nothing yet — a routine's decisions appear here once one is triggered.")
+      );
+      return;
+    }
+    routineHistoryListEl.replaceChildren(
+      ...entries.map((entry) => {
+        const { outcome, tone } = routineHistoryText(entry);
+        const item = document.createElement("li");
+        item.className = `routine-history-item tone-${tone}`;
+        const time = document.createElement("time");
+        time.className = "routine-history-time";
+        time.dateTime = entry.at;
+        const at = new Date(entry.at);
+        time.textContent = at.toLocaleString(undefined, {
+          weekday: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        const name = document.createElement("span");
+        name.className = "routine-history-name";
+        name.textContent = entry.routineName;
+        const what = document.createElement("span");
+        what.className = "routine-history-outcome";
+        what.textContent = outcome;
+        item.append(time, name, what);
+        return item;
+      })
+    );
+  }
+
+  function historyNote(text: string): HTMLLIElement {
+    const note = document.createElement("li");
+    note.className = "activity-debug-empty";
+    note.textContent = text;
+    return note;
+  }
+
+  document
+    .getElementById("refreshRoutineHistoryBtn")
+    ?.addEventListener("click", () => void refreshRoutineHistory());
+  routineHistoryDetails.addEventListener("toggle", () => {
+    if (routineHistoryDetails.open) void refreshRoutineHistory();
   });
 }
 

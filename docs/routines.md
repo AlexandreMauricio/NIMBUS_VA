@@ -217,8 +217,10 @@ A routine is two rules that share a name, an identity and a cooldown:
 `RoutineService.getHistory()` returns recent decisions, newest first —
 matched, suggested, accepted, dismissed, expired, auto-ran, actions
 completed, and each kind of block. It is capped at 200 entries, held in
-memory, and exposed over `nimbus:get-routine-history`, but **no screen
-displays it yet**. It records NIMBUS's own decisions only — never window
+memory, and exposed over `nimbus:get-routine-history`. The Routines tab
+shows it under **Recent decisions** (newest first, loaded when opened or
+refreshed; a failed action is highlighted). It records NIMBUS's own
+decisions only — never window
 titles, page content or anything typed; a test asserts that.
 
 ## Privacy
