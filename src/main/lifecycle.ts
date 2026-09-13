@@ -85,6 +85,10 @@ import {
   TCG_GAMES,
   checkDeck,
   deckStats,
+  browsers,
+  ygoArchetypes,
+  MTG_BASIC_LANDS,
+  POKEMON_BASIC_ENERGY,
   compareWithCollection,
   detailFetchers,
   scryfallCardsByName,
@@ -749,6 +753,74 @@ function registerIpcHandlers(): void {
       decklist: formatDecklist(deck, deck.game),
       stats: deckStats(deck.game, deck.cards, ["main", "leader"]),
     };
+  });
+  // The deck builder (src/collections/decks/builder.ts runs in the page).
+  // Browsing makes each shown card resolvable; creating the deck names cards
+  // by id only, and their data comes from what this process fetched.
+  ipcMain.handle("nimbus:builder-browse", async (_event, game: unknown, filter: unknown) => {
+    const page = await catalogService.browse(game, filter);
+    return {
+      ...page,
+      cards: page.cards.map((card) => ({
+        sourceId: card.sourceId,
+        name: card.name,
+        imageUrl: card.imageUrl,
+        setName: card.setName,
+        typeLine: card.typeLine,
+        text: card.text ? card.text.slice(0, 400) : null,
+        rules: card.rules,
+        owned: ownedCopies(card.game, card.name, card.number),
+      })),
+    };
+  });
+  let archetypes: { at: number; names: Promise<string[]> } | null = null;
+  ipcMain.handle("nimbus:builder-archetypes", () => {
+    if (!archetypes || Date.now() - archetypes.at > 24 * 60 * 60_000) {
+      const names = ygoArchetypes().catch((err) => {
+        archetypes = null;
+        logger.warn("Could not load Yu-Gi-Oh! archetypes", { error: String(err) });
+        return [] as string[];
+      });
+      archetypes = { at: Date.now(), names };
+    }
+    return archetypes.names;
+  });
+  ipcMain.handle("nimbus:builder-create-deck", async (_event, input: unknown) => {
+    const i = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+    const deck = deckService.create({ name: i.name, game: i.game, format: i.format });
+    const failed: string[] = [];
+    for (const raw of Array.isArray(i.cards) ? i.cards.slice(0, 250) : []) {
+      const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const quantity = Number(c.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) continue;
+      try {
+        const detail = await catalogService.getDetail(deck.game, c.sourceId);
+        deckService.addCard(deck.id, detail, zoneOf(c.zone) ?? undefined, quantity);
+      } catch {
+        failed.push(typeof c.name === "string" ? c.name.slice(0, 100) : "a card");
+      }
+    }
+    // Basic lands and energy by name — only real basics, in the counts asked.
+    const allowed = new Set<string>(
+      Object.values(
+        deck.game === "mtg" ? MTG_BASIC_LANDS : deck.game === "pokemon" ? POKEMON_BASIC_ENERGY : {}
+      )
+    );
+    const basics = Object.entries(i.basics && typeof i.basics === "object" ? i.basics : {}).filter(
+      ([name, n]) => allowed.has(name) && Number.isInteger(n) && (n as number) > 0 && (n as number) <= 60
+    ) as Array<[string, number]>;
+    if (basics.length) {
+      const lookup = await catalogService.lookupByNames(
+        deck.game,
+        basics.map(([name]) => name)
+      );
+      for (const [name, n] of basics) {
+        const detail = lookup.found.get(name.toLowerCase());
+        if (detail) deckService.addCard(deck.id, detail, "main", n);
+        else failed.push(name);
+      }
+    }
+    return { id: deck.id, failed };
   });
   // Cards saved before costs and kinds were kept get fresh card data, one
   // paced lookup per card — only for cards already in the deck.
@@ -1599,7 +1671,8 @@ export function startApp(): void {
     Date.now,
     undefined,
     detailFetchers(),
-    { mtg: (names) => scryfallCardsByName(names) }
+    { mtg: (names) => scryfallCardsByName(names) },
+    browsers()
   );
   deckService = new DeckService(new FileDeckStore());
   deckService.onChange(() => {

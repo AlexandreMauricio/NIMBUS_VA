@@ -311,6 +311,11 @@ contextBridge.exposeInMainWorld("nimbus", {
   moveDeckCard: (id: string, sourceId: string, from: string, to: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:move-deck-card", id, sourceId, from, to),
   refreshDeckCards: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:refresh-deck-cards", id),
+  builderBrowse: (game: string, filter: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:builder-browse", game, filter),
+  builderArchetypes: (): Promise<unknown> => ipcRenderer.invoke("nimbus:builder-archetypes"),
+  builderCreateDeck: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:builder-create-deck", input),
   importDecklist: (id: string, text: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:import-decklist", id, text),
   onDecksChanged: (callback: () => void): (() => void) => {

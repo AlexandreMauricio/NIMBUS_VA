@@ -40,6 +40,15 @@ export {
 } from "./books/wikipedia";
 export { parseRuns, formatRuns } from "./books/runs";
 export * from "./decks/types";
+export {
+  browsers,
+  parseBrowseFilter,
+  ygoArchetypes,
+  scryfallBrowseQuery,
+  lorcastBrowseQuery,
+} from "./catalogs/browse";
+export type { BrowseFilter, BrowsePage, Browser } from "./catalogs/browse";
+export * from "./decks/builder";
 export { DeckService, parseDeck } from "./decks/deckService";
 export { checkDeck, compareWithCollection } from "./decks/rules";
 export { deckStats, curveBuckets, bucketIndex, countsOnCurve, KIND_LABELS } from "./decks/stats";

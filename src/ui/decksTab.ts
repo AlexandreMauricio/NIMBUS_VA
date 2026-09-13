@@ -6,6 +6,7 @@
  */
 import { openCardPage } from "./cardPage";
 import { DeckStatsUI, deckShape } from "./deckCharts";
+import { openDeckBuilder } from "./deckBuilder";
 
 type Game = "mtg" | "pokemon" | "yugioh" | "lorcana" | "onepiece";
 type Zone = "main" | "side" | "extra" | "leader";
@@ -101,11 +102,15 @@ export function initDecksTab(): void {
   const editor = byId<HTMLElement>("deckEditor");
   const empty = byId<HTMLElement>("deckEditorEmpty");
   const errorEl = byId<HTMLElement>("deckError");
+  const builderBtn = byId<HTMLButtonElement>("deckBuilderBtn");
 
   let formats: Record<Game, Array<{ id: string; label: string }>> | null = null;
   let selectedId: string | null = null;
   let gamesFilled = false;
   let renderCount = 0;
+  // While the builder is open it owns the editor area; refreshes leave it alone.
+  let building = false;
+  let games: Array<{ id: Game; name: string }> = [];
   // The last import's result, kept across redraws (each added card redraws the deck).
   let importMessage = "";
   // What's in the import box, kept across redraws — after an import, the lines to try again.
@@ -125,6 +130,7 @@ export function initDecksTab(): void {
   async function loadList(): Promise<void> {
     const view = await bridge().getDecks();
     formats = view.formats;
+    games = view.games;
     if (!gamesFilled) {
       gamesFilled = true;
       for (const game of view.games) newGame.appendChild(new Option(game.name, game.id));
@@ -146,6 +152,7 @@ export function initDecksTab(): void {
         )
       );
       item.addEventListener("click", () => {
+        building = false;
         selectedId = deck.id;
         importMessage = "";
         importDraft = "";
@@ -159,6 +166,7 @@ export function initDecksTab(): void {
 
   async function loadDeck(): Promise<void> {
     const render = ++renderCount;
+    if (building) return;
     empty.hidden = selectedId !== null;
     editor.hidden = selectedId === null;
     if (!selectedId) {
@@ -425,6 +433,34 @@ export function initDecksTab(): void {
     }
   }
 
+  builderBtn.addEventListener("click", async () => {
+    if (!games.length) await refresh();
+    building = true;
+    selectedId = null;
+    showError(null);
+    empty.hidden = true;
+    editor.hidden = false;
+    await loadList();
+    openDeckBuilder(editor, {
+      games,
+      onCreated: (deckId, failed) => {
+        building = false;
+        selectedId = deckId;
+        void refresh().then(() => {
+          if (failed.length) {
+            showError(
+              `The deck was created, but these couldn't be added: ${failed.join(", ")}. Add them from the search below.`
+            );
+          }
+        });
+      },
+      onCancel: () => {
+        building = false;
+        void refresh();
+      },
+    });
+  });
+
   newGame.addEventListener("change", () => fillFormats(newFormat, newGame.value as Game));
   createBtn.addEventListener("click", async () => {
     try {
@@ -433,6 +469,7 @@ export function initDecksTab(): void {
         game: newGame.value,
         format: newFormat.value,
       });
+      building = false;
       selectedId = deck.id;
       newName.value = "";
       await refresh();

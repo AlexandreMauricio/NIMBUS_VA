@@ -164,6 +164,54 @@ Items and Stadiums. Pokémon has no curve. Cards added before 0.5.16 have
 none of this saved; the page counts them apart and offers **Update card
 data**, which looks each one up again.
 
+## The deck builder helper
+
+**Build a deck with the helper** (top of the Decks tab) walks through a
+deck in four steps; building by hand works as before.
+
+1. **Game and format** — and, for Magic constructed, which cards to show
+   (Standard, Pioneer, Modern or any).
+2. **What it's built around**: Magic colours (1–3; Commander up to 5),
+   Lorcana inks (1–2), a One Piece **leader** (searched; its colours decide
+   the cards), Pokémon energy types (1–2), or a Yu-Gi-Oh! **archetype**
+   (optional — without one it starts from staples and name searches).
+3. **Playstyle**, ranked by how well it suits that choice
+   ([builder.ts](../src/collections/decks/builder.ts)): Magic colours and
+   known pairs (Boros leans aggro, Dimir control), Lorcana inks and One
+   Piece colours each lean towards styles. Pokémon types and Yu-Gi-Oh!
+   archetypes don't lean either way, so they aren't ranked and no reason is
+   invented. Each style shows its typical curve, card mix, the counts that
+   game checks (Lorcana inkable cards, One Piece counters, Pokémon Basics
+   and Supporters) and a couple of tips. These are community rules of thumb
+   to start from, not solved maths.
+4. **Build.** On the left, cards that fit — by role (Magic: creatures,
+   removal, card draw, ramp, counterspells, board wipes, nonbasic lands;
+   other games by kind; Yu-Gi-Oh! staples), cost and name, with how many you
+   own and "only cards I own". On the right, the plan: each card is added at
+   full copies, and an importance menu lowers it — **4 Core, 3 Strong,
+   2 Situational, 1 One-of** (3/2/1 for Yu-Gi-Oh!; Commander is one of each,
+   with **Make commander**). The curve is drawn against the style's target,
+   with the card mix, the total, the basic lands or energy the helper will
+   add (split by how much each colour is played, and editable), and advice
+   in plain words. **Create deck** makes a normal deck, checked by the usual
+   rules.
+
+**How cards are found** ([browse.ts](../src/collections/catalogs/browse.ts)),
+each checked against the live API while building: Scryfall's search syntax
+filters by colour identity, format, its community "oracle tags" for roles
+and mana value, ordered by EDHREC popularity (most played first). Lorcast
+is asked by ink and type, and cost, songs and "only these inks" are
+filtered locally. The OPTCG API's full card lists are downloaded once a day
+and filtered locally. TCGdex lists Standard-legal Pokémon by type (and
+trainers), then looks up each shown page's cards. YGOPRODeck lists an
+archetype, its staples, or a name search. Only the filters are sent.
+
+**The boundary** is the same as everywhere else in Collections: browsing
+makes each shown card resolvable in the main process, and creating the
+deck sends card ids and counts only — the cards' data comes from what the
+main process fetched. Basic lands and energy are accepted by their exact
+names only.
+
 ## Not yet
 
 - Set completion ("78 of 102"), and card language or condition.

@@ -57,6 +57,11 @@ src/
                                    MarketDataSource / NewsSource interfaces
                                    (read-only — no trading anywhere)
 
+  collections/decks/        [1] Core — decks: rules.ts, stats.ts (curves),
+                                   builder.ts (the deck builder's playstyles
+                                   and plan advice); catalogs/browse.ts [3]
+                                   browses each card database for it
+
   actions/                  [1] Core — the Action system
     types.ts                     ActionProvider / ActionResult contract
     actionService.ts             executeAction(): resolve, check availability,

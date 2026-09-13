@@ -1,5 +1,7 @@
 import { logger } from "../logging/logger";
+import { BrowsePage, Browser, parseBrowseFilter } from "./catalogs/browse";
 import { DetailFetcher } from "./catalogs/details";
+import { RateLimitedError, waitText } from "./catalogs/http";
 import { sameCardName } from "./decks/decklist";
 import {
   CardDetail,
@@ -53,13 +55,15 @@ export class CatalogService {
   private readonly resolvable = new Map<string, { at: number; card: CatalogCard }>();
   private readonly lastRequestAt = new Map<TcgGame, number>();
   private readonly details = new Map<string, { at: number; detail: CardDetail | null }>();
+  private readonly browsed = new Map<string, { at: number; page: BrowsePage }>();
 
   constructor(
     catalogs: CardCatalog[],
     private readonly now: () => number = Date.now,
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
     private readonly detailFetchers: Partial<Record<TcgGame, DetailFetcher>> = {},
-    private readonly bulkByName: Partial<Record<TcgGame, BulkNameLookup>> = {}
+    private readonly bulkByName: Partial<Record<TcgGame, BulkNameLookup>> = {},
+    private readonly browsers: Partial<Record<TcgGame, Browser>> = {}
   ) {
     for (const catalog of catalogs) this.catalogs.set(catalog.game, catalog);
   }
@@ -179,6 +183,47 @@ export class CatalogService {
     return result;
   }
 
+  /**
+   * Cards for the deck builder: a game's database browsed by colours, role,
+   * cost and name (see catalogs/browse.ts). Every card shown becomes
+   * resolvable, so the deck the builder creates takes its cards' data from
+   * here, not from the page.
+   */
+  async browse(game: unknown, rawFilter: unknown): Promise<BrowsePage> {
+    if (!isTcgGame(game)) throw new Error("Choose a game.");
+    const browser = this.browsers[game];
+    if (!browser) throw new Error("That game can't be browsed yet.");
+    const filter = parseBrowseFilter(rawFilter);
+    const key = `${game}|${JSON.stringify(filter)}`;
+    const hit = this.browsed.get(key);
+    let page: BrowsePage;
+    if (hit && this.now() - hit.at < RESULT_CACHE_MS) {
+      page = hit.page;
+    } else {
+      await this.pace(game);
+      try {
+        page = await browser(filter);
+      } catch (err) {
+        logger.warn("Card browsing failed", { game, error: String(err) });
+        if (err instanceof RateLimitedError) {
+          throw new Error(
+            `The card database asked for a pause — try again in ${waitText(err.retryAfterSeconds)}.`
+          );
+        }
+        throw new Error("The card database couldn't be reached. Try again in a moment.");
+      }
+      this.browsed.set(key, { at: this.now(), page });
+    }
+    const at = this.now();
+    for (const detail of page.cards) {
+      const cardKey = `${game}|${detail.sourceId}`;
+      this.details.set(cardKey, { at, detail });
+      this.resolvable.set(cardKey, { at, card: detail });
+    }
+    this.prune(at);
+    return { ...page, cards: page.cards.map((card) => ({ ...card })) };
+  }
+
   /** A card from a recent search, by its game and catalog id — or null. */
   resolve(game: unknown, sourceId: unknown): CatalogCard | null {
     if (!isTcgGame(game) || typeof sourceId !== "string") return null;
@@ -197,6 +242,7 @@ export class CatalogService {
 
   private prune(now: number): void {
     for (const [key, entry] of this.cache) if (now - entry.at >= RESULT_CACHE_MS) this.cache.delete(key);
+    for (const [key, entry] of this.browsed) if (now - entry.at >= RESULT_CACHE_MS) this.browsed.delete(key);
     for (const [key, entry] of this.resolvable)
       if (now - entry.at > RESOLVABLE_MS) this.resolvable.delete(key);
     // Oldest first, when a long session searched a lot.

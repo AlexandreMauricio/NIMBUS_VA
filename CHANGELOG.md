@@ -18,6 +18,25 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.17 — 2026-09-13
+
+- **A deck builder helper.** "Build a deck with the helper" in the Decks
+  tab walks you through a deck: pick the **game** (and format), what it's
+  **built around** — Magic colours, Lorcana inks, a One Piece leader,
+  Pokémon energy types or a Yu-Gi-Oh! archetype — then a **playstyle**,
+  ranked by how well it suits that choice (Boros → Aggro, Dimir → Control,
+  Sapphire/Steel → Control…), each with its typical curve, card mix and
+  tips. Then **build**: browse cards that fit by role (removal, card draw,
+  ramp…), cost and name — Magic's most played first — see how many you
+  own, and add each at 4 copies; an importance menu drops the less
+  important ones to 3, 2 or 1. The plan shows your curve against the
+  style's recommended curve, the card mix and game counts against their
+  targets, the basic lands or energy it will add (split by colour), and
+  plain advice. **Create deck** makes a normal deck. Building by hand
+  works as before.
+
+---
+
 ## 0.5.16 — 2026-09-13
 
 - **Decks show their curve.** A deck's page now draws its shape: the
