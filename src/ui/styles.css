@@ -3989,6 +3989,9 @@ details.context-card > summary .context-card-title {
 .builder-plan {
   position: sticky;
   top: var(--space-3);
+  /* Taller than the window once it fills up: it scrolls on its own. */
+  max-height: calc(100vh - 2 * var(--space-3));
+  overflow-y: auto;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
@@ -4055,4 +4058,109 @@ details.context-card > summary .context-card-title {
 
 .builder-basics-count {
   width: 5rem;
+}
+
+.builder-plan-name {
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.builder-plan-hint {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  color: var(--color-warning);
+}
+
+.builder-copies-help summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.builder-copies-help[open] summary {
+  margin-bottom: var(--space-2);
+}
+
+.builder-copies-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.builder-copies-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  font-size: 0.8rem;
+}
+
+.builder-copies-when {
+  margin: 0.1rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-neutral-400);
+}
+
+.builder-colours {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.builder-colour-row {
+  display: grid;
+  grid-template-columns: 3.8rem 1fr;
+  align-items: center;
+  gap: 0.15rem var(--space-2);
+}
+
+.builder-colour-row .collection-meta {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+}
+
+.builder-colour-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: none !important;
+}
+
+.builder-colour-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  overflow: hidden;
+}
+
+.builder-colour-fill {
+  display: block;
+  height: 100%;
+}
+
+.builder-colour-short .collection-meta {
+  color: var(--color-warning);
+}
+
+.builder-footnote {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--color-neutral-400);
+}
+
+/* Magic's colours, muted to sit on the dark surface. */
+.builder-colour-fill.builder-colour-w {
+  background: #e9dfb8;
+}
+.builder-colour-fill.builder-colour-u {
+  background: #5b9bd5;
+}
+.builder-colour-fill.builder-colour-b {
+  background: #9a8fa0;
+}
+.builder-colour-fill.builder-colour-r {
+  background: #d9695a;
+}
+.builder-colour-fill.builder-colour-g {
+  background: #5fae6e;
 }

@@ -19,11 +19,12 @@ import {
   planZone,
   recommendPlaystyles,
 } from "../collections/decks/builder";
+import { OPENING_HAND, drawChance, explainCopies, suggestCopies } from "../collections/decks/copies";
 import { curveBuckets } from "../collections/decks/stats";
 import { DECK_FORMATS } from "../collections/decks/types";
 import type { CardRulesInfo, TcgGame } from "../collections/types";
 import { openCardPage } from "./cardPage";
-import { countRow, curveChart } from "./deckCharts";
+import { colourBalanceBlock, countRow, curveChart } from "./deckCharts";
 
 interface Candidate {
   sourceId: string;
@@ -114,6 +115,9 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
   let loading = false;
   let browseError = "";
   let browseRun = 0;
+  // Whether the copies explanation is open; null until the player toggles it.
+  let copiesHelpOpen: boolean | null = null;
+  let adviceExpanded = false;
 
   const guide = (): BuilderGuide => builderGuide(game, format);
   const style = (): Playstyle => guide().playstyles.find((p) => p.id === playstyle) ?? guide().playstyles[0];
@@ -470,6 +474,10 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
     render();
   }
 
+  function openCard(card: Candidate): void {
+    void openCardPage(game, card.sourceId);
+  }
+
   function candidateTile(
     card: Candidate,
     action: string,
@@ -485,11 +493,7 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
       tile.appendChild(img);
     }
     const body = make("div", "builder-card-body");
-    const name = button(
-      card.name,
-      "btn btn-ghost deck-card-name",
-      () => void openCardPage(game, card.sourceId)
-    );
+    const name = button(card.name, "btn btn-ghost deck-card-name", () => openCard(card));
     if (card.text) name.title = card.text;
     body.appendChild(name);
     const facts = [
@@ -677,10 +681,58 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
       );
     }
 
+    if (summary.colours?.length) panel.appendChild(colourBalanceBlock(summary.colours));
+
     if (summary.advice.length) {
       const advice = make("ul", "builder-advice");
-      for (const line of summary.advice) advice.appendChild(make("li", undefined, line));
+      const shown = adviceExpanded ? summary.advice : summary.advice.slice(0, 4);
+      for (const line of shown) advice.appendChild(make("li", undefined, line));
       panel.appendChild(advice);
+      if (summary.advice.length > 4) {
+        panel.appendChild(
+          button(
+            adviceExpanded ? "Show less" : `Show ${summary.advice.length - 4} more`,
+            "btn btn-ghost",
+            () => {
+              adviceExpanded = !adviceExpanded;
+              render();
+            }
+          )
+        );
+      }
+    }
+
+    // How many copies — what each count means and how often you'll draw it.
+    const drawSize = g.game === "onepiece" ? 50 : g.deckSize;
+    if (g.tiers.length) {
+      const help = make("details", "builder-copies-help");
+      help.open = copiesHelpOpen ?? plan.size < 4;
+      help.addEventListener("toggle", () => (copiesHelpOpen = help.open));
+      help.appendChild(make("summary", undefined, "How many copies of each card?"));
+      help.appendChild(
+        make(
+          "p",
+          "collection-meta",
+          `More copies means you see the card more often — and more often draw a second one. The chances below are for a ${drawSize}-card deck.`
+        )
+      );
+      const list = make("div", "builder-copies-list");
+      for (const e of explainCopies(game, drawSize, g.maxCopies)) {
+        const item = make("div", "builder-copies-item");
+        const head = make("div", "builder-copies-head");
+        head.append(
+          make("strong", undefined, `${e.copies} ${e.copies === 1 ? "copy" : "copies"} — ${e.label}`),
+          make(
+            "span",
+            "collection-meta",
+            `${e.openingHand}% in the opening hand · ${e.byTurnThree}% within 3 more draws`
+          )
+        );
+        item.append(head, make("p", "builder-copies-when", e.when));
+        list.appendChild(item);
+      }
+      help.appendChild(list);
+      panel.appendChild(help);
     }
 
     // The cards, cheapest first, each with its importance.
@@ -691,14 +743,42 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
         (a.card.rules.cost ?? 99) - (b.card.rules.cost ?? 99) ||
         a.card.name.localeCompare(b.card.name)
     );
+    const suggestions = new Map(
+      entries.map((e) => [e.card.sourceId, suggestCopies(game, p.id, g.maxCopies, e.card)])
+    );
+    const differing = entries.filter(
+      (e) =>
+        e.card.rules.zone !== "leader" &&
+        g.tiers.length &&
+        suggestions.get(e.card.sourceId)?.copies !== e.quantity
+    );
+    if (differing.length) {
+      list.appendChild(
+        button(
+          `Use the suggested copies (${differing.length} card${differing.length === 1 ? "" : "s"})`,
+          "btn btn-ghost",
+          () => {
+            for (const e of differing)
+              e.quantity = Math.max(1, suggestions.get(e.card.sourceId)?.copies ?? e.quantity);
+            render();
+          }
+        )
+      );
+    }
     for (const entry of entries) {
       const row = make("div", "builder-plan-row");
       const isLeader = entry.card.rules.zone === "leader" || entry.zone === "leader";
+      const suggestion = suggestions.get(entry.card.sourceId);
       if (isLeader || !g.tiers.length) {
         row.appendChild(make("span", "collection-quantity", String(entry.quantity)));
       } else {
         const tier = make("select", "select builder-tier");
-        for (const t of g.tiers) tier.appendChild(new Option(`${t.copies} — ${t.label}`, String(t.copies)));
+        for (const t of g.tiers) {
+          const suggested = suggestion?.copies === t.copies ? " (suggested)" : "";
+          tier.appendChild(
+            new Option(`${t.copies} — ${t.label.replace(/ — .*/, "")}${suggested}`, String(t.copies))
+          );
+        }
         tier.value = String(entry.quantity);
         tier.setAttribute("aria-label", `Copies of ${entry.card.name}`);
         tier.addEventListener("change", () => {
@@ -707,14 +787,22 @@ export function openDeckBuilder(root: HTMLElement, options: DeckBuilderOptions):
         });
         row.appendChild(tier);
       }
-      const label = make("span", "builder-plan-name", entry.card.name);
+      const label = button(entry.card.name, "btn btn-ghost builder-plan-name", () => openCard(entry.card));
       const meta = [
         isLeader ? (game === "mtg" ? "Commander" : "Leader") : null,
         costLabel(game, entry.card.rules.cost)?.toLowerCase() ?? null,
         entry.card.rules.kind,
         planZone({ zone: entry.zone, rules: entry.card.rules }) === "extra" ? "extra deck" : null,
+        !isLeader && g.tiers.length
+          ? `${drawChance(drawSize, entry.quantity, OPENING_HAND[game])}% in the opening hand`
+          : null,
       ].filter(Boolean);
       row.append(label, make("span", "collection-meta", meta.join(" · ")));
+      if (suggestion?.reason && suggestion.copies !== entry.quantity && g.tiers.length) {
+        row.appendChild(
+          make("span", "builder-plan-hint", `Suggested ${suggestion.copies}: ${suggestion.reason}.`)
+        );
+      }
       if (game === "mtg" && format === "commander" && entry.card.rules.kind === "creature") {
         row.appendChild(
           button(entry.zone === "leader" ? "Commander ✓" : "Make commander", "btn btn-ghost", () => {

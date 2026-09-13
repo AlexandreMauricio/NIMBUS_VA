@@ -97,6 +97,13 @@ export interface CardRulesInfo {
    * "stage2", "ex", "supporter", "item", "tool", "stadium" (Pokémon).
    */
   traits: string[];
+  /**
+   * Magic only: coloured mana symbols in the cost, by colour letter — a
+   * hybrid symbol counts half to each colour. Used for colour balance.
+   */
+  pips?: Record<string, number>;
+  /** Magic lands only: the colours of mana it can produce (Scryfall's produced_mana). */
+  produces?: string[];
 }
 
 /** A card's full page. */

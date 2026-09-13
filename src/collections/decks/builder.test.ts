@@ -85,16 +85,16 @@ test("basics split by weight, every colour gets one when there's room", () => {
 
 test("a Boros aggro plan: 4 of each of 10 cards plus 22 basic lands is 62, and the advice says so", () => {
   const cards = [
-    card("Monastery Swiftspear", 4, "creature", 1, ["R"]),
-    card("Kytheon", 4, "creature", 1, ["W"]),
-    card("Goblin Guide", 4, "creature", 1, ["R"]),
-    card("Adeline", 4, "creature", 3, ["W"]),
-    card("Lightning Bolt", 4, "instant", 1, ["R"]),
-    card("Boros Charm", 4, "instant", 2, ["R", "W"]),
-    card("Bonecrusher Giant", 4, "creature", 3, ["R"]),
-    card("Thalia", 4, "creature", 2, ["W"]),
-    card("Play with Fire", 4, "instant", 1, ["R"]),
-    card("Inspiring Vantage", 4, "land", 0, [], {}),
+    card("Monastery Swiftspear", 4, "creature", 1, ["R"], { pips: { R: 1 } }),
+    card("Kytheon", 4, "creature", 1, ["W"], { pips: { W: 1 } }),
+    card("Goblin Guide", 4, "creature", 1, ["R"], { pips: { R: 1 } }),
+    card("Adeline", 4, "creature", 3, ["W"], { pips: { W: 2 } }),
+    card("Lightning Bolt", 4, "instant", 1, ["R"], { pips: { R: 1 } }),
+    card("Boros Charm", 4, "instant", 2, ["R", "W"], { pips: { R: 1, W: 1 } }),
+    card("Bonecrusher Giant", 4, "creature", 3, ["R"], { pips: { R: 1 } }),
+    card("Thalia", 4, "creature", 2, ["W"], { pips: { W: 1 } }),
+    card("Play with Fire", 4, "instant", 1, ["R"], { pips: { R: 1 } }),
+    card("Inspiring Vantage", 4, "land", 0, [], { produces: ["R", "W"] }),
   ];
   const plan = planSummary("mtg", "constructed", "aggro", ["R", "W"], cards);
   // 22 lands wanted, 4 nonbasic picked: 18 basics, split by colour use.
@@ -102,7 +102,15 @@ test("a Boros aggro plan: 4 of each of 10 cards plus 22 basic lands is 62, and t
     Object.values(plan.basics).reduce((a, b) => a + b, 0),
     18
   );
-  assert.ok(plan.basics.Mountain > plan.basics.Plains);
+  // More red cards, but Adeline's WW on turn 3 needs more white sources than red's one-drops do.
+  assert.ok(plan.basics.Plains > plan.basics.Mountain);
+  assert.deepEqual(
+    plan.colours?.map((c) => [c.colour, c.needed]),
+    [
+      ["R", 14],
+      ["W", 18],
+    ]
+  );
   assert.equal(plan.total, 58);
   assert.match(plan.advice.join(" "), /2 more cards to reach 60/);
   assert.equal(plan.ready, false);

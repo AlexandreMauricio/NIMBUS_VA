@@ -5,7 +5,7 @@
  * Core (src/collections/decks/); this only asks the preload bridge.
  */
 import { openCardPage } from "./cardPage";
-import { DeckStatsUI, deckShape } from "./deckCharts";
+import { ColourLineUI, DeckStatsUI, deckShape } from "./deckCharts";
 import { openDeckBuilder } from "./deckBuilder";
 
 type Game = "mtg" | "pokemon" | "yugioh" | "lorcana" | "onepiece";
@@ -38,6 +38,8 @@ interface DeckView {
   };
   decklist: string;
   stats: DeckStatsUI;
+  colours: ColourLineUI[] | null;
+  staleCards: number;
 }
 
 interface DecksBridge {
@@ -232,17 +234,22 @@ export function initDecksTab(): void {
 
     // The deck's shape: curve, kinds, the counts this game's players check.
     editor.appendChild(
-      deckShape(view.stats, (button) => {
-        button.disabled = true;
-        button.textContent = "Looking the cards up…";
-        void act(async () => {
-          const result = await bridge().refreshDeckCards(id);
-          if (result.failed)
-            showError(
-              `Couldn't reach the card database for ${result.failed} card${result.failed === 1 ? "" : "s"} — try again in a moment.`
-            );
-        });
-      })
+      deckShape(
+        view.stats,
+        (button) => {
+          button.disabled = true;
+          button.textContent = "Looking the cards up…";
+          void act(async () => {
+            const result = await bridge().refreshDeckCards(id);
+            if (result.failed)
+              showError(
+                `Couldn't reach the card database for ${result.failed} card${result.failed === 1 ? "" : "s"} — try again in a moment.`
+              );
+          });
+        },
+        view.colours,
+        view.staleCards
+      )
     );
 
     // Against the collection.

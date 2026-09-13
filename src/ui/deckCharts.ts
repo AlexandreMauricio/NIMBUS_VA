@@ -10,6 +10,16 @@ export interface StatBarUI {
   count: number;
 }
 
+export interface ColourLineUI {
+  colour: string;
+  label: string;
+  symbols: number;
+  share: number;
+  sources: number;
+  needed: number;
+  hardest: string | null;
+}
+
 export interface DeckStatsUI {
   curveTitle: string | null;
   curve: StatBarUI[];
@@ -83,7 +93,12 @@ export function countRow(bars: StatBarUI[], targets?: Map<string, number>): HTML
 }
 
 /** The deck page's "Shape" block. `onRefresh` is offered when some cards have no saved card data. */
-export function deckShape(stats: DeckStatsUI, onRefresh?: (button: HTMLButtonElement) => void): HTMLElement {
+export function deckShape(
+  stats: DeckStatsUI,
+  onRefresh?: (button: HTMLButtonElement) => void,
+  colours?: ColourLineUI[] | null,
+  staleCards = stats.unknown
+): HTMLElement {
   const block = el("section", "deck-shape");
   const total = stats.kinds.reduce((sum, k) => sum + k.count, 0) + stats.unknown;
   if (!total) return block;
@@ -95,11 +110,14 @@ export function deckShape(stats: DeckStatsUI, onRefresh?: (button: HTMLButtonEle
   const side = el("div", "deck-shape-side");
   if (stats.kinds.length) side.appendChild(countRow(stats.kinds));
   if (stats.highlights.length) side.appendChild(countRow(stats.highlights));
-  if (stats.unknown > 0) {
+  if (colours?.length) side.appendChild(colourBalanceBlock(colours));
+  if (staleCards > 0) {
     const note = el(
       "p",
       "collection-meta",
-      `${stats.unknown} card${stats.unknown === 1 ? "" : "s"} were added before NIMBUS kept costs and card types, so they're not counted above.`
+      stats.unknown > 0
+        ? `${stats.unknown} card${stats.unknown === 1 ? "" : "s"} were added before NIMBUS kept costs and card types, so they're not counted above.`
+        : `${staleCards} card${staleCards === 1 ? " was" : "s were"} added before NIMBUS kept mana symbols, so colour balance leaves them out.`
     );
     side.appendChild(note);
     if (onRefresh) {
@@ -110,5 +128,33 @@ export function deckShape(stats: DeckStatsUI, onRefresh?: (button: HTMLButtonEle
     }
   }
   block.appendChild(side);
+  return block;
+}
+
+/** Magic: each colour's share of the mana symbols, and its lands against what its hardest spell needs (Core's mana.ts). */
+export function colourBalanceBlock(lines: ColourLineUI[]): HTMLElement {
+  const block = el("div", "builder-colours");
+  block.appendChild(
+    el("div", "collection-meta", "Colour balance — mana symbols, and lands that make each colour")
+  );
+  for (const line of lines) {
+    const row = el("div", `builder-colour-row${line.needed > line.sources ? " builder-colour-short" : ""}`);
+    const bar = el("span", "builder-colour-bar");
+    const fill = el("span", `builder-colour-fill builder-colour-${line.colour.toLowerCase()}`);
+    fill.style.width = `${line.share}%`;
+    bar.appendChild(fill);
+    const detail = line.symbols
+      ? `${line.share}% of symbols · ${line.sources} lands${line.needed ? ` — ${line.hardest} wants about ${line.needed}` : ""}`
+      : `no cards need it yet · ${line.sources} lands`;
+    row.append(el("span", "builder-colour-name", line.label), bar, el("span", "collection-meta", detail));
+    block.appendChild(row);
+  }
+  block.appendChild(
+    el(
+      "p",
+      "builder-footnote",
+      "Lands needed are Frank Karsten's counts for casting a spell on curve about 90% of the time. Dual lands count for both colours."
+    )
+  );
   return block;
 }

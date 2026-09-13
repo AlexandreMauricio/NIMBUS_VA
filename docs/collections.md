@@ -171,7 +171,7 @@ deck in four steps; building by hand works as before.
 
 1. **Game and format** — and, for Magic constructed, which cards to show
    (Standard, Pioneer, Modern or any).
-2. **What it's built around**: Magic colours (1–3; Commander up to 5),
+2. **What it's built around**: Magic colours (1–5),
    Lorcana inks (1–2), a One Piece **leader** (searched; its colours decide
    the cards), Pokémon energy types (1–2), or a Yu-Gi-Oh! **archetype**
    (optional — without one it starts from staples and name searches).
@@ -195,6 +195,33 @@ deck in four steps; building by hand works as before.
    add (split by how much each colour is played, and editable), and advice
    in plain words. **Create deck** makes a normal deck, checked by the usual
    rules.
+
+**How many copies.** "How many copies of each card?" in the plan says
+what 4, 3, 2 and 1 copies are for, with the real chance of drawing the
+card — in the opening hand, and within three more draws — for the deck's
+size ([copies.ts](../src/collections/decks/copies.ts), hypergeometric).
+Each card's menu marks a **suggested** count, with the reason when it's
+fewer than the maximum: a Magic legendary (3 — a second copy can't be
+played while the first is out), a card expensive for the style (2), a
+Pokémon Stage 1 or 2 (3), a Yu-Gi-Oh! ban limit. "Use the suggested
+copies" applies them all; nothing changes on its own. Each card also shows
+its chance to be in the opening hand at its current count.
+
+**Magic colour balance** ([mana.ts](../src/collections/decks/mana.ts)).
+Cards keep their coloured mana symbols (a hybrid symbol counts half to
+each colour) and, for lands, the colours they make. For each colour the
+plan shows its share of the symbols, how many lands make it, and how many
+its most demanding spell needs — Frank Karsten's counts for casting a
+spell on curve about 90% of the time (Adeline, {1}{W}{W} on turn 3: 18
+white sources in 60 cards; Commander scales them by 1.5). Basic lands are
+split so each colour first gets what it's short of, then the rest by
+symbols; dual lands count for both colours. It says when a colour can't
+reach its number, when a chosen colour isn't used, when one colour is 80%+
+of the symbols (the other is a splash), and when three or more colours
+have too few dual lands. The deck page shows the same balance for any
+Magic deck. Three or more colours rank slower styles higher and name the
+combination (Esper, Jund, …). Cards saved before 0.5.18 have no symbols
+until **Update card data**.
 
 **How cards are found** ([browse.ts](../src/collections/catalogs/browse.ts)),
 each checked against the live API while building: Scryfall's search syntax

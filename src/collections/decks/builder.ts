@@ -1,4 +1,6 @@
 import { CardRulesInfo, TcgGame } from "../types";
+import { ColourBalance, ColourLine, balanceColours } from "./mana";
+import { splitBasicsByWeight } from "./split";
 import { DeckStats, KIND_LABELS, curveBuckets, deckStats } from "./stats";
 import { DeckZone } from "./types";
 
@@ -290,6 +292,26 @@ const MTG_COLOR_STYLES: Record<string, Record<string, number>> = {
   R: { aggro: 3, tempo: 2, midrange: 1, ramp: 1 },
   G: { ramp: 3, midrange: 2, aggro: 1 },
 };
+/** The community names of three-, four- and five-colour combinations, in WUBRG order. */
+const MTG_COMBINATIONS: Record<string, string> = {
+  WUB: "Esper",
+  UBR: "Grixis",
+  BRG: "Jund",
+  WRG: "Naya",
+  WUG: "Bant",
+  WBG: "Abzan",
+  WUR: "Jeskai",
+  UBG: "Sultai",
+  WBR: "Mardu",
+  URG: "Temur",
+  UBRG: "Glint-Eye (non-white)",
+  WBRG: "Dune-Brood (non-blue)",
+  WURG: "Ink-Treader (non-black)",
+  WUBG: "Witch-Maw (non-red)",
+  WUBR: "Yore-Tiller (non-green)",
+  WUBRG: "Five-colour",
+};
+
 const MTG_PAIRS: Record<string, { name: string; styles: Record<string, number> }> = {
   WU: { name: "Azorius", styles: { control: 2, tempo: 1 } },
   UB: { name: "Dimir", styles: { control: 2, tempo: 1 } },
@@ -637,7 +659,7 @@ export function builderGuide(game: TcgGame, format: string): BuilderGuide {
         format,
         deckSize: commander ? 100 : 60,
         maxCopies: commander ? 1 : 4,
-        identity: { kind: "colors", label: "Colours", choices: MTG_COLORS, min: 1, max: commander ? 5 : 3 },
+        identity: { kind: "colors", label: "Colours", choices: MTG_COLORS, min: 1, max: 5 },
         playstyles: mtgPlaystyles(commander),
         roles: MTG_ROLES,
         tiers: commander ? [] : TIERS_4,
@@ -743,7 +765,8 @@ export function recommendPlaystyles(
     }
   }
   let pairName: string | null = null;
-  if (game === "mtg" && identity.length === 2) {
+  let manyColours: string | null = null;
+  if (game === "mtg") {
     const order = MTG_COLORS.map((c) => c.id);
     const key = [...identity].sort((a, b) => order.indexOf(a) - order.indexOf(b)).join("");
     const pair = MTG_PAIRS[key];
@@ -753,18 +776,32 @@ export function recommendPlaystyles(
         if (scores.has(style)) scores.set(style, (scores.get(style) ?? 0) + weight);
       }
     }
+    // Averaged by colour so five colours don't simply add up to the biggest score.
+    if (identity.length >= 3) {
+      for (const [style, score] of scores) scores.set(style, score / identity.length);
+      // More colours make the mana slower and less reliable: slower styles cope best.
+      const lean: Record<string, number> = { aggro: -2, tempo: -1, midrange: 1.5, control: 1, ramp: 1 };
+      for (const [style, weight] of Object.entries(lean)) {
+        if (scores.has(style)) scores.set(style, (scores.get(style) ?? 0) + weight);
+      }
+      pairName = MTG_COMBINATIONS[key] ?? null;
+      manyColours = `With ${identity.length} colours the mana is slower and less reliable, so aggressive decks struggle; midrange and control have time to find their lands.`;
+    }
   }
-  const noteText = identity
-    .map((c) => notes[c])
-    .filter(Boolean)
-    .join("; ");
+  const noteText =
+    identity.length >= 3
+      ? manyColours
+      : identity
+          .map((c) => notes[c])
+          .filter(Boolean)
+          .join("; ") + ".";
   const best = Math.max(...scores.values());
   return guide.playstyles
     .map((p) => {
       const score = scores.get(p.id) ?? 0;
       const reason =
         score === best
-          ? `${pairName ? `${pairName} (${identity.join("")}) often plays this. ` : ""}${noteText}.`
+          ? `${pairName ? `${pairName} (${identity.join("")}) often plays this. ` : ""}${noteText}`
           : null;
       return { id: p.id, score, reason };
     })
@@ -779,7 +816,8 @@ export interface PlanCard {
   quantity: number;
   /** Where the player put it — a Magic commander. Otherwise where the card belongs. */
   zone?: DeckZone;
-  rules: Pick<CardRulesInfo, "cost" | "kind" | "traits" | "colors" | "zone" | "unlimitedCopies">;
+  rules: Pick<CardRulesInfo, "cost" | "kind" | "traits" | "colors" | "zone" | "unlimitedCopies"> &
+    Partial<Pick<CardRulesInfo, "pips" | "produces" | "banLimit">>;
 }
 
 /** A plan card's zone: the player's choice, else the card's own (a leader, an extra-deck monster). */
@@ -804,47 +842,15 @@ export interface PlanSummary {
   highlights: PlanTargetLine[];
   /** The basic lands or energy the builder adds, by card name. */
   basics: Record<string, number>;
+  /** Magic: each chosen colour's share of the mana symbols, and its lands against what it needs. */
+  colours: ColourLine[] | null;
   advice: string[];
   /** About how many different cards to pick for this style, before choosing copies. */
   suggestedPicks: number;
   ready: boolean;
 }
 
-/**
- * Splits `total` basics across colours by weight (largest remainder),
- * giving every chosen colour at least one when there's room.
- */
-export function splitBasics(total: number, weights: Record<string, number>): Record<string, number> {
-  const keys = Object.keys(weights);
-  if (total <= 0 || !keys.length) return {};
-  const sum = keys.reduce((s, k) => s + Math.max(0, weights[k]), 0);
-  const shares = keys.map((k) => ({
-    k,
-    exact: sum > 0 ? (Math.max(0, weights[k]) / sum) * total : total / keys.length,
-  }));
-  const out: Record<string, number> = {};
-  for (const s of shares) out[s.k] = Math.floor(s.exact);
-  let left = total - Object.values(out).reduce((a, b) => a + b, 0);
-  for (const s of [...shares].sort(
-    (a, b) => b.exact - Math.floor(b.exact) - (a.exact - Math.floor(a.exact))
-  )) {
-    if (left <= 0) break;
-    out[s.k]++;
-    left--;
-  }
-  if (total >= keys.length) {
-    for (const k of keys) {
-      if (out[k] === 0) {
-        const donor = keys.reduce((a, b) => (out[a] >= out[b] ? a : b));
-        if (out[donor] > 1) {
-          out[donor]--;
-          out[k] = 1;
-        }
-      }
-    }
-  }
-  return out;
-}
+export { splitBasicsByWeight as splitBasics } from "./split";
 
 /**
  * How a plan measures up against a playstyle: totals, the curve and kind
@@ -877,9 +883,32 @@ export function planSummary(
       if (weights[colour] !== undefined) weights[colour] += card.quantity;
     }
   }
+  // Magic: lands split by what the spells' mana symbols need (mana.ts).
+  // Pokémon: energy by how many cards of each type are played.
+  let colours: ColourBalance | null = null;
+  let split: Record<string, number>;
+  if (game === "mtg") {
+    colours = balanceColours(
+      identity,
+      cards.map((c) => ({
+        name: c.name,
+        quantity: c.quantity,
+        kind: c.rules.kind,
+        cost: c.rules.cost,
+        pips: c.rules.pips,
+        produces: c.rules.produces,
+        basic: c.rules.traits.includes("basic"),
+      })),
+      basicCount,
+      guide.deckSize
+    );
+    split = colours.basics;
+  } else {
+    split = splitBasicsByWeight(basicCount, weights);
+  }
   const basics: Record<string, number> = {};
-  for (const [colour, n] of Object.entries(splitBasics(basicCount, weights))) {
-    if (n > 0) basics[basicNames[colour]] = n;
+  for (const [colour, n] of Object.entries(split)) {
+    if (n > 0 && basicNames[colour]) basics[basicNames[colour]] = n;
   }
   if (guide.basicsLabel && basicCount > 0 && !Object.keys(weights).length) {
     advice.push(
@@ -974,6 +1003,7 @@ export function planSummary(
   ) {
     advice.push("No Basic Pokémon yet — a deck can't start a game without one.");
   }
+  if (colours && total >= deckSize * 0.3) advice.push(...colours.advice);
 
   const slots = deckSize - (guide.basicsLabel ? style.basics : 0);
   const averageCopies = guide.maxCopies === 1 ? 1 : guide.maxCopies === 3 ? 2.6 : 3.3;
@@ -985,6 +1015,7 @@ export function planSummary(
     kinds: kindLines,
     highlights: highlightLines,
     basics,
+    colours: colours?.lines ?? null,
     advice,
     suggestedPicks: Math.round(slots / averageCopies),
     ready: total === deckSize || (game === "mtg" && format !== "commander" && total >= deckSize),

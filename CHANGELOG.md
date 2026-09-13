@@ -18,6 +18,29 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.18 — 2026-09-13
+
+- **How many copies, explained.** The deck builder's plan now has "How
+  many copies of each card?": what 4, 3, 2 and 1 copies are for, with the
+  real odds of drawing the card — 4 copies in 60 cards are in your opening
+  hand 40% of the time, 1 copy 12%. Each card's menu marks a suggested
+  count and says why when it's fewer (a legendary, a card expensive for the
+  style, a Stage 2 Pokémon, a ban limit), shows its own opening-hand
+  chance, and "Use the suggested copies" applies them.
+- **Magic colour balance.** Cards now keep their mana symbols, and lands
+  the colours they make. The plan — and every Magic deck's page — shows
+  each colour's share of the symbols and its lands against what its most
+  demanding spell needs (Frank Karsten's numbers: a {W}{W} two-drop wants
+  about 21 white sources). Basic lands are split to cover those needs first,
+  and it warns when a colour is starved, unused, only a splash, or when
+  three colours lack dual lands. **Magic decks can use 1 to 5 colours**;
+  three or more lean the recommendation towards slower styles and name the
+  combination (Esper, Jund…).
+- The plan panel scrolls on its own when it's taller than the window, and
+  long advice folds after four lines.
+
+---
+
 ## 0.5.17 — 2026-09-13
 
 - **A deck builder helper.** "Build a deck with the helper" in the Decks

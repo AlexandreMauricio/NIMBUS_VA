@@ -49,6 +49,9 @@ export {
 } from "./catalogs/browse";
 export type { BrowseFilter, BrowsePage, Browser } from "./catalogs/browse";
 export * from "./decks/builder";
+export * from "./decks/copies";
+export { balanceColours, sourcesNeeded, COLOUR_NAMES } from "./decks/mana";
+export type { ColourLine, ColourBalance, ManaCard } from "./decks/mana";
 export { DeckService, parseDeck } from "./decks/deckService";
 export { checkDeck, compareWithCollection } from "./decks/rules";
 export { deckStats, curveBuckets, bucketIndex, countsOnCurve, KIND_LABELS } from "./decks/stats";

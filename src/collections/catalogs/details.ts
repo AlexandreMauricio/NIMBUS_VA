@@ -95,8 +95,30 @@ export function mapScryfallDetail(json: unknown): CardDetail | null {
       cost: typeof c.cmc === "number" && Number.isFinite(c.cmc) ? c.cmc : null,
       kind: mtgKind(typeLine),
       traits: /\bbasic\b.*\bland\b/i.test(typeLine ?? "") ? ["basic"] : [],
+      pips: manaPips(asString(c.mana_cost) ?? asString(faces[0]?.mana_cost)),
+      produces:
+        mtgKind(typeLine) === "land" && Array.isArray(c.produced_mana)
+          ? (c.produced_mana as unknown[]).filter(
+              (m): m is string => typeof m === "string" && /^[WUBRGC]$/.test(m)
+            )
+          : undefined,
     },
   };
+}
+
+/**
+ * Coloured mana symbols in a Magic cost: "{1}{R}{R}" is two red; a hybrid
+ * "{W/U}" counts half to each; Phyrexian "{R/P}" and "{2/W}" count fully,
+ * since the colour is still what's easiest to pay with.
+ */
+export function manaPips(cost: string | null): Record<string, number> {
+  const pips: Record<string, number> = {};
+  for (const [, symbol] of (cost ?? "").matchAll(/\{([^}]+)\}/g)) {
+    const colours = symbol.split("/").filter((part) => /^[WUBRG]$/.test(part));
+    const share = colours.length === 2 ? 0.5 : 1;
+    for (const colour of colours) pips[colour] = (pips[colour] ?? 0) + share;
+  }
+  return pips;
 }
 
 /** The kind a Magic card counts as, from its (front face's) type line. A land creature is a creature. */

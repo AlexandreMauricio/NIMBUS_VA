@@ -85,6 +85,7 @@ import {
   TCG_GAMES,
   checkDeck,
   deckStats,
+  balanceColours,
   browsers,
   ygoArchetypes,
   MTG_BASIC_LANDS,
@@ -743,6 +744,34 @@ function registerIpcHandlers(): void {
     formats: DECK_FORMATS,
     games: TCG_GAMES.map((game) => ({ id: game.id, name: game.name })),
   }));
+  // Cards saved before a version kept what the deck page now shows: kinds and
+  // costs (0.5.16), and for Magic the mana symbols and land colours (0.5.18).
+  const needsCardData =
+    (game: string) =>
+    (card: { rules: { kind: string | null; pips?: unknown } }): boolean =>
+      card.rules.kind === null || (game === "mtg" && card.rules.pips === undefined);
+  // A Magic deck's colour balance: the colours its spells' symbols ask for,
+  // with every land in it (basics included) counted as a source.
+  const deckColours = (deck: ReturnType<typeof deckService.get>) => {
+    const inPlay = deck.cards.filter((card) => card.zone === "main" || card.zone === "leader");
+    const order = ["W", "U", "B", "R", "G"];
+    const identity = order.filter((colour) => inPlay.some((card) => (card.rules.pips?.[colour] ?? 0) > 0));
+    if (!identity.length) return null;
+    const size = deck.format === "commander" ? 100 : 60;
+    return balanceColours(
+      identity,
+      inPlay.map((card) => ({
+        name: card.name,
+        quantity: card.quantity,
+        kind: card.rules.kind,
+        cost: card.rules.cost,
+        pips: card.rules.pips,
+        produces: card.rules.produces,
+      })),
+      0,
+      size
+    ).lines;
+  };
   ipcMain.handle("nimbus:get-deck", (_event, id: unknown) => {
     const deck = deckService.get(String(id ?? ""));
     return {
@@ -752,6 +781,8 @@ function registerIpcHandlers(): void {
       collection: compareWithCollection(deck, collectionService.list()),
       decklist: formatDecklist(deck, deck.game),
       stats: deckStats(deck.game, deck.cards, ["main", "leader"]),
+      colours: deck.game === "mtg" ? deckColours(deck) : null,
+      staleCards: deck.cards.filter(needsCardData(deck.game)).reduce((sum, card) => sum + card.quantity, 0),
     };
   });
   // The deck builder (src/collections/decks/builder.ts runs in the page).
@@ -826,9 +857,7 @@ function registerIpcHandlers(): void {
   // paced lookup per card — only for cards already in the deck.
   ipcMain.handle("nimbus:refresh-deck-cards", async (_event, id: unknown) => {
     const deck = deckService.get(String(id ?? ""));
-    const stale = [
-      ...new Set(deck.cards.filter((card) => card.rules.kind === null).map((card) => card.sourceId)),
-    ];
+    const stale = [...new Set(deck.cards.filter(needsCardData(deck.game)).map((card) => card.sourceId))];
     const details = [];
     let failed = 0;
     for (const sourceId of stale) {

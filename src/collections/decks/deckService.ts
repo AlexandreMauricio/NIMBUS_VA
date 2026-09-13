@@ -17,7 +17,29 @@ import {
 const ZONES: DeckZone[] = ["main", "side", "extra", "leader"];
 
 function copyRules(rules: CardRulesInfo): CardRulesInfo {
-  return { ...rules, colors: [...rules.colors], traits: [...(rules.traits ?? [])] };
+  return {
+    ...rules,
+    colors: [...rules.colors],
+    traits: [...(rules.traits ?? [])],
+    ...(rules.pips ? { pips: { ...rules.pips } } : {}),
+    ...(rules.produces ? { produces: [...rules.produces] } : {}),
+  };
+}
+
+/** Magic's saved mana symbols and land colours, when present and sane. */
+function parseManaFacts(rules: Record<string, unknown>): Pick<CardRulesInfo, "pips" | "produces"> {
+  const out: Pick<CardRulesInfo, "pips" | "produces"> = {};
+  if (rules.pips && typeof rules.pips === "object" && !Array.isArray(rules.pips)) {
+    const pips: Record<string, number> = {};
+    for (const [colour, n] of Object.entries(rules.pips as Record<string, unknown>)) {
+      if (/^[WUBRG]$/.test(colour) && typeof n === "number" && n > 0 && n <= 20) pips[colour] = n;
+    }
+    out.pips = pips;
+  }
+  if (Array.isArray(rules.produces)) {
+    out.produces = rules.produces.filter((m): m is string => typeof m === "string" && /^[WUBRGC]$/.test(m));
+  }
+  return out;
 }
 
 function text(value: unknown, max: number): string | null {
@@ -68,6 +90,7 @@ function parseDeckCard(raw: unknown): DeckCard | null {
             .map((t) => t.toLowerCase())
             .slice(0, 10)
         : [],
+      ...parseManaFacts(rules),
     },
   };
 }
