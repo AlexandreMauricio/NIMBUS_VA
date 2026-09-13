@@ -17,8 +17,11 @@ export {
 } from "./catalogs/details";
 export * from "./books/types";
 export { BookService, parseBook } from "./books/bookService";
-export { GcdCatalog } from "./books/gcd";
-export { computeCoverage } from "./books/coverage";
+export { GcdCatalog, mapGcdIssueDetail, pickIssue, creditNames } from "./books/gcd";
+export type { GcdIssueDetail } from "./books/gcd";
+export { computeCoverage, bookLabel } from "./books/coverage";
+export { bookIssues, bookOverlap, groupShelf, shelfName, shelfStats } from "./books/shelf";
+export { coverUrlForIsbn, isCoverUrl } from "./books/bookService";
 export { parseRuns, formatRuns } from "./books/runs";
 export * from "./decks/types";
 export { DeckService, parseDeck } from "./decks/deckService";

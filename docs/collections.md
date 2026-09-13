@@ -82,6 +82,29 @@ couldn't read instead of guessing
 ([runs.ts](../src/collections/books/runs.ts), the same parser the main
 process saves with).
 
+**Pages.** Books opens on the **shelf** — Shelf, Reading, Wishlist and
+Stats — with books grouped by series: "Thor Epic Collection", "Thor by
+Jason Aaron Omnibus" and "Marvel Masterworks: The Mighty Thor" all sit
+under **Thor** ([shelf.ts](../src/collections/books/shelf.ts)); a book's
+_Shelf group_ field overrides that. A series opens its books, each with
+what it collects and how much of it you already have elsewhere. A book
+opens the issues it collects, each marked owned once, owned 2× (and where
+else), or not owned. An issue opens its own page, looked up on GCD by
+series, year and number: the story, credits merged per person, and
+characters — plus links to League of Comic Geeks and the GCD page. The
+page names what to look up; the main process builds the link, for those
+two sites only. An issue without a year in its run is only found when
+GCD's first page of results holds that exact series name.
+
+**Reading progress** is a percentage per book; anything between 0 and 100
+is on the Reading page. **Novels** are a third kind, typed in by hand.
+
+**Covers** come from Open Library's cover service by ISBN, looked for
+once a session per book with an ISBN, a second apart. GCD's own cover
+images refuse anything but a person's browser (checked with curl and
+with Electron's own network stack — both 403), so single issues show a
+placeholder; League of Comic Geeks has their covers.
+
 The shelf is `books.json`, validated book by book on load.
 
 ## Card pages

@@ -18,6 +18,26 @@ Dates are the day the work landed.
 
 ---
 
+## 0.5.7 — 2026-09-13
+
+- **Books, redesigned** from the Claude Design mockups — four pages deep:
+  - **Shelf** with Shelf, Reading, Wishlist and Stats. Books are grouped
+    by series ("Thor" holds the Epic Collections, the Omnibus and the
+    Masterworks), with covers, reading progress and filters.
+  - **Series**: its books, what each collects, and how much you already
+    have — "You have 11 of 16 issues" for a wishlist book.
+  - **Book**: every issue it collects, marked owned once, owned 2× (and
+    in which other book), or not owned; reading progress; edit, move to
+    wishlist, remove.
+  - **Issue**: from the Grand Comics Database — the story, credits
+    merged per person (Walter Simonson: writer, penciler, inker, cover),
+    and characters — with links to **League of Comic Geeks** and the GCD
+    page, built in the main process for those two sites only.
+- **Novels** as a third kind, **reading progress** per book, an
+  **author** and a **shelf group** override.
+- **Covers** from Open Library by ISBN. GCD's own cover images only load
+  in a person's browser, so single issues show a placeholder.
+
 ## 0.5.6 — 2026-09-13
 
 - **Promote what was counted.** Routines → Activities lists what NIMBUS

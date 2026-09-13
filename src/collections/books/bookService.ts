@@ -43,7 +43,7 @@ export function parseBook(raw: unknown): Book | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== "string" || !r.id) return null;
-  if (r.kind !== "comic" && r.kind !== "manga") return null;
+  if (r.kind !== "comic" && r.kind !== "manga" && r.kind !== "novel") return null;
   const title = text(r.title, 200);
   if (!title) return null;
   if (!BOOK_FORMATS.includes(r.format as BookFormat)) return null;
@@ -61,9 +61,38 @@ export function parseBook(raw: unknown): Book | null {
     runs: runs.map((run) => ({ ...run, series: run.series.trim() })),
     notes: text(r.notes, 1000),
     source: text(r.source, 50),
+    author: text(r.author, 100),
+    shelf: text(r.shelf, 100),
+    progress: readProgress(r.progress),
+    coverUrl: isCoverUrl(r.coverUrl) ? r.coverUrl : null,
     addedAt: typeof r.addedAt === "string" ? r.addedAt : new Date(0).toISOString(),
     updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : new Date(0).toISOString(),
   };
+}
+
+function readProgress(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(100, Math.max(0, Math.round(value)))
+    : null;
+}
+
+/**
+ * Covers come from Open Library's cover service, by ISBN, and nowhere else.
+ * (GCD's own cover images refuse anything but a person's browser.)
+ */
+export function isCoverUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^https:\/\/covers\.openlibrary\.org\/b\/isbn\/[0-9X]{10,13}-M\.jpg$/.test(value)
+  );
+}
+
+/** The Open Library cover address for an ISBN, or null if it isn't one. */
+export function coverUrlForIsbn(isbn: string | null): string | null {
+  const digits = (isbn ?? "").replace(/[^0-9Xx]/g, "").toUpperCase();
+  return /^(?:\d{9}[\dX]|\d{13})$/.test(digits)
+    ? `https://covers.openlibrary.org/b/isbn/${digits}-M.jpg`
+    : null;
 }
 
 export interface BookFilter {
@@ -155,9 +184,14 @@ export class BookService {
       .filter(
         (book) =>
           !needle ||
-          [book.title, book.volume ?? "", book.publisher ?? "", ...book.runs.map((run) => run.series)].some(
-            (field) => field.toLowerCase().includes(needle)
-          )
+          [
+            book.title,
+            book.volume ?? "",
+            book.publisher ?? "",
+            book.author ?? "",
+            book.shelf ?? "",
+            ...book.runs.map((run) => run.series),
+          ].some((field) => field.toLowerCase().includes(needle))
       )
       .sort(
         (a, b) =>
@@ -165,6 +199,20 @@ export class BookService {
           (a.volume ?? "").localeCompare(b.volume ?? "", undefined, { numeric: true })
       )
       .map((book) => ({ ...book, runs: book.runs.map((run) => ({ ...run })) }));
+  }
+
+  get(id: string): Book {
+    const book = this.books.find((b) => b.id === id);
+    if (!book) throw new Error("That book is no longer on the shelf.");
+    return { ...book, runs: book.runs.map((run) => ({ ...run })) };
+  }
+
+  /** The cover the main process found. Not part of the form: only an Open Library cover address is kept. */
+  setCover(id: string, coverUrl: string | null): void {
+    const book = this.books.find((b) => b.id === id);
+    if (!book || (coverUrl !== null && !isCoverUrl(coverUrl)) || book.coverUrl === coverUrl) return;
+    book.coverUrl = coverUrl;
+    this.save();
   }
 
   coverage(): SeriesCoverage[] {
@@ -181,14 +229,15 @@ export class BookService {
     const has = (key: string) => key in i;
 
     const kind = has("kind") ? i.kind : (current?.kind ?? "comic");
-    if (kind !== "comic" && kind !== "manga") throw new Error("A book is a comic or a manga.");
+    if (kind !== "comic" && kind !== "manga" && kind !== "novel")
+      throw new Error("A book is a comic, a manga or a novel.");
 
     const title = has("title") ? text(i.title, 200) : (current?.title ?? null);
     if (!title) throw new Error("A book needs a title.");
 
     const format = has("format")
       ? i.format
-      : (current?.format ?? (kind === "manga" ? "Manga volume" : "Other"));
+      : (current?.format ?? (kind === "manga" ? "Manga volume" : kind === "novel" ? "Novel" : "Other"));
     if (!BOOK_FORMATS.includes(format as BookFormat)) throw new Error("Choose a format.");
 
     const status = has("status") ? i.status : (current?.status ?? "owned");
@@ -205,6 +254,8 @@ export class BookService {
 
     const isbn = has("isbn") ? text(i.isbn, 20) : (current?.isbn ?? null);
     if (isbn && !/^[0-9Xx-]{10,17}$/.test(isbn)) throw new Error("That ISBN doesn't look right.");
+    if (has("progress") && i.progress !== null && i.progress !== "" && !Number.isFinite(Number(i.progress)))
+      throw new Error("Reading progress is a percentage.");
 
     return {
       fields: {
@@ -218,6 +269,15 @@ export class BookService {
         runs,
         notes: has("notes") ? text(i.notes, 1000) : (current?.notes ?? null),
         source: has("source") ? text(i.source, 50) : (current?.source ?? null),
+        author: has("author") ? text(i.author, 100) : (current?.author ?? null),
+        shelf: has("shelf") ? text(i.shelf, 100) : (current?.shelf ?? null),
+        progress: has("progress")
+          ? i.progress === null || i.progress === ""
+            ? null
+            : readProgress(Number(i.progress))
+          : (current?.progress ?? null),
+        // A different ISBN means a different cover — looked for again later.
+        coverUrl: has("isbn") && isbn !== current?.isbn ? null : (current?.coverUrl ?? null),
       },
       unread,
     };

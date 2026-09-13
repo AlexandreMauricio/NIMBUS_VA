@@ -24,6 +24,10 @@ function book(
     runs: parseRuns(runs).runs,
     notes: null,
     source: null,
+    author: null,
+    shelf: null,
+    progress: null,
+    coverUrl: null,
     addedAt: "2026-09-13T10:00:00Z",
     updatedAt: "2026-09-13T10:00:00Z",
   };

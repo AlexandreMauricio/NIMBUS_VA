@@ -56,7 +56,7 @@ export function bookLabel(book: Pick<Book, "title" | "volume">): string {
  * one year for that name — "Thor #131" beside "Thor (1966) #126" is the
  * 1966 series. With none or several, the run stays yearless.
  */
-function resolveYears(books: Book[]): Map<string, number | null> {
+export function resolveYears(books: Book[]): Map<string, number | null> {
   const years = new Map<string, Set<number>>();
   for (const book of books) {
     for (const run of book.runs) {

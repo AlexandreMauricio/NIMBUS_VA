@@ -186,7 +186,7 @@ test("malformed saved books and runs are dropped, not half-used", () => {
           { series: "", year: null, from: 1, to: 1, partial: false },
         ],
       },
-      { id: "bad-kind", kind: "novel", title: "X", format: "Other", status: "owned", runs: [] },
+      { id: "bad-kind", kind: "scroll", title: "X", format: "Other", status: "owned", runs: [] },
       { id: "bad-format", kind: "comic", title: "X", format: "Scroll", status: "owned", runs: [] },
     ],
   });

@@ -77,6 +77,8 @@ import {
   DeckService,
   DeckZone,
   GcdCatalog,
+  coverUrlForIsbn,
+  isCoverUrl,
   TCG_GAMES,
   checkDeck,
   compareWithCollection,
@@ -812,13 +814,39 @@ function registerIpcHandlers(): void {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
     return {
       books: bookService.list({
-        kind: f.kind === "comic" || f.kind === "manga" ? f.kind : undefined,
+        kind: f.kind === "comic" || f.kind === "manga" || f.kind === "novel" ? f.kind : undefined,
         status: f.status === "owned" || f.status === "wishlist" ? f.status : undefined,
         text: typeof f.text === "string" ? f.text.slice(0, 100) : undefined,
       }),
       coverage: bookService.coverage(),
       formats: BOOK_FORMATS,
     };
+  });
+  // A single issue's page, from GCD — the series name, year and number only.
+  ipcMain.handle("nimbus:get-comic-issue", (_event, series: unknown, year: unknown, number: unknown) =>
+    gcdCatalog.findIssue(series, year, number)
+  );
+  // Links out to the two comic databases. The page names what to look up;
+  // the address is built here, for these two sites only, so the renderer
+  // can never open an address of its choosing.
+  ipcMain.handle("nimbus:open-comic-link", async (_event, site: unknown, lookup: unknown) => {
+    const l = lookup && typeof lookup === "object" ? (lookup as Record<string, unknown>) : {};
+    const words = typeof l.text === "string" ? l.text.replace(/\s+/g, " ").trim().slice(0, 150) : "";
+    const gcdId =
+      typeof l.gcdIssueId === "number" && Number.isInteger(l.gcdIssueId) && l.gcdIssueId > 0
+        ? l.gcdIssueId
+        : null;
+    let url: string | null = null;
+    if (site === "locg" && words) {
+      url = `https://leagueofcomicgeeks.com/search?keyword=${encodeURIComponent(words)}`;
+    } else if (site === "gcd" && gcdId) {
+      url = `https://www.comics.org/issue/${gcdId}/`;
+    } else if (site === "gcd" && words) {
+      url = `https://www.comics.org/searchNew/?q=${encodeURIComponent(words)}&search_object=issue`;
+    }
+    if (!url) throw new Error("Nothing to look up.");
+    await shell.openExternal(url);
+    return true;
   });
   ipcMain.handle("nimbus:search-comic-series", (_event, name: unknown) => gcdCatalog.searchSeries(name));
   ipcMain.handle("nimbus:get-comic-volume", (_event, issueId: unknown) => gcdCatalog.getVolume(issueId));
@@ -1357,6 +1385,42 @@ function openActivityEditor(
   else send();
 }
 
+/**
+ * Covers, from Open Library's cover service by ISBN: each book with an ISBN
+ * and no cover yet is looked for once a session, one at a time, a second
+ * apart. "?default=false" makes a missing cover a 404 instead of a blank
+ * image; only the ISBN is sent.
+ */
+const coverAttempted = new Set<string>();
+let fillingCovers = false;
+async function fillBookCovers(): Promise<void> {
+  if (fillingCovers || !bookService || !gcdCatalog) return;
+  fillingCovers = true;
+  try {
+    for (;;) {
+      const next = bookService
+        .list()
+        .find((book) => !book.coverUrl && coverUrlForIsbn(book.isbn) && !coverAttempted.has(book.id));
+      if (!next) break;
+      coverAttempted.add(next.id);
+      const url = coverUrlForIsbn(next.isbn)!;
+      try {
+        const response = await fetch(`${url}?default=false`, {
+          method: "HEAD",
+          headers: { "User-Agent": "NIMBUS (personal desktop assistant; book covers)" },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.ok && isCoverUrl(url)) bookService.setCover(next.id, url);
+      } catch (err) {
+        logger.debug("No cover for a book", { error: String(err) });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  } finally {
+    fillingCovers = false;
+  }
+}
+
 export function startApp(): void {
   settings = loadSettings();
   registerIpcHandlers();
@@ -1468,7 +1532,9 @@ export function startApp(): void {
   gcdCatalog = new GcdCatalog();
   bookService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
+    void fillBookCovers();
   });
+  void fillBookCovers();
   collectionService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:collection-changed");
   });

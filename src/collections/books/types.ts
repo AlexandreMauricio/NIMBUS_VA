@@ -12,7 +12,7 @@
  * owned, and the next one to buy is simply the first gap.
  */
 
-export type BookKind = "comic" | "manga";
+export type BookKind = "comic" | "manga" | "novel";
 
 export const BOOK_FORMATS = [
   "Epic Collection",
@@ -21,6 +21,7 @@ export const BOOK_FORMATS = [
   "Trade paperback",
   "Hardcover",
   "Manga volume",
+  "Novel",
   "Other",
 ] as const;
 export type BookFormat = (typeof BOOK_FORMATS)[number];
@@ -54,6 +55,18 @@ export interface Book {
   notes: string | null;
   /** Where the details came from, e.g. "gcd:1205407", or null if typed in. */
   source: string | null;
+  /** The writer or mangaka — shown for manga and novels. */
+  author: string | null;
+  /**
+   * Which shelf group it sits in ("Thor"). Null means worked out from the
+   * title — "Thor Epic Collection" and "Thor by Jason Aaron Omnibus" both
+   * land on "Thor" (see shelf.ts).
+   */
+  shelf: string | null;
+  /** How far you've read, 0–100, or null if you haven't said. */
+  progress: number | null;
+  /** The cover, from Open Library by ISBN only — set by the main process, never typed in. */
+  coverUrl: string | null;
   addedAt: string;
   updatedAt: string;
 }

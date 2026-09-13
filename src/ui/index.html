@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' https://*.scdn.co https://*.spotifycdn.com https://cards.scryfall.io https://assets.tcgdex.net https://images.ygoprodeck.com https://cards.lorcast.io https://optcgapi.com"
+      content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' https://*.scdn.co https://*.spotifycdn.com https://cards.scryfall.io https://assets.tcgdex.net https://images.ygoprodeck.com https://cards.lorcast.io https://optcgapi.com https://covers.openlibrary.org https://archive.org https://*.archive.org"
     />
     <title>NIMBUS</title>
     <link rel="stylesheet" href="nocturne.css" />
@@ -793,19 +793,70 @@
         </section>
 
         <section id="tab-books" class="panel">
-          <div class="panel-header">
-            <div>
-              <h6 class="kicker">Books</h6>
-              <p class="panel-subtitle">Comics collected editions and manga</p>
+          <!-- The shelf: Shelf / Reading / Wishlist / Stats. -->
+          <div id="booksShelfView">
+            <h6 class="kicker books-kicker">Books</h6>
+            <h2 class="books-heading">Comics, manga &amp; novels</h2>
+            <p class="card-body books-intro">
+              Collected editions, manga volumes and novels — and what they add up to: which issues you have
+              once, twice, or not at all. Details and covers come from the Grand Comics Database; only a
+              series name, year or issue number is ever sent.
+            </p>
+            <div class="books-tabs" role="tablist">
+              <button class="books-tab active" data-books-pane="shelf" type="button">Shelf</button>
+              <button class="books-tab" data-books-pane="reading" type="button">Reading</button>
+              <button class="books-tab" data-books-pane="wishlist" type="button">Wishlist</button>
+              <button class="books-tab" data-books-pane="stats" type="button">Stats</button>
+            </div>
+            <p class="form-error" id="bookError" role="alert" hidden></p>
+
+            <div id="booksPaneShelf">
+              <div class="books-filters">
+                <input
+                  type="search"
+                  id="bookFilterText"
+                  class="input"
+                  placeholder="Filter by title or series"
+                  maxlength="100"
+                />
+                <select id="bookFilterKind" class="select" title="Kind">
+                  <option value="">All types</option>
+                  <option value="comic">Comics</option>
+                  <option value="manga">Manga</option>
+                  <option value="novel">Novels</option>
+                </select>
+                <select id="bookFilterStatus" class="select" title="Status">
+                  <option value="">Owned and wishlist</option>
+                  <option value="owned">Owned only</option>
+                  <option value="wishlist">Wishlist only</option>
+                </select>
+                <button class="btn btn-primary books-add" id="bookAddBtn" type="button">+ Add book</button>
+              </div>
+              <div id="bookGrid" class="books-grid"></div>
+              <p class="feed-empty" id="bookEmpty" hidden>No books yet — "+ Add book" to start your shelf.</p>
+            </div>
+            <div id="booksPaneReading" hidden>
+              <div id="bookReadingList" class="books-rows"></div>
+            </div>
+            <div id="booksPaneWishlist" hidden>
+              <div id="bookWishlistList" class="books-rows"></div>
+            </div>
+            <div id="booksPaneStats" hidden>
+              <div id="bookStats"></div>
+              <h6 class="kicker collection-heading">Coverage by series</h6>
+              <div id="bookCoverage"></div>
+              <p class="feed-empty" id="bookCoverageEmpty" hidden>
+                Add books with what they collect to see what your shelf covers.
+              </p>
             </div>
           </div>
-          <div id="collectionBooksView">
-            <p class="setting-note">
-              Comics collected editions and manga volumes — and what they add up to: which issues you have
-              once, twice, or not at all. Look a volume up in the Grand Comics Database to fill in its details
-              (it often lists what an Epic Collection or Masterworks collects, less often an omnibus), or add
-              it by hand. Only the series name is sent to GCD.
-            </p>
+
+          <!-- A series, a book, or a single issue — drawn by booksTab.ts. -->
+          <div id="booksDetailView" class="books-page" hidden></div>
+
+          <!-- Adding or editing a book. -->
+          <div id="booksAddView" class="books-page" hidden>
+            <button class="books-back" id="bookAddBackBtn" type="button">&larr; Back to books</button>
             <div class="collection-search">
               <input
                 type="search"
@@ -830,6 +881,7 @@
                   <select id="bookKind" class="select">
                     <option value="comic">Comic</option>
                     <option value="manga">Manga</option>
+                    <option value="novel">Novel</option>
                   </select>
                 </label>
                 <label class="network-field">
@@ -858,6 +910,38 @@
                     class="input"
                     maxlength="100"
                     placeholder="Marvel, Devir"
+                  />
+                </label>
+                <label class="network-field">
+                  Author
+                  <input
+                    type="text"
+                    id="bookAuthor"
+                    class="input"
+                    maxlength="100"
+                    placeholder="Writer, mangaka or novelist"
+                  />
+                </label>
+                <label class="network-field">
+                  Shelf group
+                  <input
+                    type="text"
+                    id="bookShelf"
+                    class="input"
+                    maxlength="100"
+                    placeholder="From the title"
+                  />
+                </label>
+                <label class="network-field">
+                  Read (%)
+                  <input
+                    type="number"
+                    id="bookProgress"
+                    class="input"
+                    min="0"
+                    max="100"
+                    step="5"
+                    placeholder="—"
                   />
                 </label>
                 <label class="network-field">
@@ -892,36 +976,6 @@
                 <button class="btn btn-ghost" id="bookCancelBtn" type="button">Cancel</button>
               </div>
             </div>
-
-            <h6 class="kicker collection-heading">Coverage</h6>
-            <div id="bookCoverage"></div>
-            <p class="feed-empty" id="bookCoverageEmpty" hidden>
-              Add books with what they collect to see what your shelf covers.
-            </p>
-
-            <h6 class="kicker collection-heading">My books</h6>
-            <div class="collection-filters">
-              <select id="bookFilterKind" class="select" title="Kind">
-                <option value="">Comics and manga</option>
-                <option value="comic">Comics</option>
-                <option value="manga">Manga</option>
-              </select>
-              <select id="bookFilterStatus" class="select" title="Status">
-                <option value="">Owned and wishlist</option>
-                <option value="owned">Owned</option>
-                <option value="wishlist">Wishlist</option>
-              </select>
-              <input
-                type="search"
-                id="bookFilterText"
-                class="input"
-                placeholder="Filter by title or series"
-                maxlength="100"
-              />
-            </div>
-            <p class="form-error" id="bookError" role="alert" hidden></p>
-            <div id="bookList"></div>
-            <p class="feed-empty" id="bookEmpty" hidden>No books yet.</p>
           </div>
         </section>
 
