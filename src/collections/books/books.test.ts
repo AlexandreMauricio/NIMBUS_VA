@@ -213,3 +213,19 @@ test("a GCD series search drops a trailing volume number — GCD names never inc
   assert.ok(urls[0].includes("/name/Master%20of%20the%20Mystic%20Arts%20Omnibus/"));
   assert.ok(urls[1].includes("/name/Thor%20Epic%20Collection/"));
 });
+
+test('GCD saying "too many requests" is told apart from GCD being down', async () => {
+  const { catalogRetry } = await import("../catalogs/http");
+  const original = catalogRetry.sleep;
+  catalogRetry.sleep = async () => {};
+  try {
+    const busy = new GcdCatalog(
+      async () => new Response("", { status: 429 }),
+      Date.now,
+      async () => {}
+    );
+    await assert.rejects(() => busy.searchSeries("Thor"), /asking for a pause/);
+  } finally {
+    catalogRetry.sleep = original;
+  }
+});

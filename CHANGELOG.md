@@ -33,6 +33,7 @@ Dates are the day the work landed.
 - **Printings aren't counted as volumes**: a series with "1" and
   "1 [Direct]" reads "1 volume (2 printings)", and the direct-market one
   says so.
+- **GCD asking for a pause says so**, instead of "couldn't be reached".
 - **Runs read Wikipedia's style**: "Strange Tales #110–111, 114–146",
   "Doctor Strange (vol. 2) #53" as its own series, and everything after
   "material from" marked partial.

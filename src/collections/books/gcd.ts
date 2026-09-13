@@ -313,6 +313,11 @@ export class GcdCatalog {
       value = await getCatalogJson(url, this.fetchFn);
     } catch (err) {
       logger.warn("GCD request failed", { error: String(err) });
+      if (/429/.test(String(err))) {
+        throw new Error(
+          "The Grand Comics Database is asking for a pause — too many lookups. Try again in a few minutes."
+        );
+      }
       throw new Error("The Grand Comics Database couldn't be reached. Try again in a moment.");
     }
     this.cache.set(url, { at: this.now(), value });
