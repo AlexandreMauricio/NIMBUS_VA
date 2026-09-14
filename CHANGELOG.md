@@ -18,6 +18,14 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.3 — 2026-09-14
+
+- **Releases publish straight away.** `npm run release` now publishes the
+  GitHub release instead of leaving a draft, so installed copies see an
+  update as soon as it's uploaded.
+
+---
+
 ## 0.6.2 — 2026-09-14
 
 - **Characters and creators: GCD's or yours, per issue.** An issue's page

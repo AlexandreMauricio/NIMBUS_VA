@@ -370,8 +370,8 @@ npm run release
 ```
 
 with a GitHub token (`GH_TOKEN`, repo scope) in the environment — it
-builds the installer and uploads it with `latest.yml` to a draft release;
-publish the draft on GitHub to make it available. Updating needs the
+builds the installer and publishes it with `latest.yml` as a GitHub
+release straight away (`releaseType: "release"` in `build.publish`). Updating needs the
 releases to be readable without signing in, so the repository (or a
 separate releases repository set in `build.publish`) must be public.
 Running a newer installer by hand still works too.

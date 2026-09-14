@@ -1,6 +1,6 @@
 {
   "name": "nimbus",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "NIMBUS - Navigation & Intelligent Monitoring Base for User Systems. Personal desktop assistant foundation.",
   "main": "dist/main/main.js",
   "private": true,
@@ -76,7 +76,8 @@
       {
         "provider": "github",
         "owner": "AlexandreMauricio",
-        "repo": "NIMBUS_VA"
+        "repo": "NIMBUS_VA",
+        "releaseType": "release"
       }
     ]
   }
