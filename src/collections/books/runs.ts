@@ -39,7 +39,10 @@ function splitTopLevel(text: string): Array<{ text: string; continues: boolean }
       push(ch === ",");
       continue;
     }
-    if (depth === 0 && text.slice(i, i + 5).toLowerCase() === " and ") {
+    // "Journey into Mystery #83-109 and Tales of Asgard #1" is two runs, but
+    // "Iron Man and Sub-Mariner #1", "Ant-Man and the Wasp #1" and "Cloak and
+    // Dagger #1" are series names: " and " only splits after an issue number.
+    if (depth === 0 && text.slice(i, i + 5).toLowerCase() === " and " && /\d\s*$/.test(current)) {
       push(true);
       i += 4;
       continue;

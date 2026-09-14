@@ -4289,17 +4289,31 @@ details.context-card > summary .context-card-title {
 }
 
 .reading-top {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(3rem, 1fr) max-content;
+  align-items: center;
+  gap: 0.45rem var(--space-2);
+  align-content: start;
 }
 
+.reading-top > .card-kicker,
+.reading-top > p {
+  grid-column: 1 / -1;
+}
+
+/* The rows' cells sit in the card's grid, so columns line up across rows. */
 .reading-top-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(3rem, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
+  display: contents;
   font-size: 0.82rem;
+}
+
+.reading-top-row > * {
+  font-size: 0.82rem;
+}
+
+.reading-top-row > .books-small {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .reading-top-name {

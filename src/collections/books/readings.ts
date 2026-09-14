@@ -101,18 +101,47 @@ const ARTIST_ROLES = /^(penciler|inker|artist)$/i;
  * (first appearance)": aliases in brackets, notes in parentheses, and
  * sometimes a group label before a colon.
  */
+/**
+ * A name as GCD wrote it, without its notes: aliases in brackets (nested
+ * ones too — "Wasp [Janet van Dyne [Pym]]"), notes in parentheses, a stray
+ * bracket left by a note split across ";", and the "?" GCD puts after an
+ * uncertain credit ("Larry Lieber ?").
+ */
+export function cleanPersonName(value: string): string {
+  let name = value;
+  for (let i = 0; i < 4; i++) {
+    const next = name.replace(/\[[^[\]]*\]/g, "").replace(/\([^()]*\)/g, "");
+    if (next === name) break;
+    name = next;
+  }
+  return name
+    .replace(/[[\]()]/g, "")
+    .replace(/(^|\s)\?+(?=\s|$)/g, " ")
+    .replace(/\?+$/, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, "")
+    .trim();
+}
+
 export function characterNames(value: string | null): string[] {
   if (!value) return [];
-  const names = value
-    .split(/[;\n]/)
-    .map((part) =>
-      part
-        .replace(/^[^:[\]()]{1,30}:\s*/, "")
-        .replace(/\[[^\]]*\]/g, "")
-        .replace(/\((?:[^()]|\([^()]*\))*\)/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-    )
+  // Split on ";" only outside brackets: "Wasp [Janet van Dyne; Pym]" is one character.
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of value) {
+    if (ch === "[" || ch === "(") depth++;
+    if ((ch === "]" || ch === ")") && depth > 0) depth--;
+    if (depth === 0 && (ch === ";" || ch === "\n")) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  const names = parts
+    .map((part) => cleanPersonName(part.replace(/^[^:[\]()]{1,30}:\s*/, "")))
     .filter((name) => name.length > 1 && name.length <= 80 && !/^(none|\?|various|unknown)$/i.test(name));
   return [...new Set(names)];
 }
@@ -157,7 +186,9 @@ export interface ReadingStats {
 }
 
 /** Adds a reading's time to a name — matched by personKey, shown in the first spelling seen. */
-function tally(map: Map<string, TimeLine>, name: string, minutes: number): void {
+function tally(map: Map<string, TimeLine>, raw: string, minutes: number, isPerson = true): void {
+  // Names kept before cleanPersonName existed may still carry GCD's notes.
+  const name = isPerson ? cleanPersonName(raw) || raw : raw;
   const key = personKey(name) || name;
   const line = map.get(key) ?? { name, minutes: 0, readings: 0 };
   line.minutes += minutes;
@@ -196,11 +227,13 @@ export function readingStats(
     if (r.readOn && r.readOn.startsWith(month)) thisMonth += r.minutes;
     if (r.readOn && r.readOn.startsWith(year)) thisYear += r.minutes;
     perIssue.set(r.key, (perIssue.get(r.key) ?? 0) + 1);
-    tally(series, r.year ? `${r.series} (${r.year})` : r.series, r.minutes);
+    tally(series, r.year ? `${r.series} (${r.year})` : r.series, r.minutes, false);
     const c = credits[r.key];
     if (!c) continue;
     // One person twice on an issue (pencils and inks, "Venom" and "venom") counts once.
-    const once = (names: string[]) => [...new Map(names.map((n) => [personKey(n) || n, n])).values()];
+    const once = (names: string[]) => [
+      ...new Map(names.map((n) => [personKey(cleanPersonName(n)) || n, n])).values(),
+    ];
     for (const name of once(c.characters)) tally(characters, name, r.minutes);
     for (const name of once(c.writers)) tally(writers, name, r.minutes);
     for (const name of once(c.artists)) tally(artists, name, r.minutes);

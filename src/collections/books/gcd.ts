@@ -1,4 +1,5 @@
 import { logger } from "../../logging/logger";
+import { cleanPersonName } from "./readings";
 import {
   FetchLike,
   RateLimitedError,
@@ -86,12 +87,7 @@ export function creditNames(value: unknown): string[] {
   if (!raw) return [];
   return raw
     .split(";")
-    .map((part) =>
-      part
-        .replace(/\s*\((?:[^()]|\([^()]*\))*\)/g, "")
-        .replace(/\[[^\]]*\]/g, "")
-        .trim()
-    )
+    .map((part) => cleanPersonName(part))
     .filter((name) => name && !/^(?:none|\?|typeset|various)$/i.test(name));
 }
 

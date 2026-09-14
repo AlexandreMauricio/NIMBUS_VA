@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BookService, issueReadKey } from "./bookService";
 import { BookState } from "./types";
-import { characterNames, creditsFromGcd, formatReadingTime, readingStats } from "./readings";
+import { characterNames, cleanPersonName, creditsFromGcd, formatReadingTime, readingStats } from "./readings";
 
 function service(saved?: unknown) {
   const saves: BookState[] = [];
@@ -162,4 +162,14 @@ test("reading time reads as hours and minutes", () => {
   assert.equal(formatReadingTime(45), "45 min");
   assert.equal(formatReadingTime(120), "2 h");
   assert.equal(formatReadingTime(200), "3 h 20 min");
+});
+
+test("GCD names lose nested aliases, split notes and the uncertain-credit question mark", () => {
+  assert.deepEqual(
+    characterNames("Avengers: Thor; Wasp [Janet van Dyne; Pym]; Giant-Man (Hank Pym; scientist); Loki ?"),
+    ["Thor", "Wasp", "Giant-Man", "Loki"]
+  );
+  assert.equal(cleanPersonName("Larry Lieber ?"), "Larry Lieber");
+  assert.equal(cleanPersonName("Wasp ]"), "Wasp");
+  assert.equal(cleanPersonName("J. P. Mayer"), "J. P. Mayer");
 });

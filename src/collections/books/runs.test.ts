@@ -112,3 +112,17 @@ test("Wikipedia's style: continued number lists, volumes, and material from seve
   assert.equal(parseRuns("Thor #5; material from Thor #1; Hulk #2").runs[2].partial, true);
   assert.equal(parseRuns("Thor #5; material from Thor #1; Hulk #2").runs[0].partial, false);
 });
+
+test("' and ' inside a series name doesn't split it; after an issue number it does", () => {
+  const read = (text: string) => formatRuns(parseRuns(text).runs);
+  assert.equal(
+    read("Tales of Suspense #73-99, Iron Man and Sub-Mariner #1, Iron Man #1-11"),
+    "Tales of Suspense #73-99; Iron Man and Sub-Mariner #1; Iron Man #1-11"
+  );
+  assert.equal(read("Ant-Man and the Wasp #1-5"), "Ant-Man and the Wasp #1-5");
+  assert.equal(read("Cloak and Dagger (1983) #1-4"), "Cloak and Dagger (1983) #1-4");
+  assert.equal(
+    read("Journey into Mystery #83-109 and Tales of Asgard #1"),
+    "Journey into Mystery #83-109; Tales of Asgard #1"
+  );
+});

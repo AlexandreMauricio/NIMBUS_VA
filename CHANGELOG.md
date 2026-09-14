@@ -18,6 +18,22 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.1 — 2026-09-14
+
+- **Fixed: some book contents wouldn't save.** A series with "and" in
+  its name — "Iron Man and Sub-Mariner #1", "Ant-Man and the Wasp",
+  "Cloak and Dagger" — was cut to the part after "and", so saving
+  "What it collects" kept giving back the same wrong line. " and " now
+  only separates runs after an issue number ("#83-109 and Tales of
+  Asgard #1"). Open affected books and save their contents again.
+- **Reading time bars line up.** Each list is one grid now, so every bar
+  starts and ends in the same place whatever the name's length.
+- **Cleaner names from GCD**: no more "Wasp ]" or "Larry Lieber ?" — nested
+  aliases, notes split across ";" and the "?" of an uncertain credit are
+  removed, including in names already kept.
+
+---
+
 ## 0.6.0 — 2026-09-14
 
 The milestone since 0.5.0: the collections grew up — comics you can read,
