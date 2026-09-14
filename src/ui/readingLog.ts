@@ -17,7 +17,11 @@ import {
 
 export interface ReadingLogView {
   readings: IssueReading[];
+  /** What stats use: your names where chosen, GCD's otherwise. */
   credits: Record<string, IssueCredits>;
+  gcdCredits: Record<string, IssueCredits>;
+  customCredits: Record<string, Pick<IssueCredits, "characters" | "writers" | "artists">>;
+  useCustom: string[];
   minutesPerIssue: number;
   undated: UndatedRead[];
 }
@@ -37,12 +41,50 @@ interface ReadingBridge {
   ): Promise<number>;
   removeIssueReading(id: string): Promise<boolean>;
   setMinutesPerIssue(minutes: number): Promise<number>;
-  fillReadingCredits(count: number): Promise<{ filled: number; notFound: number; left: number }>;
+  getReadingCreditsState(): Promise<CreditsState>;
+  onReadingCreditsState(callback: (state: CreditsState) => void): () => void;
 }
 
 /** bookService.issueReadKey, without pulling the service into the page. */
 const issueReadKey = (series: string, year: number | null, number: number): string =>
   `${seriesKey(series, year)}#${number}`;
+
+interface CreditsState {
+  running: boolean;
+  left: number;
+  done: number;
+  pausedUntil: number | null;
+  problem: string | null;
+  gapSeconds: number;
+}
+
+/** The background lookups, in words: what's left, how long, and GCD's pause. */
+function showCreditsState(el: HTMLElement, state: CreditsState | null): void {
+  const left = state?.running ? state.left : Number(el.dataset.pending ?? 0);
+  const issues = `${left} issue${left === 1 ? "" : "s"}`;
+  if (!state || !state.running) {
+    el.textContent = left
+      ? `${issues} not looked up yet — NIMBUS looks them up on GCD by itself in the background.`
+      : "";
+    return;
+  }
+  const hours = (left * (state.gapSeconds + 1)) / 3600;
+  const eta =
+    hours < 1 ? "under an hour" : `about ${Math.round(hours)} hour${Math.round(hours) === 1 ? "" : "s"}`;
+  if (state.pausedUntil) {
+    const until = new Date(state.pausedUntil).toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    el.textContent = `Looking up characters and creators in the background: ${issues} to go. GCD asked for a pause — carrying on by itself at ${until}.`;
+  } else if (state.problem) {
+    el.textContent = `Looking up in the background: ${issues} to go. ${state.problem} Trying again in a couple of minutes.`;
+  } else {
+    el.textContent = `Looking up characters and creators in the background: ${issues} to go (${eta} at GCD's gentle pace, while NIMBUS is open).`;
+  }
+}
+
+let creditsSubscribed = false;
 
 function bridge(): ReadingBridge {
   return (window as unknown as { nimbus: ReadingBridge }).nimbus;
@@ -216,8 +258,19 @@ function timeList(title: string, lines: TimeLine[], empty: string): HTMLElement 
   return card;
 }
 
+function subscribeCreditsState(): void {
+  if (creditsSubscribed) return;
+  creditsSubscribed = true;
+  bridge().onReadingCreditsState((state) => {
+    document
+      .querySelectorAll<HTMLElement>(".reading-credits-status")
+      .forEach((el) => showCreditsState(el, state));
+  });
+}
+
 /** The Stats pane's reading section. */
-export function readingStatsSection(log: ReadingLogView, onChanged: () => void): HTMLElement {
+export function readingStatsSection(log: ReadingLogView): HTMLElement {
+  subscribeCreditsState();
   const stats = readingStats(
     log.readings,
     log.credits,
@@ -283,30 +336,14 @@ export function readingStatsSection(log: ReadingLogView, onChanged: () => void):
   if (!stats.readings && !stats.undated) return section;
 
   if (stats.withoutCredits > 0) {
-    const fill = make("div", "reading-estimate");
-    const status = make(
-      "span",
-      "books-small",
-      `${stats.withoutCredits} issue${stats.withoutCredits === 1 ? " hasn't" : "s haven't"} been looked up yet, so their characters and creators aren't counted.`
-    );
-    const go = button("Look them up on GCD", "btn btn-secondary", async () => {
-      go.disabled = true;
-      let done = 0;
-      try {
-        for (;;) {
-          const result = await bridge().fillReadingCredits(5);
-          done += result.filled + result.notFound;
-          status.textContent = `Looked up ${done} — ${result.left} to go (GCD asks for a second between lookups).`;
-          if (!result.left || !(result.filled + result.notFound)) break;
-        }
-        onChanged();
-      } catch (err) {
-        status.textContent = errorText(err);
-        go.disabled = false;
-      }
-    });
-    fill.append(status, go);
-    section.appendChild(fill);
+    const status = make("p", "books-small reading-credits-status");
+    status.dataset.pending = String(stats.withoutCredits);
+    section.appendChild(status);
+    showCreditsState(status, null);
+    void bridge()
+      .getReadingCreditsState()
+      .then((state) => showCreditsState(status, state))
+      .catch(() => undefined);
   }
 
   const grid = make("div", "reading-top-grid");

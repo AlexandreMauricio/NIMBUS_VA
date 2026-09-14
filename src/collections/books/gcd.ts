@@ -269,12 +269,24 @@ export function mapGcdIssue(json: unknown, issueId: number): GcdVolume {
   };
 }
 
+/** GCD asked for a pause; `retryAfterSeconds` is how long, when it said. */
+export class GcdPausedError extends Error {
+  constructor(readonly retryAfterSeconds: number | null) {
+    super(
+      `The Grand Comics Database is asking for a pause — too many lookups. Try again in ${waitText(retryAfterSeconds)}.`
+    );
+    this.name = "GcdPausedError";
+  }
+}
+
 const CACHE_MS = 24 * 60 * 60_000;
 const MIN_GAP_MS = 1000;
 
 export class GcdCatalog {
   private readonly cache = new Map<string, { at: number; value: unknown }>();
   private lastRequestAt = -Infinity;
+  /** While GCD's pause lasts, requests fail at once instead of lengthening it. */
+  private pausedUntil = -Infinity;
 
   constructor(
     private readonly fetchFn: FetchLike = fetch,
@@ -365,6 +377,9 @@ export class GcdCatalog {
   private async get(url: string): Promise<unknown> {
     const cached = this.cache.get(url);
     if (cached && this.now() - cached.at < CACHE_MS) return cached.value;
+    if (this.now() < this.pausedUntil) {
+      throw new GcdPausedError(Math.ceil((this.pausedUntil - this.now()) / 1000));
+    }
     const wait = MIN_GAP_MS - (this.now() - this.lastRequestAt);
     if (wait > 0) await this.sleep(wait);
     this.lastRequestAt = this.now();
@@ -374,9 +389,8 @@ export class GcdCatalog {
     } catch (err) {
       logger.warn("GCD request failed", { error: String(err) });
       if (err instanceof RateLimitedError) {
-        throw new Error(
-          `The Grand Comics Database is asking for a pause — too many lookups. Try again in ${waitText(err.retryAfterSeconds)}.`
-        );
+        this.pausedUntil = this.now() + (err.retryAfterSeconds ?? 30 * 60) * 1000;
+        throw new GcdPausedError(err.retryAfterSeconds);
       }
       throw new Error("The Grand Comics Database couldn't be reached. Try again in a moment.");
     }

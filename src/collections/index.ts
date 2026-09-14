@@ -17,7 +17,7 @@ export {
 } from "./catalogs/details";
 export * from "./books/types";
 export { BookService, parseBook } from "./books/bookService";
-export { GcdCatalog, mapGcdIssueDetail, pickIssue, creditNames } from "./books/gcd";
+export { GcdCatalog, GcdPausedError, mapGcdIssueDetail, pickIssue, creditNames } from "./books/gcd";
 export type { GcdIssueDetail } from "./books/gcd";
 export { computeCoverage, bookLabel } from "./books/coverage";
 export {
@@ -31,6 +31,8 @@ export {
 } from "./books/shelf";
 export { coverUrlForIsbn, isCoverUrl, isChosenCover, chosenCoverUrl } from "./books/covers";
 export { issueReadKey } from "./books/bookService";
+export { CreditsQueue } from "./books/creditsQueue";
+export type { CreditsQueueState } from "./books/creditsQueue";
 export {
   creditsFromGcd,
   characterNames,

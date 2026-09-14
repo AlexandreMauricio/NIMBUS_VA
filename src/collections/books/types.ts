@@ -67,6 +67,8 @@ export interface Book {
   shelf: string | null;
   /** How far you've read, 0–100, or null if you haven't said. */
   progress: number | null;
+  /** You stopped reading it: kept off Reading, and back with "Un-retire". */
+  retired: boolean;
   /** The cover, from Open Library by ISBN only — set by the main process, never typed in. */
   coverUrl: string | null;
   addedAt: string;
@@ -82,6 +84,9 @@ export interface BookState {
   readings?: IssueReading[];
   /** Characters and creators per issue, by issueReadKey, from GCD. */
   issueCredits?: Record<string, IssueCredits>;
+  /** Your own names per issue, and the issues that use them instead of GCD's. */
+  customCredits?: Record<string, Pick<IssueCredits, "characters" | "writers" | "artists">>;
+  useCustom?: string[];
   /** The estimate a new reading takes, in minutes. */
   minutesPerIssue?: number;
 }

@@ -4576,3 +4576,100 @@ details.context-card > summary .context-card-title {
   align-items: center;
   gap: 4px;
 }
+
+.credits-editor.card {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+}
+
+.credits-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.credits-readonly p {
+  margin: 0.2rem 0;
+}
+
+/* ---------- Books: the shelf's list view ---------- */
+
+.books-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.books-list-row {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) minmax(8rem, 14rem) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.books-list-row:hover,
+.books-list-row:focus-visible {
+  border-color: var(--color-accent-500);
+}
+
+.books-cover.books-list-cover {
+  width: 3rem;
+  height: 4.5rem;
+  min-height: 0;
+  font-size: 0.55rem;
+}
+
+.books-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.books-list-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.books-list-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.books-list-progress > :first-child {
+  flex: 1;
+}
+
+@media (max-width: 700px) {
+  .books-list-row {
+    grid-template-columns: 3rem minmax(0, 1fr);
+  }
+  .books-list-progress,
+  .books-list-row > .tag {
+    display: none;
+  }
+}
+
+.books-cover.books-list-cover {
+  overflow: hidden;
+}
+
+/* No picture: the title doesn't fit a thumbnail, and the row already says it. */
+.books-cover.books-list-cover:not(:has(img)) {
+  font-size: 0;
+}

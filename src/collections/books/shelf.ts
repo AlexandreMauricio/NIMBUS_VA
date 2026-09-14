@@ -267,10 +267,13 @@ export function bookProgress(
   };
 }
 
-export type ReadingStatus = "Not started" | "Reading" | "Read";
+export type ReadingStatus = "Not started" | "Reading" | "Read" | "Retired";
 
 /** The book's status from its progress: nothing yet, part-way, or finished. */
-export function readingStatus(percent: number | null): ReadingStatus {
+/** A finished book stays "Read" even if retired; any other retired book is "Retired". */
+export function readingStatus(percent: number | null, retired = false): ReadingStatus {
+  if (percent !== null && percent >= 100) return "Read";
+  if (retired) return "Retired";
   if (percent === null || percent <= 0) return "Not started";
   return percent >= 100 ? "Read" : "Reading";
 }
@@ -279,17 +282,19 @@ export interface ShelfStats {
   owned: number;
   reading: number;
   finished: number;
+  retired: number;
   wishlist: number;
   byKind: Record<BookKind, number>;
 }
 
 export function shelfStats(books: Book[], read: ReadIssues = NOTHING_READ): ShelfStats {
   const owned = books.filter((b) => b.status === "owned");
-  const statuses = books.map((b) => readingStatus(bookProgress(b, books, read).percent));
+  const statuses = books.map((b) => readingStatus(bookProgress(b, books, read).percent, b.retired));
   return {
     owned: owned.length,
     reading: statuses.filter((s) => s === "Reading").length,
     finished: statuses.filter((s) => s === "Read").length,
+    retired: statuses.filter((s) => s === "Retired").length,
     wishlist: books.length - owned.length,
     byKind: {
       comic: owned.filter((b) => b.kind === "comic").length,

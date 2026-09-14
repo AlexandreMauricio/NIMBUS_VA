@@ -31,6 +31,7 @@ function book(title: string, volume: string | null, runs: string, extra: Partial
     author: null,
     shelf: null,
     progress: null,
+    retired: false,
     coverUrl: null,
     addedAt: "2026-09-13T10:00:00Z",
     updatedAt: "2026-09-13T10:00:00Z",
@@ -89,6 +90,7 @@ test("Thor's Epic, Omnibus and a wishlisted Masterworks sit in one group", () =>
     owned: 3,
     reading: 0,
     finished: 0,
+    retired: 0,
     wishlist: 1,
     byKind: { comic: 2, manga: 1, novel: 0 },
   });

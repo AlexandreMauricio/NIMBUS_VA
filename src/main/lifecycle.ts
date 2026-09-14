@@ -84,6 +84,8 @@ import {
   isCoverUrl,
   TCG_GAMES,
   creditsFromGcd,
+  CreditsQueue,
+  GcdPausedError,
   commanderReferences,
   averageDeck,
   compareWithReferences,
@@ -154,6 +156,8 @@ let presenceService: PresenceService | null = null;
 let collectionService: CollectionService;
 let catalogService: CatalogService;
 let bookService: BookService;
+/** Background GCD lookups of read issues' characters and creators — set up with the IPC handlers. */
+let creditsQueue: CreditsQueue | undefined;
 let deckService: DeckService;
 let gcdCatalog: GcdCatalog;
 let wikipediaCollections: WikipediaCollections;
@@ -1067,40 +1071,40 @@ function registerIpcHandlers(): void {
       bookService.logReadings(issues, readOn, minutes, bookId)
   );
   ipcMain.handle("nimbus:remove-issue-reading", (_event, id: unknown) => bookService.removeReading(id));
-  // Your own characters, writers and artists for issues (bookService.editIssueCredits).
-  ipcMain.handle("nimbus:edit-issue-credits", (_event, issues: unknown, changes: unknown, mode: unknown) =>
-    bookService.editIssueCredits(issues, changes, mode)
+  // Your own characters, writers and artists for an issue, and whether stats use them.
+  ipcMain.handle("nimbus:set-my-issue-credits", (_event, issue: unknown, changes: unknown) =>
+    bookService.setCustomCredits(issue, changes)
+  );
+  ipcMain.handle("nimbus:use-my-issue-credits", (_event, issue: unknown, on: unknown) =>
+    bookService.setUseCustomCredits(issue, on)
   );
   ipcMain.handle("nimbus:set-minutes-per-issue", (_event, minutes: unknown) =>
     bookService.setMinutesPerIssue(minutes)
   );
   // Characters and creators for logged issues not looked up yet — a few at a
   // time, each through GCD's own pacing (a second apart, kept a day).
-  ipcMain.handle("nimbus:fill-reading-credits", async (_event, count: unknown) => {
-    const batch = bookService.issuesWithoutCredits(
-      Number.isInteger(count) && (count as number) > 0 && (count as number) <= 10 ? (count as number) : 5
-    );
-    let filled = 0;
-    let notFound = 0;
-    for (const issue of batch) {
+  // Characters and creators of read issues, looked up by themselves in the
+  // background (collections/books/creditsQueue.ts), gently and waiting out
+  // GCD's pauses.
+  creditsQueue = new CreditsQueue({
+    pending: (limit) => {
+      const all = bookService.issuesWithoutCredits(100_000);
+      return { issues: all.slice(0, limit), total: all.length };
+    },
+    lookup: async (issue) => {
       const detail = await gcdCatalog.findIssue(issue.series, issue.year, issue.number);
-      if (detail) {
-        bookService.setIssueCredits(issue.series, issue.year, issue.number, creditsFromGcd(detail));
-        filled++;
-      } else {
-        // Remember it has none, so it isn't asked for again.
-        bookService.setIssueCredits(issue.series, issue.year, issue.number, {
-          title: null,
-          characters: [],
-          writers: [],
-          artists: [],
-          pageCount: null,
-        });
-        notFound++;
+      return detail ? creditsFromGcd(detail) : null;
+    },
+    save: (issue, credits) => bookService.setIssueCredits(issue.series, issue.year, issue.number, credits),
+    pauseSeconds: (err) => (err instanceof GcdPausedError ? (err.retryAfterSeconds ?? 0) : null),
+    onState: (state) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send("nimbus:reading-credits-state", state);
       }
-    }
-    return { filled, notFound, left: bookService.issuesWithoutCredits(1000).length };
+    },
   });
+  setTimeout(() => creditsQueue?.kick(), 15_000);
+  ipcMain.handle("nimbus:reading-credits-state", () => creditsQueue?.state() ?? null);
   // Issues read or unread: [{series, year, number}], checked in the service.
   ipcMain.handle("nimbus:set-issues-read", (_event, issues: unknown, read: unknown) =>
     bookService.setIssuesRead(issues, read)
@@ -1939,6 +1943,7 @@ export function startApp(): void {
   bookService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
     void fillBookCovers();
+    creditsQueue?.kick();
   });
   void fillBookCovers();
   collectionService.onChange(() => {

@@ -27,6 +27,7 @@ function book(
     author: null,
     shelf: null,
     progress: null,
+    retired: false,
     coverUrl: null,
     addedAt: "2026-09-13T10:00:00Z",
     updatedAt: "2026-09-13T10:00:00Z",

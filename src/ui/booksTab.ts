@@ -230,6 +230,7 @@ export function initBooksTab(): void {
   const coverageEmpty = byId<HTMLElement>("bookCoverageEmpty");
   const filterKind = byId<HTMLSelectElement>("bookFilterKind");
   const shelfSort = byId<HTMLSelectElement>("bookShelfSort");
+  const shelfLayoutBtn = byId<HTMLButtonElement>("bookShelfLayout");
   const filterStatus = byId<HTMLSelectElement>("bookFilterStatus");
   const filterText = byId<HTMLInputElement>("bookFilterText");
 
@@ -268,7 +269,15 @@ export function initBooksTab(): void {
   let coverage: SeriesCoverage[] = [];
   /** Issues read, shared by every book that collects them. */
   let readIssues: ReadonlySet<string> = new Set();
-  let readingLog: ReadingLogView = { readings: [], credits: {}, minutesPerIssue: 12, undated: [] };
+  let readingLog: ReadingLogView = {
+    readings: [],
+    credits: {},
+    gcdCredits: {},
+    customCredits: {},
+    useCustom: [],
+    minutesPerIssue: 12,
+    undated: [],
+  };
   const progressOf = (book: Book) => bookProgress(book, books, readIssues);
   let formatsFilled = false;
   let pane: Pane = "shelf";
@@ -297,6 +306,22 @@ export function initBooksTab(): void {
   let bookOrder = remembered<BookOrder>("nimbus:books-series-sort", BOOK_ORDERS, "volume");
   for (const order of GROUP_ORDERS) shelfSort.appendChild(new Option(`Sort: ${order.label}`, order.id));
   shelfSort.value = groupOrder;
+  let shelfLayout: "grid" | "list" = remembered<"grid" | "list">(
+    "nimbus:books-shelf-layout",
+    [{ id: "grid" }, { id: "list" }],
+    "grid"
+  );
+  const showLayout = () => {
+    shelfLayoutBtn.textContent = shelfLayout === "grid" ? "List view" : "Grid view";
+    shelfLayoutBtn.setAttribute("aria-pressed", String(shelfLayout === "list"));
+  };
+  showLayout();
+  shelfLayoutBtn.addEventListener("click", () => {
+    shelfLayout = shelfLayout === "grid" ? "list" : "grid";
+    remember("nimbus:books-shelf-layout", shelfLayout);
+    showLayout();
+    render();
+  });
   shelfSort.addEventListener("change", () => {
     groupOrder = shelfSort.value as GroupOrder;
     remember("nimbus:books-shelf-sort", groupOrder);
@@ -378,7 +403,12 @@ export function initBooksTab(): void {
       grid.replaceChildren();
       const groups = groupShelf(filtered(), books, readIssues, bookOrder, groupOrder);
       empty.hidden = groups.length > 0;
-      for (const group of groups) {
+      grid.classList.toggle("books-grid", shelfLayout === "grid");
+      grid.classList.toggle("books-list", shelfLayout === "list");
+      if (shelfLayout === "list") {
+        for (const group of groups) grid.appendChild(shelfListRow(group));
+      }
+      for (const group of shelfLayout === "grid" ? groups : []) {
         const card = make("button", "books-card");
         card.type = "button";
         const coverWrap = cover(group.coverUrl, group.name, "books-cover books-card-cover");
@@ -407,9 +437,10 @@ export function initBooksTab(): void {
       readingList.replaceChildren();
       const reading = books
         .map((book) => ({ book, percent: progressOf(book).percent }))
-        .filter((entry) => readingStatus(entry.percent) === "Reading")
+        .filter((entry) => readingStatus(entry.percent, entry.book.retired) === "Reading")
         .sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0))
         .map((entry) => entry.book);
+      const retired = books.filter((b) => readingStatus(progressOf(b).percent, b.retired) === "Retired");
       if (!reading.length) {
         readingList.appendChild(
           make(
@@ -420,6 +451,13 @@ export function initBooksTab(): void {
         );
       }
       for (const book of reading) readingList.appendChild(bookRow(book, "reading"));
+      if (retired.length) {
+        readingList.appendChild(make("h6", "kicker books-section", `Retired (${retired.length})`));
+        readingList.appendChild(
+          make("p", "books-small", "Books you stopped reading. Un-retire one to have it back in Reading.")
+        );
+        for (const book of retired) readingList.appendChild(bookRow(book, "retired"));
+      }
     } else if (pane === "wishlist") {
       wishlistList.replaceChildren();
       const wanted = books.filter((b) => b.status === "wishlist");
@@ -430,8 +468,50 @@ export function initBooksTab(): void {
     }
   }
 
+  /** The shelf's list view: one row per group — cover, name, what's in it, and progress. */
+  function shelfListRow(group: ReturnType<typeof groupShelf>[number]): HTMLElement {
+    const count = group.books.length;
+    const row = make("button", "books-list-row");
+    row.type = "button";
+    row.appendChild(cover(group.coverUrl, group.name, "books-cover books-list-cover"));
+    const body = make("div", "books-list-body");
+    body.appendChild(make("span", "books-list-title", group.name));
+    const years = new Set<number>();
+    for (const b of group.books) for (const run of b.runs) if (run.year) years.add(run.year);
+    const span = years.size ? `${Math.min(...years)}${years.size > 1 ? `–${Math.max(...years)}` : ""}` : null;
+    body.appendChild(
+      make(
+        "span",
+        "books-small",
+        [
+          group.kind === "comic"
+            ? (group.publisher ?? "Comic")
+            : (group.author ?? group.publisher ?? KIND_LABEL[group.kind]),
+          `${count} ${count === 1 ? "book" : "books"}`,
+          group.wishlist ? `${group.wishlist} on wishlist` : null,
+          span ? `comics from ${span}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      )
+    );
+    row.appendChild(body);
+    const progress = make("div", "books-list-progress");
+    if (group.progress !== null && group.progress > 0) {
+      progress.append(progressBar(group.progress), make("span", "books-small", `${group.progress}%`));
+    } else {
+      progress.appendChild(make("span", "books-small", group.owned ? "Not started" : "Wishlist"));
+    }
+    row.appendChild(progress);
+    row.appendChild(make("span", `tag ${KIND_TAG[group.kind]}`, KIND_LABEL[group.kind]));
+    row.addEventListener("click", () =>
+      count === 1 ? go({ view: "book", id: group.books[0].id }) : go({ view: "series", name: group.name })
+    );
+    return row;
+  }
+
   /** A row for Reading and Wishlist: cover, title, and the one action that page is for. */
-  function bookRow(book: Book, kindOfRow: "reading" | "wishlist"): HTMLElement {
+  function bookRow(book: Book, kindOfRow: "reading" | "wishlist" | "retired"): HTMLElement {
     const row = make("div", "card books-row");
     const coverBtn = make("button", "books-row-cover");
     coverBtn.type = "button";
@@ -445,7 +525,7 @@ export function initBooksTab(): void {
     body.appendChild(name);
     const meta = [book.author ?? book.publisher, book.format].filter(Boolean).join(" · ");
     body.appendChild(make("p", "card-meta books-row-meta", meta));
-    if (kindOfRow === "reading") {
+    if (kindOfRow !== "wishlist") {
       const progress = progressOf(book);
       const line = make("div", "books-progress-line");
       line.append(
@@ -474,8 +554,11 @@ export function initBooksTab(): void {
       }
     }
     row.appendChild(body);
-    if (kindOfRow === "reading") {
+    if (kindOfRow === "retired") {
+      row.appendChild(retireButton(book, "btn btn-secondary"));
+    } else if (kindOfRow === "reading") {
       if (!progressOf(book).fromIssues) row.appendChild(progressEditor(book));
+      row.appendChild(retireButton(book, "btn btn-ghost"));
     } else {
       row.appendChild(make("span", `tag ${KIND_TAG[book.kind]}`, KIND_LABEL[book.kind]));
       const got = make("button", "btn btn-secondary", "Mark owned");
@@ -484,6 +567,20 @@ export function initBooksTab(): void {
       row.appendChild(got);
     }
     return row;
+  }
+
+  /** Retire a book you stopped reading, or bring it back. */
+  function retireButton(book: Book, className: string): HTMLButtonElement {
+    const button = make("button", className, book.retired ? "Un-retire" : "Retire");
+    button.type = "button";
+    button.title = book.retired
+      ? "Start reading it again — it goes back to Reading"
+      : "Stopped reading it — keep it off Reading";
+    button.addEventListener(
+      "click",
+      () => void act(() => bridge().updateBook(book.id, { retired: !book.retired }))
+    );
+    return button;
   }
 
   /** "Update progress": a percentage, saved on change. */
@@ -526,10 +623,10 @@ export function initBooksTab(): void {
       make(
         "p",
         "books-small",
-        `${stats.byKind.comic} comics · ${stats.byKind.manga} manga · ${stats.byKind.novel} novels owned · ${stats.finished} finished`
+        `${stats.byKind.comic} comics · ${stats.byKind.manga} manga · ${stats.byKind.novel} novels owned · ${stats.finished} finished${stats.retired ? ` · ${stats.retired} retired` : ""}`
       )
     );
-    statsEl.appendChild(readingStatsSection(readingLog, () => void load()));
+    statsEl.appendChild(readingStatsSection(readingLog));
 
     coverageEl.replaceChildren();
     coverageEmpty.hidden = coverage.length > 0;
@@ -650,7 +747,7 @@ export function initBooksTab(): void {
       if (book.status === "owned") {
         const overlap = bookOverlap(book, books);
         const progress = progressOf(book);
-        const status = readingStatus(progress.percent);
+        const status = readingStatus(progress.percent, book.retired);
         if (progress.percent !== null && progress.percent > 0)
           line.appendChild(progressBar(progress.percent));
         line.append(
@@ -705,7 +802,7 @@ export function initBooksTab(): void {
     }
     const { issues, truncated } = bookIssues(book, books, readIssues);
     const progress = progressOf(book);
-    const status = readingStatus(progress.percent);
+    const status = readingStatus(progress.percent, book.retired);
 
     const hero = make("div", "books-hero");
     const coverColumn = make("div", "books-hero-cover-column");
@@ -837,17 +934,6 @@ export function initBooksTab(): void {
           )
         );
         detailView.appendChild(logBox);
-        const creditsBox = make("details", "reading-log-box");
-        creditsBox.appendChild(make("summary", undefined, "Add characters or creators to several issues"));
-        creditsBox.appendChild(
-          creditsEditor(
-            issues.map((i) => ({ series: i.series, year: i.year, number: i.number })),
-            null,
-            readingLog,
-            () => void load()
-          )
-        );
-        detailView.appendChild(creditsBox);
       }
       const card = make("div", "card books-issues");
       for (const issue of issues) card.appendChild(issueRow(book, issue));
@@ -929,6 +1015,7 @@ export function initBooksTab(): void {
       page = { view: "shelf" };
       await load();
     });
+    if (book.status === "owned" && status !== "Read") actions.append(retireButton(book, "btn btn-ghost"));
     actions.append(move, remove);
     detailView.appendChild(actions);
   }
@@ -1075,17 +1162,6 @@ export function initBooksTab(): void {
     readings.appendChild(issueReadingList(issueRef, readingLog, () => void load()));
     readings.appendChild(logReadingForm([issueRef], readingLog, book?.id ?? null, () => void load()));
     info.appendChild(readings);
-    const creditsBox = make("details", "reading-log-box");
-    creditsBox.appendChild(make("summary", undefined, "Characters & creators for your reading stats"));
-    const bookIssueRefs = book
-      ? bookIssues(book, books, readIssues).issues.map((i) => ({
-          series: i.series,
-          year: i.year,
-          number: i.number,
-        }))
-      : [issueRef];
-    creditsBox.appendChild(creditsEditor(bookIssueRefs, issueRef, readingLog, () => void load()));
-    info.appendChild(creditsBox);
 
     const links = make("div", "books-actions books-actions-start");
     const locg = make("button", "btn btn-secondary", "League of Comic Geeks");
@@ -1102,6 +1178,8 @@ export function initBooksTab(): void {
     info.appendChild(links);
     hero.appendChild(info);
     detailView.appendChild(hero);
+    // Which names this issue counts in reading stats — GCD's, or yours.
+    detailView.appendChild(creditsEditor(issueRef, readingLog, () => void load()));
 
     const key = `${target.series.toLowerCase()}|${target.year ?? ""}|${target.number}`;
     let detail: GcdIssueDetail | null;

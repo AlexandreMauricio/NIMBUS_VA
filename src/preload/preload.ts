@@ -342,13 +342,19 @@ contextBridge.exposeInMainWorld("nimbus", {
     minutes: number | null,
     bookId: string | null
   ): Promise<unknown> => ipcRenderer.invoke("nimbus:log-issue-readings", issues, readOn, minutes, bookId),
-  editIssueCredits: (issues: unknown[], changes: Record<string, string[]>, mode: string): Promise<unknown> =>
-    ipcRenderer.invoke("nimbus:edit-issue-credits", issues, changes, mode),
+  setMyIssueCredits: (issue: unknown, changes: Record<string, string[]>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:set-my-issue-credits", issue, changes),
+  useMyIssueCredits: (issue: unknown, on: boolean): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:use-my-issue-credits", issue, on),
   removeIssueReading: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:remove-issue-reading", id),
   setMinutesPerIssue: (minutes: number): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:set-minutes-per-issue", minutes),
-  fillReadingCredits: (count: number): Promise<unknown> =>
-    ipcRenderer.invoke("nimbus:fill-reading-credits", count),
+  getReadingCreditsState: (): Promise<unknown> => ipcRenderer.invoke("nimbus:reading-credits-state"),
+  onReadingCreditsState: (callback: (state: unknown) => void): (() => void) => {
+    const listener = (_event: unknown, state: unknown) => callback(state);
+    ipcRenderer.on("nimbus:reading-credits-state", listener);
+    return () => ipcRenderer.removeListener("nimbus:reading-credits-state", listener);
+  },
   getBookYears: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:get-book-years", id),
   workOutBookYears: (id: string): Promise<unknown> => ipcRenderer.invoke("nimbus:work-out-book-years", id),
   setRunYear: (id: string, index: number, series: string, year: number): Promise<unknown> =>

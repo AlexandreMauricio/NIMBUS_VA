@@ -77,6 +77,7 @@ export function parseBook(raw: unknown): Book | null {
     author: text(r.author, 100),
     shelf: text(r.shelf, 100),
     progress: readProgress(r.progress),
+    retired: r.retired === true,
     coverUrl: isCoverUrl(r.coverUrl) ? r.coverUrl : null,
     addedAt: typeof r.addedAt === "string" ? r.addedAt : new Date(0).toISOString(),
     updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : new Date(0).toISOString(),
@@ -162,6 +163,14 @@ function parseCredits(raw: unknown): IssueCredits | null {
   };
 }
 
+/** Your own names for an issue: characters, writers, artists. */
+export type CustomCredits = Pick<IssueCredits, CreditField>;
+
+function parseCustom(raw: unknown): CustomCredits | null {
+  const c = parseCredits(raw);
+  return c ? { characters: c.characters, writers: c.writers, artists: c.artists } : null;
+}
+
 export class BookService {
   private books: Book[] = [];
   /**
@@ -171,7 +180,11 @@ export class BookService {
    */
   private readIssues = new Set<string>();
   private readings: IssueReading[] = [];
+  /** What GCD says about each issue, by issueReadKey. */
   private issueCredits: Record<string, IssueCredits> = {};
+  /** Your own names for issues — used instead of GCD's for the issues in useCustom. */
+  private customCredits: Record<string, CustomCredits> = {};
+  private useCustom = new Set<string>();
   private minutesPerIssue = DEFAULT_MINUTES_PER_ISSUE;
   private readonly listeners = new Set<() => void>();
 
@@ -218,7 +231,33 @@ export class BookService {
       const entries = Object.entries(state.issueCredits as Record<string, unknown>).slice(0, MAX_READ_ISSUES);
       for (const [key, value] of entries) {
         const credits = parseCredits(value);
-        if (credits && key.length <= 250) this.issueCredits[key] = credits;
+        if (!credits || key.length > 250) continue;
+        if (credits.edited) {
+          // Kept before GCD's and your own names were apart (0.6.0): yours, in use.
+          this.customCredits[key] = {
+            characters: credits.characters,
+            writers: credits.writers,
+            artists: credits.artists,
+          };
+          this.useCustom.add(key);
+        } else {
+          this.issueCredits[key] = credits;
+        }
+      }
+    }
+    if (state.customCredits && typeof state.customCredits === "object") {
+      const entries = Object.entries(state.customCredits as Record<string, unknown>).slice(
+        0,
+        MAX_READ_ISSUES
+      );
+      for (const [key, value] of entries) {
+        const custom = parseCustom(value);
+        if (custom && key.length <= 250) this.customCredits[key] = custom;
+      }
+    }
+    if (Array.isArray(state.useCustom)) {
+      for (const key of state.useCustom.slice(0, MAX_READ_ISSUES)) {
+        if (typeof key === "string" && this.customCredits[key]) this.useCustom.add(key);
       }
     }
     const minutes = state.minutesPerIssue;
@@ -232,16 +271,34 @@ export class BookService {
   /** The reading log, newest first, the credits known, and the minutes a new reading takes. */
   readingLog(): {
     readings: IssueReading[];
+    /** What reading stats use: your names where you chose them, GCD's otherwise. */
     credits: Record<string, IssueCredits>;
+    gcdCredits: Record<string, IssueCredits>;
+    customCredits: Record<string, CustomCredits>;
+    useCustom: string[];
     minutesPerIssue: number;
     undated: UndatedRead[];
   } {
+    const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const credits = copy(this.issueCredits);
+    for (const key of this.useCustom) {
+      const custom = this.customCredits[key];
+      if (!custom) continue;
+      credits[key] = {
+        title: credits[key]?.title ?? null,
+        pageCount: credits[key]?.pageCount ?? null,
+        ...copy(custom),
+      };
+    }
     return {
       undated: this.undatedReads(),
       readings: [...this.readings]
         .sort((a, b) => b.readOn.localeCompare(a.readOn) || b.loggedAt.localeCompare(a.loggedAt))
         .map((r) => ({ ...r })),
-      credits: JSON.parse(JSON.stringify(this.issueCredits)) as Record<string, IssueCredits>,
+      credits,
+      gcdCredits: copy(this.issueCredits),
+      customCredits: copy(this.customCredits),
+      useCustom: [...this.useCustom],
       minutesPerIssue: this.minutesPerIssue,
     };
   }
@@ -311,11 +368,10 @@ export class BookService {
 
   /**
    * What GCD says about an issue, kept for reading stats. Saves only when
-   * new or changed, and never over credits you've edited.
+   * new or changed. Your own names are kept apart and never touched.
    */
   setIssueCredits(series: string, year: number | null, number: number, credits: IssueCredits): void {
     const key = issueReadKey(series, year, number);
-    if (this.issueCredits[key]?.edited) return;
     if (JSON.stringify(this.issueCredits[key]) === JSON.stringify(credits)) return;
     this.issueCredits[key] = credits;
     this.save();
@@ -348,51 +404,54 @@ export class BookService {
   }
 
   /**
-   * Your own characters, writers and artists for issues. "replace" sets an
-   * issue's lists to exactly these (one issue, edited in full); "add" adds
-   * them to every issue given (a stretch of a book) and keeps what's there.
-   * Names take the spelling already known, so "venom" joins "Venom".
-   * Edited credits aren't replaced by a later GCD lookup.
+   * Your own characters, writers and artists for one issue, replacing any you
+   * saved before. Names take the spelling already known (GCD's or yours), so
+   * "venom" joins "Venom". Saving turns "use my own info" on.
    */
-  editIssueCredits(issues: unknown, changes: unknown, mode: unknown): number {
-    if (!Array.isArray(issues)) throw new Error("No issues to change.");
-    if (mode !== "replace" && mode !== "add") throw new Error("Replace or add?");
+  setCustomCredits(issue: unknown, changes: unknown): CustomCredits {
+    const ref = readIssue(issue);
+    if (!ref) throw new Error("That isn't an issue.");
+    const key = issueReadKey(ref.series, ref.year, ref.number);
     const c = (changes && typeof changes === "object" ? changes : {}) as Record<string, unknown>;
-    const typed: Partial<Record<CreditField, string[]>> = {};
+    const all = { ...this.issueCredits };
+    for (const [k, custom] of Object.entries(this.customCredits)) {
+      all[`custom|${k}`] = { title: null, pageCount: null, ...custom };
+    }
+    const next: CustomCredits = { characters: [], writers: [], artists: [] };
     for (const field of CREDIT_FIELDS) {
-      if (!(field in c)) continue;
-      const known = new Map(knownNames(this.issueCredits, field).map((name) => [personKey(name), name]));
-      typed[field] = canonicalNames(c[field], known);
+      const known = new Map(knownNames(all, field).map((name) => [personKey(name), name]));
+      next[field] = canonicalNames(c[field], known).slice(0, field === "characters" ? 60 : 10);
     }
-    let changed = 0;
-    for (const raw of issues.slice(0, 2000)) {
-      const issue = readIssue(raw);
-      if (!issue) continue;
-      const key = issueReadKey(issue.series, issue.year, issue.number);
-      const current = this.issueCredits[key] ?? {
-        title: null,
-        characters: [],
-        writers: [],
-        artists: [],
-        pageCount: null,
-      };
-      const next: IssueCredits = { ...current, edited: true };
-      for (const field of CREDIT_FIELDS) {
-        const names = typed[field];
-        if (!names) continue;
-        if (mode === "replace") {
-          next[field] = names.slice(0, field === "characters" ? 60 : 10);
-        } else {
-          const merged = new Map(current[field].map((n) => [personKey(n), n]));
-          for (const name of names) if (!merged.has(personKey(name))) merged.set(personKey(name), name);
-          next[field] = [...merged.values()].slice(0, field === "characters" ? 60 : 10);
-        }
+    this.customCredits[key] = next;
+    this.useCustom.add(key);
+    this.save();
+    return { characters: [...next.characters], writers: [...next.writers], artists: [...next.artists] };
+  }
+
+  /**
+   * Whether reading stats use your own names for an issue (on) or GCD's (off).
+   * Turning it on the first time starts your names from GCD's; turning it off
+   * keeps your names for next time.
+   */
+  setUseCustomCredits(issue: unknown, on: unknown): boolean {
+    const ref = readIssue(issue);
+    if (!ref || typeof on !== "boolean") throw new Error("That isn't an issue.");
+    const key = issueReadKey(ref.series, ref.year, ref.number);
+    if (on) {
+      if (!this.customCredits[key]) {
+        const gcd = this.issueCredits[key];
+        this.customCredits[key] = {
+          characters: [...(gcd?.characters ?? [])],
+          writers: [...(gcd?.writers ?? [])],
+          artists: [...(gcd?.artists ?? [])],
+        };
       }
-      this.issueCredits[key] = next;
-      changed++;
+      this.useCustom.add(key);
+    } else {
+      this.useCustom.delete(key);
     }
-    if (changed) this.save();
-    return changed;
+    this.save();
+    return on;
   }
 
   /** Issues read (logged or ticked) whose characters and creators aren't known yet. */
@@ -400,7 +459,7 @@ export class BookService {
     const out = new Map<string, { series: string; year: number | null; number: number }>();
     for (const r of [...this.readings, ...this.undatedReads()]) {
       if (out.size >= limit) break;
-      if (!this.issueCredits[r.key] && !out.has(r.key)) {
+      if (!this.issueCredits[r.key] && !this.useCustom.has(r.key) && !out.has(r.key)) {
         out.set(r.key, { series: r.series, year: r.year, number: r.number });
       }
     }
@@ -538,10 +597,12 @@ export class BookService {
           if (reading.key === from) Object.assign(reading, { key: to, year });
         }
         const credits = this.issueCredits[from];
-        if (credits && (!this.issueCredits[to] || (credits.edited && !this.issueCredits[to].edited))) {
-          this.issueCredits[to] = credits;
-        }
+        if (credits && !this.issueCredits[to]) this.issueCredits[to] = credits;
         if (credits) delete this.issueCredits[from];
+        const custom = this.customCredits[from];
+        if (custom && !this.customCredits[to]) this.customCredits[to] = custom;
+        if (custom) delete this.customCredits[from];
+        if (this.useCustom.delete(from)) this.useCustom.add(to);
       }
     }
     if (set) {
@@ -620,6 +681,7 @@ export class BookService {
             ? null
             : readProgress(Number(i.progress))
           : (current?.progress ?? null),
+        retired: has("retired") ? i.retired === true : (current?.retired ?? false),
         // A different ISBN means a different cover — looked for again later —
         // unless it's a picture you chose.
         coverUrl:
@@ -638,6 +700,8 @@ export class BookService {
       readIssues: [...this.readIssues],
       readings: this.readings,
       issueCredits: this.issueCredits,
+      customCredits: this.customCredits,
+      useCustom: [...this.useCustom],
       minutesPerIssue: this.minutesPerIssue,
     };
     try {

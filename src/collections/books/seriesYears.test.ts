@@ -216,11 +216,7 @@ test("when a run gets its year, its read marks, readings and names move to the d
   });
   svc.setIssuesRead([{ series: "Absolute Carnage", year: null, number: 1 }], true);
   svc.logReadings([{ series: "Absolute Carnage", year: null, number: 2 }], "2026-09-10");
-  svc.editIssueCredits(
-    [{ series: "Absolute Carnage", year: null, number: 1 }],
-    { characters: ["Venom"] },
-    "add"
-  );
+  svc.setCustomCredits({ series: "Absolute Carnage", year: null, number: 1 }, { characters: ["Venom"] });
   svc.setRunYears(book.id, [{ index: 0, series: "Absolute Carnage", year: 2019 }]);
   const dated = (number: number) => issueReadKey("Absolute Carnage", 2019, number);
   assert.deepEqual(svc.readIssueKeys().sort(), [dated(1), dated(2)].sort());
@@ -230,5 +226,6 @@ test("when a run gets its year, its read marks, readings and names move to the d
     [[dated(2), 2019]]
   );
   assert.deepEqual(log.credits[dated(1)].characters, ["Venom"]);
+  assert.deepEqual(log.useCustom, [dated(1)]);
   assert.equal(log.credits[issueReadKey("Absolute Carnage", null, 1)], undefined);
 });

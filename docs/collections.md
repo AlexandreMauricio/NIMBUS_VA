@@ -158,15 +158,30 @@ time, a second apart. Characters lose GCD's aliases and notes ("Thor
 [Donald Blake]" is Thor); an artist is anyone credited with pencils, inks or
 art. Everything stays in `books.json`.
 
-**Characters and creators you add** ([creditsEditor.ts](../src/ui/creditsEditor.ts)).
-An issue's page has "Characters & creators for your reading stats": its
-characters, writers and artists as chips, from GCD when it had them, to add
-to or remove from; or, with "Add these to issues #… to #…", added to a
-stretch of the book's issues. A book's page can add names to a stretch too.
-Names are matched loosely — capitals, accents and punctuation don't make a
-different person — and a name typed differently takes the spelling already
-known, so "venom" is GCD's "Venom" and Stats counts them as one. Edited
-credits are marked and a GCD lookup no longer replaces them.
+**Characters and creators — GCD's or yours, per issue** ([creditsEditor.ts](../src/ui/creditsEditor.ts)).
+An issue's page shows the names reading stats use for it. By default they're
+GCD's. Ticking **Use my own info for this issue instead of GCD's** switches
+that issue to your names — starting from GCD's — edited as chips and saved;
+unticking goes back to GCD's and keeps yours for next time. The two are kept
+apart (`issueCredits` and `customCredits` in `books.json`), so a GCD lookup
+never changes yours. Names are matched loosely — capitals, accents and
+punctuation don't make a different person — and a name typed differently
+takes the spelling already known ("venom" is "Venom"). Names edited in 0.6.0
+became your own, ticked.
+
+**Looked up by themselves** ([creditsQueue.ts](../src/collections/books/creditsQueue.ts)).
+While NIMBUS is open, read issues without GCD's names are looked up in the
+background, one every few seconds; when GCD asks for a pause, the queue
+waits the time GCD names, slows a little, and carries on. Stats says how many
+are left and, during a pause, when it resumes. While a pause lasts NIMBUS
+doesn't ask GCD anything (which would only lengthen it).
+
+**Retired.** A book you stopped reading can be retired (on its page, or from
+Reading): it leaves Reading for a "Retired" list there, keeps its progress,
+and "Un-retire" brings it back. A finished book stays Read.
+
+**List view.** The shelf can be shown as a list — cover, name, publisher,
+books, the years of the comics collected, and progress. Remembered on this PC.
 
 **Sorting.** The shelf sorts its groups by name, by the comics they collect,
 by recently added or by reading progress; a series page sorts its books by

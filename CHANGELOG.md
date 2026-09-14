@@ -18,6 +18,25 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.2 — 2026-09-14
+
+- **Characters and creators: GCD's or yours, per issue.** An issue's page
+  shows the names reading stats use. A **Use my own info** checkbox (off by
+  default) switches that issue to your own names, starting from GCD's;
+  unticking goes back to GCD's and keeps yours. The book-page "add to
+  several issues" box is gone. Names you edited in 0.6.0 are kept as your
+  own, ticked.
+- **Lookups run by themselves.** Read issues without characters and
+  creators are looked up on GCD in the background while NIMBUS is open,
+  gently, waiting out GCD's pauses and carrying on — Stats shows how many
+  are left and when a pause ends. No more "Look them up" clicking.
+- **Retire a book** you stopped reading: it leaves Reading for a Retired
+  list, keeps its progress, and **Un-retire** brings it back.
+- **List view for the shelf**, beside the sort — cover, name, books, the
+  years of the comics collected and progress.
+
+---
+
 ## 0.6.1 — 2026-09-14
 
 - **Fixed: some book contents wouldn't save.** A series with "and" in
