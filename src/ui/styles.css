@@ -4695,3 +4695,7 @@ details.context-card > summary .context-card-title {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+.deck-compare-group {
+  margin: var(--space-2) 0 0;
+}

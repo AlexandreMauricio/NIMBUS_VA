@@ -289,6 +289,18 @@ up to five beside yours:
   opening its card page, and **Add**.
 - **Only in yours:** your cards none of them play.
 
+**Similar commanders.** Beside the commander's own averages, the chooser offers
+"Top 5 <colours> commanders" and, for each of the commander's themes, "Top 5
+<colours> <theme> commanders" — Zegana's deck against the top Simic
+commanders, or the top Simic +1/+1 Counters ones. NIMBUS takes the most
+played commanders of the same colour identity from EDHREC's colour page (or
+the colour-and-theme page's Top Commanders), leaves your own commander out,
+fetches each one's average deck (its theme build when a theme is chosen) and
+blends them into one: cards ranked by how many of the decks play them, basics
+at their average count, up to 99 ([edhrec.ts](../src/collections/catalogs/edhrec.ts)
+`similarCommanders`, `blendDecks`). The footnote names the commanders each was
+built from. About six EDHREC pages per choice, kept six hours.
+
 Ramp, draw, removal and wipes are estimated from each card's rules text
 (mana abilities and land search, "draw a card", "destroy/exile target…",
 "destroy all…"; a cycling land isn't card draw), so they're close, not

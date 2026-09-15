@@ -33,7 +33,7 @@ interface ProfileUI {
 interface ComparisonUI {
   commander: string;
   totalDecks: number | null;
-  references: VariantUI[];
+  references: Array<VariantUI & { builtFrom: string[] | null }>;
   comparison: {
     profiles: ProfileUI[];
     guidelines: Array<{
@@ -110,7 +110,11 @@ export function deckCompareSection(deckId: string, onChanged: () => void): HTMLE
   const section = make("details", "deck-compare");
   section.open = state.open;
   section.appendChild(
-    make("summary", "deck-compare-summary", "Compare with average decks for this commander (EDHREC)")
+    make(
+      "summary",
+      "deck-compare-summary",
+      "Compare with average decks for this commander and similar ones (EDHREC)"
+    )
   );
   const body = make("div", "deck-compare-body");
   section.appendChild(body);
@@ -143,19 +147,10 @@ export function deckCompareSection(deckId: string, onChanged: () => void): HTMLE
     if (section.open && !state.options) void loadOptions();
   });
 
-  function chooser(): HTMLElement {
-    const box = make("div", "deck-compare-chooser");
-    const options = state.options!;
+  function variantList(variants: VariantUI[]): HTMLElement {
     const selected = state.selected!;
-    box.appendChild(
-      make(
-        "p",
-        "collection-meta",
-        `${options.commander}${options.decks ? ` — ${options.decks.toLocaleString()} decklists on EDHREC` : ""}. Choose up to ${MAX_SELECTED} average decks to put beside yours:`
-      )
-    );
     const list = make("div", "deck-compare-variants");
-    for (const variant of options.variants) {
+    for (const variant of variants) {
       const label = make("label", "deck-compare-variant");
       const check = make("input");
       check.type = "checkbox";
@@ -169,12 +164,45 @@ export function deckCompareSection(deckId: string, onChanged: () => void): HTMLE
       label.append(
         check,
         document.createTextNode(
-          ` ${variant.label}${variant.decks ? ` (${variant.decks.toLocaleString()} decks)` : ""}`
+          ` ${variant.label.replace(/^Similar: top/, "Top")}${variant.decks ? ` (${variant.decks.toLocaleString()} decks)` : ""}`
         )
       );
       list.appendChild(label);
     }
-    box.appendChild(list);
+    return list;
+  }
+
+  function chooser(): HTMLElement {
+    const box = make("div", "deck-compare-chooser");
+    const options = state.options!;
+    const selected = state.selected!;
+    box.appendChild(
+      make(
+        "p",
+        "collection-meta",
+        `${options.commander}${options.decks ? ` — ${options.decks.toLocaleString()} decklists on EDHREC` : ""}. Choose up to ${MAX_SELECTED} average decks to put beside yours:`
+      )
+    );
+    // Two groups: this commander's own average decks, and similar commanders' —
+    // the top ones of the same colours, overall or with one of this commander's themes.
+    const own = options.variants.filter((v) => !v.id.startsWith("similar"));
+    const similar = options.variants.filter((v) => v.id.startsWith("similar"));
+    const groups: Array<[string, string | null, VariantUI[]]> = [
+      [`${options.commander}'s decks`, null, own],
+      [
+        "Similar commanders",
+        similar.length
+          ? "Each is averaged from the most played commanders of the same colours — with a theme, only commanders' decks built for that theme."
+          : null,
+        similar,
+      ],
+    ];
+    for (const [title, note, variants] of groups) {
+      if (!variants.length) continue;
+      box.appendChild(make("h6", "kicker deck-compare-group", title));
+      if (note) box.appendChild(make("p", "builder-footnote", note));
+      box.appendChild(variantList(variants));
+    }
     const go = button(state.result ? "Compare again" : "Compare", "btn btn-secondary", async () => {
       go.disabled = true;
       go.textContent = "Fetching the decks and their cards…";
@@ -250,7 +278,10 @@ export function deckCompareSection(deckId: string, onChanged: () => void): HTMLE
       make(
         "p",
         "builder-footnote",
-        `Ramp, card draw, removal and wipes are estimated from each card's rules text.${comparison.unknown ? ` ${comparison.unknown} of your cards couldn't be looked up and aren't counted.` : ""} Average decks are EDHREC's, built from the decklists players upload.`
+        `Ramp, card draw, removal and wipes are estimated from each card's rules text.${comparison.unknown ? ` ${comparison.unknown} of your cards couldn't be looked up and aren't counted.` : ""} Average decks are EDHREC's, built from the decklists players upload.${result.references
+          .filter((r) => r.builtFrom)
+          .map((r) => ` ${r.label.replace(/^Similar: /, "")}: ${r.builtFrom!.join(", ")}.`)
+          .join("")}`
       )
     );
 

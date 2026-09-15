@@ -85,8 +85,15 @@ export type {
   DeckProfile,
   GuidelineRow,
 } from "./decks/compare";
-export { commanderReferences, averageDeck } from "./catalogs/edhrec";
-export type { CommanderReferences, CommanderVariant } from "./catalogs/edhrec";
+export {
+  commanderReferences,
+  averageDeck,
+  similarCommanders,
+  blendDecks,
+  edhrecColours,
+  SIMILAR_COMMANDERS,
+} from "./catalogs/edhrec";
+export type { CommanderReferences, CommanderVariant, SimilarCommander } from "./catalogs/edhrec";
 export { balanceColours, sourcesNeeded, COLOUR_NAMES } from "./decks/mana";
 export type { ColourLine, ColourBalance, ManaCard } from "./decks/mana";
 export { DeckService, parseDeck } from "./decks/deckService";

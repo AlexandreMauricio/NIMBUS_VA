@@ -88,6 +88,8 @@ import {
   GcdPausedError,
   commanderReferences,
   averageDeck,
+  similarCommanders,
+  blendDecks,
   compareWithReferences,
   nameKey,
   workOutRunYears,
@@ -875,8 +877,39 @@ function registerIpcHandlers(): void {
     const chosen = refs.variants.filter((v) => wanted.includes(v.id)).slice(0, 5);
     if (!chosen.length) chosen.push(refs.variants[0]);
     const references = [];
+    const similarNames: Record<string, string[]> = {};
     for (const variant of chosen) {
-      references.push(await edhrec(`deck|${refs.slug}|${variant.id}`, () => averageDeck(refs.slug, variant)));
+      if (!variant.id.startsWith("similar") || !refs.colours) {
+        references.push(
+          await edhrec(`deck|${refs.slug}|${variant.id}`, () => averageDeck(refs.slug, variant))
+        );
+        continue;
+      }
+      // Similar commanders: the top ones of this colour identity (with the
+      // theme, when one is chosen), each one's average deck (its theme
+      // build), blended into one.
+      const theme = variant.id.startsWith("similar:") ? variant.id.slice("similar:".length) : null;
+      const colours = refs.colours;
+      const others = await edhrec(`similar|${colours.slug}|${theme ?? ""}|${refs.slug}`, () =>
+        similarCommanders(colours.slug, theme, refs.slug)
+      );
+      const decks = [];
+      for (const other of others) {
+        try {
+          decks.push(
+            await edhrec(`deck|${other.slug}|${theme ?? ""}`, () =>
+              averageDeck(other.slug, { id: theme ?? "", label: other.name, decks: other.decks })
+            )
+          );
+        } catch (err) {
+          // That commander has no average for the theme: leave it out.
+          logger.info("No EDHREC average deck for a similar commander", { commander: other.slug, theme });
+        }
+      }
+      if (!decks.length)
+        throw new Error(`EDHREC has no decks for ${variant.label.replace(/^Similar: /, "")}.`);
+      similarNames[variant.id] = decks.map((d) => d.label);
+      references.push(blendDecks(variant.id, variant.label, decks));
     }
     const mine = deck.cards
       .filter((card) => card.zone === "main")
@@ -910,7 +943,12 @@ function registerIpcHandlers(): void {
     return {
       commander: refs.commander,
       totalDecks: refs.decks,
-      references: references.map((r) => ({ id: r.id, label: r.label, decks: r.decks })),
+      references: references.map((r) => ({
+        id: r.id,
+        label: r.label,
+        decks: r.decks,
+        builtFrom: similarNames[r.id] ?? null,
+      })),
       comparison: compareWithReferences(mine, references, info),
     };
   });

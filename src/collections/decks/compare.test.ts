@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CompareCardInfo, cardRoles, compareWithReferences, deckProfile, nameKey } from "./compare";
-import { averageDeck, commanderReferences } from "../catalogs/edhrec";
+import {
+  averageDeck,
+  blendDecks,
+  commanderReferences,
+  edhrecColours,
+  similarCommanders,
+} from "../catalogs/edhrec";
 
 const info = (name: string, kind: string, cost: number | null, text: string): [string, CompareCardInfo] => [
   nameKey(name),
@@ -180,4 +186,91 @@ test("a card can hold more than one role", () => {
     }),
     ["ramp", "draw", "removal"]
   );
+});
+
+test("similar commanders: a colour page's commanders, or a theme page's top commanders, without your own", async () => {
+  const urls: string[] = [];
+  const view = (name: string, slug: string, decks: number) => ({ name, sanitized: slug, num_decks: decks });
+  const fetchFn = async (url: string) => {
+    urls.push(url);
+    if (url.includes("/tags/")) {
+      return response({
+        container: {
+          json_dict: {
+            cardlists: [
+              { tag: "newcommanders", cardviews: [view("New One", "new-one", 3)] },
+              {
+                tag: "topcommanders",
+                cardviews: [
+                  view("Zegana", "zegana", 900),
+                  view("Mine", "mine", 800),
+                  view("Hakbal", "hakbal", 700),
+                ],
+              },
+            ],
+          },
+        },
+      });
+    }
+    return response({
+      container: {
+        json_dict: { cardlists: [{ cardviews: [view("Hakbal", "hakbal", 25196), view("../x", "../x", 1)] }] },
+      },
+    });
+  };
+  assert.equal(edhrecColours(["g", "u"])?.slug, "simic");
+  assert.equal(edhrecColours(["W", "U", "B", "R", "G"])?.name, "Five-Color");
+  const themed = await similarCommanders("simic", "plus-1-plus-1-counters", "mine", fetchFn);
+  assert.equal(urls[0], "https://json.edhrec.com/pages/tags/plus-1-plus-1-counters/simic.json");
+  assert.deepEqual(
+    themed.map((c) => c.slug),
+    ["zegana", "hakbal"]
+  );
+  const plain = await similarCommanders("simic", null, "mine", fetchFn);
+  assert.equal(urls[1], "https://json.edhrec.com/pages/commanders/simic.json");
+  assert.deepEqual(
+    plain.map((c) => c.slug),
+    ["hakbal"]
+  );
+});
+
+test("blended decks keep what most decks share, basics at their average count, up to 99 cards", () => {
+  const deck = (cards: Array<[string, number]>) => ({
+    id: "",
+    label: "",
+    decks: null,
+    cards: cards.map(([name, quantity]) => ({ name, quantity })),
+  });
+  const blended = blendDecks(
+    "similar",
+    "Similar",
+    [
+      deck([
+        ["Sol Ring", 1],
+        ["Forest", 10],
+        ["Hardened Scales", 1],
+        ["Oddity", 1],
+      ]),
+      deck([
+        ["Sol Ring", 1],
+        ["Forest", 12],
+        ["Hardened Scales", 1],
+      ]),
+      deck([
+        ["sol ring", 1],
+        ["Forest", 11],
+        ["Other", 1],
+      ]),
+    ],
+    13
+  );
+  assert.deepEqual(
+    blended.cards.map((c) => [c.name, c.quantity]),
+    [
+      ["Forest", 11],
+      ["Sol Ring", 1],
+      ["Hardened Scales", 1],
+    ]
+  );
+  assert.equal(blended.decks, 3);
 });

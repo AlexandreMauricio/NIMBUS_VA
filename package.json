@@ -1,6 +1,6 @@
 {
   "name": "nimbus",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "NIMBUS - Navigation & Intelligent Monitoring Base for User Systems. Personal desktop assistant foundation.",
   "main": "dist/main/main.js",
   "private": true,

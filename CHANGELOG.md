@@ -18,6 +18,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.5 — 2026-09-15
+
+- **Compare with similar commanders, not only your own.** The Commander
+  comparison now also offers "Top 5 Simic commanders" (your colours) and,
+  for each of your commander's themes, "Top 5 Simic +1/+1 Counters
+  commanders" — the most played commanders of the same colours on EDHREC,
+  each one's average deck (its theme build when a theme is chosen)
+  blended into one. The footnote says which commanders it was built from.
+
+---
+
 ## 0.6.4 — 2026-09-15
 
 - **A Magic card's role on its page.** Above "Works well with", each Magic
