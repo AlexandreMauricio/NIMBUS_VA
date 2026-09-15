@@ -18,6 +18,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.4 — 2026-09-15
+
+- **A Magic card's role on its page.** Above "Works well with", each Magic
+  card page says what it does for a deck — Ramp, Card draw, Targeted
+  removal, Board wipe, or several — with what that means, read from its
+  rules text the same way the Commander comparison counts them.
+
+---
+
 ## 0.6.3 — 2026-09-14
 
 - **Releases publish straight away.** `npm run release` now publishes the

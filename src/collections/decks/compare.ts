@@ -45,6 +45,14 @@ export const ROLE_LABELS: Record<CardRole, string> = {
   wipe: "Board wipes",
 };
 
+/** What each role does for a deck, in a sentence — shown on a card's page. */
+export const ROLE_DESCRIPTIONS: Record<CardRole, string> = {
+  ramp: "Gives you extra mana or lands, so you cast bigger spells sooner.",
+  draw: "Draws extra cards, so you don't run out of things to do.",
+  removal: "Deals with one threat: destroys, exiles, damages or bounces a target.",
+  wipe: "Clears many permanents at once — a reset when someone is ahead.",
+};
+
 const ROLE_PATTERNS: Record<CardRole, RegExp> = {
   ramp: /\{T\}: Add \{|\badd (one|two|three) mana\b|\badd \{[WUBRGC]\}|search your library for (a|up to \w+) (basic )?lands?\b|\bcreate (a|two|three|\w+) Treasure|put (a|up to \w+) land cards? [^.]*onto the battlefield/i,
   draw: /\bdraws? (a|two|three|four|five|x|that many|\w+) cards?\b/i,

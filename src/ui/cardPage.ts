@@ -7,6 +7,8 @@
  * own hosts, named in the page's Content Security Policy.
  */
 
+import { ROLE_DESCRIPTIONS, ROLE_LABELS, cardRoles } from "../collections/decks/compare";
+
 type Game = "mtg" | "pokemon" | "yugioh" | "lorcana" | "onepiece";
 
 interface CardPageView {
@@ -253,7 +255,49 @@ export async function openCardPage(
   body.appendChild(actions);
   layout.appendChild(body);
   panel.appendChild(layout);
+  if (d.game === "mtg") panel.appendChild(roleSection(d.rules.kind, d.text));
   panel.appendChild(synergySection(d.game, d.sourceId, d.name, options));
+}
+
+/**
+ * A Magic card's job in a deck — ramp, card draw, targeted removal, board
+ * wipe, or several — read from its rules text the same way the Commander
+ * comparison counts them (collections/decks/compare.ts).
+ */
+function roleSection(kind: string | null, text: string | null): HTMLElement {
+  const section = make("section", "card-roles");
+  section.appendChild(make("h3", "card-synergy-title", "Role in a deck"));
+  const roles = cardRoles({ kind, text });
+  if (roles.length) {
+    const list = make("div", "card-roles-list");
+    for (const role of roles) {
+      const item = make("div", "card-role");
+      item.append(
+        make("span", "tag tag-accent", ROLE_LABELS[role]),
+        make("span", "books-small", ROLE_DESCRIPTIONS[role])
+      );
+      list.appendChild(item);
+    }
+    section.appendChild(list);
+  } else {
+    section.appendChild(
+      make(
+        "p",
+        "books-small",
+        kind === "land"
+          ? "A land — it counts towards your lands, not ramp."
+          : "Not ramp, card draw, removal or a board wipe — likely a threat or a piece of the deck's own plan."
+      )
+    );
+  }
+  section.appendChild(
+    make(
+      "p",
+      "builder-footnote",
+      "Read from the card's rules text, so it's an estimate — a card can do more than its words match."
+    )
+  );
+  return section;
 }
 
 /** "Works well with": loads after the page shows, so a slow lookup never holds the card up. */

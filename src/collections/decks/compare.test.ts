@@ -171,3 +171,13 @@ test("EDHREC: a commander's variants (average, budget, expensive, themes) and an
   ]);
   await assert.rejects(() => averageDeck("../x", refs.variants[0], fetchFn), /isn't a commander/);
 });
+
+test("a card can hold more than one role", () => {
+  assert.deepEqual(
+    cardRoles({
+      kind: "creature",
+      text: "When this enters, destroy target artifact. {T}: Add {G}. Whenever it attacks, draw a card.",
+    }),
+    ["ramp", "draw", "removal"]
+  );
+});

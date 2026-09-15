@@ -4673,3 +4673,25 @@ details.context-card > summary .context-card-title {
 .books-cover.books-list-cover:not(:has(img)) {
   font-size: 0;
 }
+
+/* ---------- Card page: role in a deck ---------- */
+
+.card-roles {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.card-roles-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.card-role {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
