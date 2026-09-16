@@ -283,11 +283,24 @@ up to five beside yours:
   column, so you can see the averages miss them too), the count of each card
   type, average mana value, and how many of your cards each average plays.
 - **The guidelines, explained**, each with where your deck stands.
-- **Your mana curve** with the first average deck's dashed over it.
-- **Cards they agree on that you don't play** — with one deck, all its cards;
-  with several, those in at least half — each with how many decks play it,
-  opening its card page, and **Add**.
-- **Only in yours:** your cards none of them play.
+- **Your mana curve** with the first average deck's dashed over it. Each
+  column is a button: click **6+** when it's too tall and the card lists
+  below show only your cards at that mana value (with "you play 9, the
+  average 5"); click it again, or **Show all**, to clear it.
+- **Card lists**, two views of the same shape:
+  - **Your cards** — every non-basic card in your deck, each with how many
+    of the chosen average decks play it, its type, mana value and roles.
+    Cards none of them play are marked: the first to question when a
+    column or a guideline is over.
+  - **Cards they agree on that you don't play** — with one deck, all its
+    cards; with several, those in at least half — each with **Add**.
+
+  Both **group** by mana value (the default), card type, role, or how many
+  average decks play them, and **sort** by name, mana value, or how many
+  average decks play them (the default). A card with several roles is
+  listed under each. The choices are kept per deck while NIMBUS is open.
+  Grouping is Core's `groupCompareCards` in
+  [compare.ts](../src/collections/decks/compare.ts).
 
 **Similar commanders.** Beside the commander's own averages, the chooser offers
 "Top 5 <colours> commanders" and, for each of the commander's themes, "Top 5

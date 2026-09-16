@@ -3735,6 +3735,26 @@ details.context-card > summary .context-card-title {
   min-width: 2.2rem;
 }
 
+.deck-curve-pick {
+  padding: 2px 2px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.deck-curve-pick:hover,
+.deck-curve-pick.is-selected {
+  background: color-mix(in srgb, var(--color-accent-500) 14%, transparent);
+}
+
+.deck-curve-pick.is-selected .deck-curve-label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 .deck-curve-area {
   position: relative;
   flex: 1;
@@ -4459,8 +4479,32 @@ details.context-card > summary .context-card-title {
   text-align: left;
 }
 
-.deck-compare-only {
-  line-height: 1.7;
+.deck-compare-lists {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.deck-compare-controls .select {
+  width: auto;
+}
+
+.deck-compare-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.deck-compare-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.deck-compare-only-mine {
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--color-warning);
 }
 
 /* ---------- Books: series years (seriesYearsPanel.ts) ---------- */

@@ -121,6 +121,10 @@ which modules are portable "Core" versus Windows-specific.
   volume, mute) and `system.lock`.
 - **Timer popup** and **suggestion popup** — small always-on-top windows
   that never steal focus.
+- **Updates** — an installed NIMBUS updates itself from GitHub Releases
+  (see [Updates](#updates)).
+- **Your week** — a Home summary of the last 7 days: activity time, app
+  and site time, what you added to your collections, and what's coming up.
 - **Credential storage** — IMAP passwords, Todoist tokens and Spotify
   tokens are encrypted with Windows DPAPI via Electron's `safeStorage`,
   never written to `settings.json`.
@@ -213,7 +217,10 @@ src/
   attention/       Attention & Priority — what deserves attention now
   network/         Network awareness — local devices, observation only
   memory/          Persistent memory — saved, learned and observed, apart
-  collections/     Trading card collections and the card databases they use
+  collections/     Cards, decks (builder, EDHREC comparison) and the comics &
+                   manga shelf, with the databases they use
+  presence/        At the PC, home, or out
+  summary/         "Your week" on Home
   timers/          Generic timer engine (single countdowns and phase plans)
   events/          The in-process Context event bus
   briefing/        Turns a context snapshot into the Home briefing
@@ -308,7 +315,7 @@ that subsystem.
 | [Tasks](docs/tasks.md)                       | Todoist setup and the read/write Tasks tab                                                     |
 | [Spotify](docs/spotify.md)                   | Registering a Spotify app, the PKCE flow, and playback control                                 |
 | [Network](docs/network.md)                   | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
-| [Collections](docs/collections.md)           | Trading card collections: the catalog per game, entries, and the add-by-id boundary            |
+| [Collections](docs/collections.md)           | Cards, decks (builder and EDHREC comparison) and the comics & manga shelf                      |
 | [Memory](docs/memory.md)                     | The three memory tiers, trust and expiry, what is recorded, and the Memory tab                 |
 | [Stocks](docs/stocks.md)                     | Tracked positions, the estimates, market data and news, and their limits                       |
 
@@ -381,6 +388,7 @@ Running a newer installer by hand still works too.
 ```bash
 npm install
 copy .env.example .env
+npm start
 ```
 
 ### On another PC
@@ -484,6 +492,7 @@ Everything is written under Electron's per-user data directory
 | `collection.json`                                                     | Your card collection: printings, quantities, foil, status, notes                                                                              | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `decks.json`                                                          | Your decks per game and format                                                                                                                | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `books.json`                                                          | Comics collected editions and manga volumes, with the issue runs each collects                                                                | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `book-covers\<book id>.jpg`                                           | Covers you chose for books, resized                                                                                                           | Plain files                                                                |
 | `logs\nimbus.log`                                                     | The application log                                                                                                                           | Plain text; never contains credentials                                     |
 
 If OS-level encryption is unavailable, credentials are not persisted at

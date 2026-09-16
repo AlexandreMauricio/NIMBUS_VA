@@ -143,6 +143,19 @@ export interface MissingCard {
   /** How many of the reference decks play it. */
   inDecks: number;
   info: CompareCardInfo | null;
+  roles: CardRole[];
+}
+
+/** One of your non-basic cards, with what the lists under the comparison sort and group it by. */
+export interface ComparedCard {
+  name: string;
+  quantity: number;
+  /** How many of the reference decks also play it; 0 = only in yours. */
+  inDecks: number;
+  sourceId: string | null;
+  kind: string | null;
+  cost: number | null;
+  roles: CardRole[];
 }
 
 export interface GuidelineRow extends Guideline {
@@ -160,6 +173,8 @@ export interface DeckComparison {
   missing: MissingCard[];
   /** Your non-basic cards none of the reference decks play. */
   onlyMine: string[];
+  /** All your non-basic cards, by name, each with how many reference decks play it. */
+  yourCards: ComparedCard[];
   /** Your cards whose text couldn't be looked up, so their roles aren't counted. */
   unknown: number;
 }
@@ -249,13 +264,130 @@ export function compareWithReferences(
   const missing = [...counts.values()]
     .filter((m) => m.inDecks >= needed)
     .sort((a, b) => b.inDecks - a.inDecks || a.name.localeCompare(b.name))
-    .map((m) => ({ ...m, info: info.get(nameKey(m.name)) ?? null }));
+    .map((m) => {
+      const known = info.get(nameKey(m.name)) ?? null;
+      return { ...m, info: known, roles: known ? cardRoles(known) : [] };
+    });
 
   const onlyMine = mine
     .filter((c) => !isBasic(c.name) && !refSets.some((set) => set.has(nameKey(c.name))))
     .map((c) => c.name)
     .sort((a, b) => a.localeCompare(b));
 
+  const yourCards = mine
+    .filter((c) => !isBasic(c.name))
+    .map((c): ComparedCard => {
+      const known = info.get(nameKey(c.name));
+      return {
+        name: c.name,
+        quantity: c.quantity,
+        inDecks: refSets.filter((set) => set.has(nameKey(c.name))).length,
+        sourceId: known?.sourceId ?? null,
+        kind: known?.kind ?? null,
+        cost: known?.cost ?? null,
+        roles: known ? cardRoles(known) : [],
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const unknown = mine.filter((c) => !isBasic(c.name) && !info.get(nameKey(c.name))?.text).length;
-  return { profiles, guidelines, overlap, missing, onlyMine, unknown };
+  return { profiles, guidelines, overlap, missing, onlyMine, yourCards, unknown };
+}
+
+/** What a card list under the comparison can be grouped and sorted by. */
+export type CompareGrouping = "none" | "cost" | "kind" | "role" | "agreement";
+export type CompareSorting = "name" | "cost" | "agreement";
+
+export interface CompareListCard {
+  name: string;
+  inDecks: number;
+  kind: string | null;
+  cost: number | null;
+  roles: CardRole[];
+}
+
+export interface CompareGroup<T> {
+  key: string;
+  label: string;
+  cards: T[];
+}
+
+const KIND_GROUPS: Array<[string, string]> = [
+  ["creature", "Creatures"],
+  ["instant", "Instants"],
+  ["sorcery", "Sorceries"],
+  ["artifact", "Artifacts"],
+  ["enchantment", "Enchantments"],
+  ["planeswalker", "Planeswalkers"],
+  ["battle", "Battles"],
+  ["land", "Lands"],
+];
+
+/** Which mana value group a card is in: its curve bucket's index, "land", or "unknown". */
+export function costGroupKey(card: Pick<CompareListCard, "kind" | "cost">): string {
+  if (card.kind === "land") return "land";
+  const i = card.cost === null ? -1 : bucketIndex("mtg", card.cost);
+  return i < 0 ? "unknown" : `mv${i}`;
+}
+
+/**
+ * Sorts and groups a card list for the comparison page. A card with
+ * several roles appears under each; one with none under "No role".
+ * Groups keep a fixed order (mana value up, the usual order of card
+ * types, the roles' order, most agreed first); empty ones are left out.
+ */
+export function groupCompareCards<T extends CompareListCard>(
+  cards: T[],
+  groupBy: CompareGrouping,
+  sortBy: CompareSorting,
+  references: number
+): CompareGroup<T>[] {
+  const sorted = [...cards].sort((a, b) => {
+    const byName = a.name.localeCompare(b.name);
+    if (sortBy === "cost") return (a.cost ?? 99) - (b.cost ?? 99) || byName;
+    if (sortBy === "agreement") return b.inDecks - a.inDecks || byName;
+    return byName;
+  });
+  if (groupBy === "none") return [{ key: "all", label: "", cards: sorted }];
+
+  const buckets = curveBuckets("mtg");
+  const labels = new Map<string, string>();
+  let order: string[];
+  const keysOf: (card: T) => string[] =
+    groupBy === "cost"
+      ? (card) => [costGroupKey(card)]
+      : groupBy === "kind"
+        ? (card) => [KIND_GROUPS.some(([k]) => k === card.kind) ? card.kind! : "other"]
+        : groupBy === "role"
+          ? (card) => (card.roles.length ? card.roles : ["none"])
+          : (card) => [`in${card.inDecks}`];
+  if (groupBy === "cost") {
+    buckets.forEach((b, i) => labels.set(`mv${i}`, `Mana value ${b.label}`));
+    labels.set("land", "Lands").set("unknown", "Mana value unknown");
+    order = [...buckets.map((_, i) => `mv${i}`), "land", "unknown"];
+  } else if (groupBy === "kind") {
+    for (const [k, label] of KIND_GROUPS) labels.set(k, label);
+    labels.set("other", "Other");
+    order = [...KIND_GROUPS.map(([k]) => k), "other"];
+  } else if (groupBy === "role") {
+    for (const [k, label] of Object.entries(ROLE_LABELS)) labels.set(k, label);
+    labels.set("none", "No role");
+    order = [...Object.keys(ROLE_LABELS), "none"];
+  } else {
+    order = Array.from({ length: references + 1 }, (_, n) => `in${references - n}`);
+    for (let n = 0; n <= references; n++)
+      labels.set(
+        `in${n}`,
+        n === 0
+          ? "In none of the average decks"
+          : `In ${n} of ${references} average deck${references === 1 ? "" : "s"}`
+      );
+  }
+
+  const groups = new Map<string, T[]>();
+  for (const card of sorted)
+    for (const key of keysOf(card)) groups.set(key, [...(groups.get(key) ?? []), card]);
+  return [...groups.entries()]
+    .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
+    .map(([key, list]) => ({ key, label: labels.get(key) ?? key, cards: list }));
 }

@@ -39,15 +39,29 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 /**
  * The curve as columns. `targets`, when given, is the recommended count
  * per column in the same order; a column under its target is marked.
+ * `pick`, when given, makes each column a button: clicking one calls
+ * `onPick` with its index (or null to clear the column already `selected`).
  */
-export function curveChart(title: string, bars: StatBarUI[], targets?: number[]): HTMLElement {
+export function curveChart(
+  title: string,
+  bars: StatBarUI[],
+  targets?: number[],
+  pick?: { selected: number | null; onPick: (index: number | null) => void }
+): HTMLElement {
   const wrap = el("figure", "deck-curve");
   wrap.appendChild(el("figcaption", "collection-meta", title));
   const chart = el("div", "deck-curve-bars");
   const peak = Math.max(1, ...bars.map((b) => b.count), ...(targets ?? []));
   bars.forEach((bar, i) => {
     const target = targets?.[i];
-    const column = el("div", "deck-curve-col");
+    const column = pick ? el("button", "deck-curve-col deck-curve-pick") : el("div", "deck-curve-col");
+    if (pick && column instanceof HTMLButtonElement) {
+      column.type = "button";
+      const selected = pick.selected === i;
+      column.classList.toggle("is-selected", selected);
+      column.setAttribute("aria-pressed", String(selected));
+      column.addEventListener("click", () => pick.onPick(selected ? null : i));
+    }
     const label =
       target === undefined
         ? `${bar.label}: ${bar.count}`

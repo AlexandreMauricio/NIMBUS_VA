@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CompareCardInfo, cardRoles, compareWithReferences, deckProfile, nameKey } from "./compare";
+import {
+  CardRole,
+  CompareCardInfo,
+  cardRoles,
+  compareWithReferences,
+  deckProfile,
+  groupCompareCards,
+  nameKey,
+} from "./compare";
 import {
   averageDeck,
   blendDecks,
@@ -119,6 +127,13 @@ test("comparison: guidelines per deck, overlap, what they agree on that you lack
     [["Cultivate", 2]]
   );
   assert.deepEqual(result.onlyMine, ["Goblin Guide"]);
+  assert.deepEqual(
+    result.yourCards.map((c) => [c.name, c.inDecks]),
+    [
+      ["Goblin Guide", 0],
+      ["Sol Ring", 1],
+    ]
+  );
 });
 
 test("a double-faced card matches its front face", () => {
@@ -273,4 +288,48 @@ test("blended decks keep what most decks share, basics at their average count, u
     ]
   );
   assert.equal(blended.decks, 3);
+});
+
+test("the card lists group by mana value, type, role or how many average decks play a card", () => {
+  const card = (name: string, kind: string, cost: number | null, roles: CardRole[], inDecks: number) => ({
+    name,
+    kind,
+    cost,
+    roles,
+    inDecks,
+  });
+  const list = [
+    card("Worldspine Wurm", "creature", 11, [], 0),
+    card("Sol Ring", "artifact", 1, ["ramp"], 2),
+    card("Rishkar's Expertise", "sorcery", 6, ["draw"], 1),
+    card("Command Tower", "land", 0, ["ramp"], 2),
+  ];
+  assert.deepEqual(
+    groupCompareCards(list, "cost", "name", 2).map((g) => [g.label, g.cards.map((c) => c.name)]),
+    [
+      ["Mana value 1", ["Sol Ring"]],
+      ["Mana value 6+", ["Rishkar's Expertise", "Worldspine Wurm"]],
+      ["Lands", ["Command Tower"]],
+    ]
+  );
+  assert.deepEqual(
+    groupCompareCards(list, "agreement", "name", 2).map((g) => g.label),
+    ["In 2 of 2 average decks", "In 1 of 2 average decks", "In none of the average decks"]
+  );
+  assert.deepEqual(
+    groupCompareCards(list, "role", "name", 2).map((g) => [g.key, g.cards.length]),
+    [
+      ["ramp", 2],
+      ["draw", 1],
+      ["none", 1],
+    ]
+  );
+  assert.deepEqual(
+    groupCompareCards(list, "kind", "cost", 2).map((g) => g.key),
+    ["creature", "sorcery", "artifact", "land"]
+  );
+  assert.deepEqual(
+    groupCompareCards(list, "none", "agreement", 2)[0].cards.map((c) => c.name),
+    ["Command Tower", "Sol Ring", "Rishkar's Expertise", "Worldspine Wurm"]
+  );
 });

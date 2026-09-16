@@ -17,9 +17,9 @@ unnecessarily painful later.
 
 | Layer                         | What it means                                                                                                                                 | Owns                                                                                                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. Core**                   | Platform-independent logic. Zero dependency on Electron or any OS API.                                                                        | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Briefing, the assistant-event contract, settings schema, generic utilities |
-| **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app."                                                                    | Windows, tray, lifecycle, autostart, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups                   |
-| **3. External integrations**  | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter.                 | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance                                                              |
+| **1. Core**                   | Platform-independent logic. Zero dependency on Electron or any OS API.                                                                        | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Memory, Presence, Collections, Briefing, the weekly summary, the assistant-event contract, settings schema, generic utilities |
+| **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app."                                                                    | Windows, tray, lifecycle, autostart, updates, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups                   |
+| **3. External integrations**  | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter.                 | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance, the card databases, EDHREC, the Grand Comics Database, Wikipedia                                                              |
 | **4. User data/context**      | The data itself: what NIMBUS knows and what the user has told it. A _slice_ of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences`                                                                                                      |
 | **5. UI/presentation**        | Rendering and interaction for _this_ client. A future client's UI would be a separate implementation talking to the same Core.                | `src/ui/`, the preload bridges                                                                                                                       |
 
@@ -56,11 +56,6 @@ src/
                                    yahooFinance [3] behind the
                                    MarketDataSource / NewsSource interfaces
                                    (read-only — no trading anywhere)
-
-  collections/decks/        [1] Core — decks: rules.ts, stats.ts (curves),
-                                   builder.ts (the deck builder's playstyles
-                                   and plan advice); catalogs/browse.ts [3]
-                                   browses each card database for it
 
   actions/                  [1] Core — the Action system
     types.ts                     ActionProvider / ActionResult contract
@@ -154,7 +149,7 @@ src/
                                    on the network (45 min grace) — pure
                                    judgement plus a small service
 
-  collections/              [1] Core — Collections (trading cards first)
+  collections/              [1] Core — Collections: cards, decks, books
     types.ts                     Games, catalog cards, collection entries
     collectionService.ts         Entries: add (merging repeats), update,
                                    remove, list, stats; per-entry validation
@@ -162,12 +157,34 @@ src/
                                    cache, and resolve() — the only way a
                                    card enters the collection
     catalogs/                    [3] scryfall, tcgdex, ygoprodeck, lorcast,
-                                   optcg — each a pure mapper plus a fetch
+                                   optcg — each a pure mapper plus a fetch;
+                                   details.ts (card pages), browse.ts (the
+                                   deck builder's browsing), synergy.ts
+                                   ("works well with"), edhrec.ts (average
+                                   and similar-commander decks)
+    decks/                       rules.ts and copies.ts (format rules),
+                                   stats.ts and mana.ts (curve, kinds,
+                                   colour sources), decklist.ts (import),
+                                   builder.ts (playstyles and plan advice),
+                                   compare.ts (a Commander deck against
+                                   average decks: guidelines, roles, the
+                                   card lists' grouping), deckService.ts
     books/                       Comics collected editions and manga:
                                    runs.ts (the "Collects …" parser, shared
-                                   with the renderer), coverage.ts (pure),
-                                   bookService.ts, gcd.ts [3] (Grand Comics
-                                   Database)
+                                   with the renderer), coverage.ts, shelf.ts
+                                   and shelfSort.ts, seriesYears.ts (which
+                                   volume a yearless run means), readings.ts
+                                   (the reading log), creditsQueue.ts
+                                   (background GCD lookups, paced),
+                                   covers.ts, bookService.ts; gcd.ts [3]
+                                   (Grand Comics Database) and wikipedia.ts
+                                   [3] (editions' contents, lists downloaded
+                                   whole)
+
+  summary/                  [1] Core — "Your week" on Home
+    weeklySummary.ts             The last 7 days of sessions, app and site
+                                   time, collection additions and upcoming
+                                   events — pure
 
   briefing/                 [1]/[4] Core — the Briefing system
     types.ts, briefingGenerator.ts, briefingService.ts
@@ -222,6 +239,11 @@ src/
     collectionStore.ts            The card collection (collection.json)
     deckStore.ts                  Decks (decks.json)
     bookStore.ts                  The comics and manga shelf (books.json)
+    coverStore.ts                 Covers you choose: picked in main's own
+                                   dialog, resized, saved in book-covers/,
+                                   served only as nimbus-cover://cover/<id>.jpg
+    updater.ts                    In-app updates from GitHub Releases
+                                   (electron-updater); installed builds only
     memoryStore.ts                Memory, one file per tier
                                    (memory/*.json)
     network/
@@ -274,8 +296,10 @@ renderer can only call what its preload exposes.
 | Area                   | Channels                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | App & window           | `nimbus:get-app-info`, `nimbus:get-settings`, `nimbus:update-settings`, `nimbus:get-zoom`, `nimbus:set-zoom`, `nimbus:hide-window`                                                                                                                                                                                                                                                                     |
+| Updates                | `nimbus:get-update-state`, `nimbus:check-for-updates`, `nimbus:install-update` (no input — where updates come from is fixed in `package.json`); pushes `nimbus:update-state-changed`                                                                                                                                                                                                                   |
+| Home                   | `nimbus:get-weekly-summary`, `nimbus:get-usage` (the opt-in app and site tally), `nimbus:answer-attention-item`                                                                                                                                                                                                                                                                                        |
 | Context & briefing     | `nimbus:get-context`, `nimbus:get-briefing`, `nimbus:regenerate-briefing`                                                                                                                                                                                                                                                                                                                              |
-| Weather / calendar     | `nimbus:get-weather-settings`, `nimbus:update-weather-settings`, `nimbus:get-calendar-settings`, `nimbus:update-calendar-settings`                                                                                                                                                                                                                                                                     |
+| Weather / calendar     | `nimbus:get-weather-settings`, `nimbus:update-weather-settings`, `nimbus:search-places` (a place name only), `nimbus:get-calendar-settings`, `nimbus:update-calendar-settings`                                                                                                                                                                                                                                                                     |
 | Email                  | `nimbus:get-email-settings`, `nimbus:update-email-settings`                                                                                                                                                                                                                                                                                                                                            |
 | Tasks                  | `nimbus:get-task-settings`, `nimbus:update-task-settings`, `nimbus:list-tasks`, `nimbus:list-task-projects`, `nimbus:create-task`, `nimbus:update-task`, `nimbus:complete-task`, `nimbus:reopen-task`, `nimbus:delete-task`                                                                                                                                                                            |
 | Spotify                | `nimbus:get-spotify-settings`, `nimbus:update-spotify-settings`, `nimbus:spotify-connect`, `nimbus:spotify-disconnect`, `nimbus:spotify-list-playlists`                                                                                                                                                                                                                                                |
@@ -284,8 +308,8 @@ renderer can only call what its preload exposes.
 | Routines & suggestions | `nimbus:get-routine-settings`, `nimbus:update-routine-settings`, `nimbus:test-routine`, `nimbus:run-routine-now`, `nimbus:get-routine-history`, `nimbus:get-routine-last-triggered`, `nimbus:get-active-suggestions`, `nimbus:accept-suggestion`, `nimbus:dismiss-suggestion`, `nimbus:get-attention`, `nimbus:update-attention-settings`                                                              |
 | Network                | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings`                                                                                                                                                          |
 | Presence               | `nimbus:get-presence`, `nimbus:set-presence-phone` (a Network tab device id, checked against the list)                                                                                                                                                                                                                                                                                                 |
-| Decks                  | `nimbus:get-card-detail` (game and catalog id only), `nimbus:get-decks`, `nimbus:get-deck`, `nimbus:create-deck`, `nimbus:update-deck`, `nimbus:remove-deck`, `nimbus:add-deck-card` (catalog id only — the card is fetched in the main process), `nimbus:set-deck-card-quantity`, `nimbus:move-deck-card`, `nimbus:import-decklist` (text, capped); pushes `nimbus:decks-changed`                     |
-| Books                  | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book`, `nimbus:get-comic-issue` (series name, year and number only), `nimbus:open-comic-link` (League of Comic Geeks or GCD; the address is built in the main process) |
+| Decks                  | `nimbus:get-card-detail` (game and catalog id only), `nimbus:get-decks`, `nimbus:get-deck`, `nimbus:create-deck`, `nimbus:update-deck`, `nimbus:remove-deck`, `nimbus:add-deck-card` (catalog id only — the card is fetched in the main process), `nimbus:set-deck-card-quantity`, `nimbus:move-deck-card`, `nimbus:import-decklist` (text, capped), `nimbus:refresh-deck-cards` (cards already in the deck), `nimbus:card-synergy`, `nimbus:builder-archetypes`, `nimbus:builder-browse`, `nimbus:builder-create-deck` (cards by id only, from what main browsed), `nimbus:deck-compare-options`, `nimbus:deck-compare` (a deck id and EDHREC variant ids — only the commander's name is sent); pushes `nimbus:decks-changed` |
+| Books                  | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book`, `nimbus:get-comic-issue` (series name, year and number only), `nimbus:open-comic-link` (League of Comic Geeks or GCD; the address is built in the main process), `nimbus:search-book-editions` and `nimbus:find-book-contents` (searched on the PC in Wikipedia's lists — nothing about the book is sent), `nimbus:get-book-years`, `nimbus:work-out-book-years`, `nimbus:set-run-year`, `nimbus:choose-book-cover` (main opens the file dialog; the renderer never names a path), `nimbus:clear-book-cover`; reading log: `nimbus:log-issue-readings`, `nimbus:remove-issue-reading`, `nimbus:set-issues-read`, `nimbus:set-minutes-per-issue`, `nimbus:set-my-issue-credits`, `nimbus:use-my-issue-credits`, `nimbus:reading-credits-state` (also pushed) |
 | Collections            | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card`                                                                                                                                |
 | Memory                 | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings`                                                                                                                                                                                                               |
 | Activity & timer       | `nimbus:get-current-activity`, `nimbus:get-activity-sessions`, `nimbus:get-known-activities`, `nimbus:get-activity-settings`, `nimbus:update-activity-settings`, `nimbus:get-activity-snapshot`, `nimbus:get-timer-state`                                                                                                                                                                              |
@@ -300,7 +324,8 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:presence-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:presence-changed`, `nimbus:decks-changed`, `nimbus:reading-credits-state`,
+`nimbus:update-state-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
 Rules the handlers follow:
@@ -339,6 +364,7 @@ written atomically (temp file, fsync, rename):
 | `books.json`                                                          | `bookStore.ts`            | The comics and manga shelf: `{version: 1, books}`, each with its issue runs; validated per book and per run                                      |
 | `decks.json`                                                          | `deckStore.ts`            | Decks: validated deck by deck and card by card; an unparseable file is renamed `decks.unreadable-<time>.json`                                    |
 | `collection.json`                                                     | `collectionStore.ts`      | The card collection: `{version: 1, cards}`, validated per entry; an unparseable file is renamed `collection.unreadable-<time>.json`              |
+| `book-covers/<book id>.jpg`                                           | `coverStore.ts`           | Covers you chose for books, resized to at most 600 px wide                                                                                       |
 | `logs/nimbus.log`                                                     | `logger.ts`               | Log lines; never credentials                                                                                                                     |
 
 **Credential lifecycle.** `loadSettings()` runs before Electron is ready
@@ -530,7 +556,7 @@ and hand the Core providers the same two functions.
 ## Settings split
 
 `UserPreferences` (weather, calendar, email, tasks, Spotify, routines,
-activity, stocks, attention) is data that conceptually belongs to the user and would follow
+activity, stocks, attention, memory) is data that conceptually belongs to the user and would follow
 them to another device; `WindowsClientSettings` (window bounds, startup
 behaviour, network watching) only makes sense on this Windows install. Both live in one
 local `settings.json` — there is no sync backend — but the type boundary

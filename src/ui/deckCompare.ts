@@ -10,6 +10,14 @@
  * Core's (collections/decks/compare.ts). Kept per deck while the app is
  * open, so adding a card doesn't lose it.
  */
+import {
+  CardRole,
+  CompareGrouping,
+  CompareSorting,
+  ROLE_LABELS,
+  costGroupKey,
+  groupCompareCards,
+} from "../collections/decks/compare";
 import { curveBuckets } from "../collections/decks/stats";
 import { openCardPage } from "./cardPage";
 import { curveChart } from "./deckCharts";
@@ -50,8 +58,18 @@ interface ComparisonUI {
       name: string;
       inDecks: number;
       info: { sourceId: string; imageUrl: string | null; kind: string | null; cost: number | null } | null;
+      roles: CardRole[];
     }>;
     onlyMine: string[];
+    yourCards: Array<{
+      name: string;
+      quantity: number;
+      inDecks: number;
+      sourceId: string | null;
+      kind: string | null;
+      cost: number | null;
+      roles: CardRole[];
+    }>;
     unknown: number;
   };
 }
@@ -80,8 +98,23 @@ function button(label: string, className: string, onClick: () => void): HTMLButt
 
 const errorText = (err: unknown): string => String(err).replace(/^.*Error: /, "");
 
+type CompareListView = "mine" | "missing";
+
+/** A row in either card list; `quantity` is null for a card you don't play. */
+interface CompareRow {
+  name: string;
+  quantity: number | null;
+  inDecks: number;
+  kind: string | null;
+  cost: number | null;
+  roles: CardRole[];
+  sourceId: string | null;
+}
+
 interface CompareState {
   open: boolean;
+  /** The card lists under the comparison: which one, how grouped and sorted, and a curve column ("mv6"). */
+  list: { view: CompareListView; groupBy: CompareGrouping; sortBy: CompareSorting; cost: string | null };
   options: { commander: string; decks: number | null; variants: VariantUI[] } | null;
   selected: Set<string> | null;
   result: ComparisonUI | null;
@@ -99,6 +132,7 @@ export function deckCompareSection(deckId: string, onChanged: () => void): HTMLE
     states.get(deckId) ??
     ({
       open: false,
+      list: { view: "mine", groupBy: "cost", sortBy: "agreement", cost: null },
       options: null,
       selected: null,
       result: null,
@@ -306,80 +340,237 @@ export function deckCompareSection(deckId: string, onChanged: () => void): HTMLE
     }
     wrap.appendChild(rules);
 
-    // The curve, against the first average deck.
+    // The curve, against the first average deck. A column picks the mana
+    // value the lists below show, so "too many at 6+" leads to the cards.
+    const buckets = curveBuckets("mtg");
     const reference = profiles[1];
     if (reference) {
-      const buckets = curveBuckets("mtg");
+      const selectedBucket = state.list.cost?.startsWith("mv") ? Number(state.list.cost.slice(2)) : null;
       wrap.appendChild(
         curveChart(
-          `Your mana curve — dashed: ${reference.label}`,
+          `Your mana curve — dashed: ${reference.label}. Click a column to see those cards.`,
           buckets.map((b, i) => ({ label: b.label, count: profiles[0].curve[i] })),
-          reference.curve
-        )
-      );
-    }
-
-    // Cards they agree on that you don't play.
-    const missingTitle =
-      result.references.length > 1
-        ? `In at least half of these average decks, not in yours (${comparison.missing.length})`
-        : `In the ${result.references[0]?.label.toLowerCase() ?? "average deck"}, not in yours (${comparison.missing.length})`;
-    wrap.appendChild(make("h6", "kicker collection-heading", missingTitle));
-    const missing = make("div", "deck-compare-missing");
-    for (const card of comparison.missing.slice(0, 60)) {
-      const item = make("div", "deck-compare-card");
-      const open = button(card.name, "btn btn-ghost deck-card-name", () => {
-        if (card.info) void openCardPage("mtg", card.info.sourceId);
-      });
-      item.append(
-        open,
-        make(
-          "span",
-          "collection-meta",
-          [
-            `in ${card.inDecks} of ${result.references.length}`,
-            card.info?.kind,
-            card.info?.cost !== null && card.info?.cost !== undefined ? `MV ${card.info.cost}` : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")
-        )
-      );
-      if (card.info) {
-        const added = state.added.has(card.name);
-        const add = button(added ? "Added" : "Add", "btn btn-ghost", async () => {
-          add.disabled = true;
-          try {
-            await bridge().addDeckCard(deckId, card.info!.sourceId, "main");
-            state.added.add(card.name);
-            onChanged();
-          } catch (err) {
-            add.disabled = false;
-            add.textContent = errorText(err);
+          reference.curve,
+          {
+            selected: selectedBucket,
+            onPick: (index) => {
+              state.list.cost = index === null ? null : `mv${index}`;
+              redraw();
+            },
           }
-        });
-        add.disabled = added;
-        item.appendChild(add);
-      }
-      missing.appendChild(item);
+        )
+      );
     }
-    if (!comparison.missing.length)
-      missing.appendChild(make("p", "collection-meta", "Nothing — you play everything they agree on."));
-    wrap.appendChild(missing);
 
     wrap.appendChild(
-      make("h6", "kicker collection-heading", `Only in yours (${comparison.onlyMine.length})`)
-    );
-    wrap.appendChild(
-      make(
-        "p",
-        "collection-meta deck-compare-only",
-        comparison.onlyMine.length
-          ? comparison.onlyMine.join(" · ")
-          : "Every card you play appears in at least one of these average decks."
+      cardLists(
+        result,
+        buckets.map((b) => b.label)
       )
     );
     return wrap;
+  }
+
+  /** Your cards and the ones they agree on, filtered by a curve column, grouped and sorted as chosen. */
+  function cardLists(result: ComparisonUI, bucketLabels: string[]): HTMLElement {
+    const { comparison } = result;
+    const references = result.references.length;
+    const list = state.list;
+    const box = make("div", "deck-compare-lists");
+
+    const missingTitle =
+      references > 1
+        ? `In at least half of these average decks, not in yours`
+        : `In the ${result.references[0]?.label.toLowerCase() ?? "average deck"}, not in yours`;
+    const views: Array<[CompareListView, string, number]> = [
+      ["mine", "Your cards", comparison.yourCards.length],
+      ["missing", missingTitle, comparison.missing.length],
+    ];
+
+    const controls = make("div", "books-sort-row deck-compare-controls");
+    const tabs = make("div", "deck-compare-views");
+    tabs.setAttribute("role", "group");
+    tabs.setAttribute("aria-label", "Which cards");
+    for (const [view, label, count] of views) {
+      const tab = button(
+        `${label} (${count})`,
+        `btn ${list.view === view ? "btn-secondary" : "btn-ghost"}`,
+        () => {
+          list.view = view;
+          redraw();
+        }
+      );
+      tab.setAttribute("aria-pressed", String(list.view === view));
+      tabs.appendChild(tab);
+    }
+    controls.appendChild(tabs);
+    const select = <T extends string>(
+      label: string,
+      options: Array<[T, string]>,
+      value: T,
+      onChange: (v: T) => void
+    ) => {
+      const s = make("select", "select");
+      s.setAttribute("aria-label", label);
+      for (const [id, text] of options) s.appendChild(new Option(`${label}: ${text}`, id));
+      s.value = value;
+      s.addEventListener("change", () => {
+        onChange(s.value as T);
+        redraw();
+      });
+      controls.appendChild(s);
+    };
+    select<CompareGrouping>(
+      "Group",
+      [
+        ["none", "none"],
+        ["cost", "mana value"],
+        ["kind", "card type"],
+        ["role", "role"],
+        ["agreement", "average decks playing it"],
+      ],
+      list.groupBy,
+      (v) => (list.groupBy = v)
+    );
+    select<CompareSorting>(
+      "Sort",
+      [
+        ["name", "name"],
+        ["cost", "mana value"],
+        ["agreement", "average decks playing it"],
+      ],
+      list.sortBy,
+      (v) => (list.sortBy = v)
+    );
+    box.appendChild(controls);
+
+    if (list.cost) {
+      const i = list.cost.startsWith("mv") ? Number(list.cost.slice(2)) : -1;
+      const filter = make("p", "collection-meta deck-compare-filter");
+      const mine = comparison.profiles[0]?.curve[i];
+      const theirs = comparison.profiles[1]?.curve[i];
+      filter.append(
+        document.createTextNode(
+          `Only mana value ${bucketLabels[i] ?? "?"}` +
+            (mine !== undefined && theirs !== undefined
+              ? ` — you play ${mine}, the average ${theirs}. `
+              : ". ")
+        ),
+        button("Show all", "btn btn-ghost", () => {
+          list.cost = null;
+          redraw();
+        })
+      );
+      box.appendChild(filter);
+    }
+
+    // Both lists as one row shape, so they share grouping, sorting and drawing.
+    const rows: CompareRow[] =
+      list.view === "mine"
+        ? comparison.yourCards.map((c) => ({
+            name: c.name,
+            quantity: c.quantity,
+            inDecks: c.inDecks,
+            kind: c.kind,
+            cost: c.cost,
+            roles: c.roles,
+            sourceId: c.sourceId,
+          }))
+        : comparison.missing.map((c) => ({
+            name: c.name,
+            quantity: null,
+            inDecks: c.inDecks,
+            kind: c.info?.kind ?? null,
+            cost: c.info?.cost ?? null,
+            roles: c.roles,
+            sourceId: c.info?.sourceId ?? null,
+          }));
+    const shown = list.cost ? rows.filter((r) => costGroupKey(r) === list.cost) : rows;
+
+    if (!shown.length) {
+      box.appendChild(
+        make(
+          "p",
+          "collection-meta",
+          list.view === "missing"
+            ? list.cost
+              ? "Nothing they agree on at this mana value."
+              : "Nothing — you play everything they agree on."
+            : "None of your cards here."
+        )
+      );
+      return box;
+    }
+
+    if (list.view === "mine") {
+      const onlyMine = shown.filter((r) => r.inDecks === 0).length;
+      box.appendChild(
+        make(
+          "p",
+          "builder-footnote",
+          onlyMine
+            ? `Marked: ${onlyMine} card${onlyMine === 1 ? "" : "s"} none of these average decks play — the first to question when a column is too tall.`
+            : "Every card here appears in at least one of these average decks."
+        )
+      );
+    }
+
+    for (const group of groupCompareCards(shown, list.groupBy, list.sortBy, references)) {
+      if (group.label) {
+        const copies = group.cards.reduce((sum, c) => sum + (c.quantity ?? 1), 0);
+        box.appendChild(make("h6", "kicker deck-compare-group", `${group.label} (${copies})`));
+      }
+      const grid = make("div", "deck-compare-missing");
+      for (const card of group.cards) grid.appendChild(cardRow(card, references));
+      box.appendChild(grid);
+    }
+    return box;
+  }
+
+  function cardRow(card: CompareRow, references: number): HTMLElement {
+    const mine = card.quantity !== null;
+    const item = make(
+      "div",
+      `deck-compare-card${mine && card.inDecks === 0 ? " deck-compare-only-mine" : ""}`
+    );
+    const sourceId = card.sourceId;
+    item.appendChild(
+      button(card.name, "btn btn-ghost deck-card-name", () => {
+        if (sourceId) void openCardPage("mtg", sourceId);
+      })
+    );
+    item.appendChild(
+      make(
+        "span",
+        "collection-meta",
+        [
+          mine && card.quantity! > 1 ? `×${card.quantity}` : null,
+          mine && card.inDecks === 0 ? "in none" : `in ${card.inDecks} of ${references}`,
+          card.kind,
+          card.cost !== null ? `MV ${card.cost}` : null,
+          ...card.roles.map((r) => ROLE_LABELS[r].toLowerCase()),
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      )
+    );
+    if (!mine && sourceId) {
+      const added = state.added.has(card.name);
+      const add = button(added ? "Added" : "Add", "btn btn-ghost", async () => {
+        add.disabled = true;
+        try {
+          await bridge().addDeckCard(deckId, sourceId, "main");
+          state.added.add(card.name);
+          onChanged();
+        } catch (err) {
+          add.disabled = false;
+          add.textContent = errorText(err);
+        }
+      });
+      add.disabled = added;
+      item.appendChild(add);
+    }
+    return item;
   }
 
   redraw();

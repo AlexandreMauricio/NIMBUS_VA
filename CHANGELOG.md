@@ -18,6 +18,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.6 — 2026-09-16
+
+- **Commander comparison: sort and group the card lists, from the curve.**
+  Under the comparison, **Your cards** and **Cards they agree on** are now
+  one list with a switch, grouped by mana value, card type, role or how
+  many average decks play a card, and sorted by name, mana value or that
+  count. Your cards show their type, mana value, roles and "in 2 of 3";
+  the ones no average deck plays are marked. Clicking a mana curve column
+  (say 6+, when you have too many) shows just those cards.
+- **Documentation caught up with the code.** ARCHITECTURE.md lists every
+  IPC channel again (updates, the weekly summary, the deck builder and
+  comparison, book covers and the reading log), the collections, summary,
+  updater and cover modules, and the `book-covers` folder; the README's
+  structure, data table and "Run from source" steps are complete.
+
+---
+
 ## 0.6.5 — 2026-09-15
 
 - **Compare with similar commanders, not only your own.** The Commander
