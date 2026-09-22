@@ -122,6 +122,9 @@ import { MealService } from "../meals/mealService";
 import { coverRecipe, coverageCount, isoDate, summariseStock, usableLeftovers } from "../meals/pantry";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../meals/recipes";
 import { dayRange, mealName, planCost, servingsNeeded } from "../meals/plan";
+import { parseRecipePage } from "../meals/recipeImport";
+import { isPrivateIPv4 } from "../network/subnet";
+import { httpTimeoutSignal } from "../common/timeout";
 import {
   ActivityService,
   ActivityMapping,
@@ -1149,7 +1152,48 @@ function registerIpcHandlers(): void {
       })),
       days,
       weekCost: cost,
+      shopping: mealService.shoppingList(days),
+      hasDemoData: mealService.hasDemoData(),
     };
+  };
+
+  /**
+   * Fetches a recipe page for the importer. The renderer names the
+   * address, so this is the one place in Meals where it can: only http(s)
+   * is allowed, never a private or loopback host (which would make NIMBUS
+   * a way to reach the user's own network), the request is time-bounded,
+   * and only the first megabyte is read — enough for any recipe page's
+   * metadata. The page itself is never rendered, only parsed.
+   */
+  const fetchRecipePage = async (raw: unknown) => {
+    let url: URL;
+    try {
+      url = new URL(String(raw ?? ""));
+    } catch {
+      throw new Error("That doesn't look like a web address.");
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:")
+      throw new Error("Only http and https addresses can be imported.");
+    const host = url.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host.endsWith(".local") ||
+      host === "[::1]" ||
+      isPrivateIPv4(host) ||
+      /^127\./.test(host)
+    )
+      throw new Error("That address is on this machine or network, not a recipe site.");
+    const response = await fetch(url.toString(), {
+      signal: httpTimeoutSignal(),
+      headers: { Accept: "text/html,application/xhtml+xml" },
+    });
+    if (!response.ok) throw new Error(`The site answered ${response.status}.`);
+    const html = (await response.text()).slice(0, 1_000_000);
+    const recipe = parseRecipePage(html, url.toString());
+    if (!recipe)
+      throw new Error("No recipe data on that page — some sites don't publish it. Add it by hand instead.");
+    logger.info("Imported a recipe page", { host, ingredients: recipe.ingredients.length });
+    return recipe;
   };
 
   // Meals (src/meals/): recipes, the pantry, leftovers and the plan. All of
@@ -1191,6 +1235,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle("nimbus:update-meal-preferences", (_event, changes: unknown) =>
     mealService.updatePreferences(changes)
   );
+  ipcMain.handle("nimbus:add-shopping-item", (_event, input: unknown) => mealService.addShoppingItem(input));
+  ipcMain.handle("nimbus:remove-shopping-item", (_event, id: unknown) =>
+    mealService.removeShoppingItem(String(id ?? ""))
+  );
+  ipcMain.handle("nimbus:buy-item", (_event, input: unknown) => mealService.buy(input));
+  ipcMain.handle("nimbus:import-recipe-url", (_event, url: unknown) => fetchRecipePage(url));
+  ipcMain.handle("nimbus:load-demo-meals", () => mealService.loadDemoData());
+  ipcMain.handle("nimbus:remove-demo-meals", () => mealService.removeDemoData());
 
   // Books (src/collections/books/): comics collected editions and manga.
   // GCD lookups take a series name or a numeric volume id only; the URL is

@@ -99,6 +99,25 @@ interface MealsSnapshot {
   }>;
   plan: Array<{ meal: PlannedMeal; name: string; cost: number | null }>;
   days: string[];
+  shopping: {
+    lines: Array<{
+      ingredientId: string | null;
+      name: string;
+      needed: { quantity: number; unit: string } | null;
+      have: number | null;
+      buy: { quantity: number; unit: string } | null;
+      forMeals: string[];
+      cost: number | null;
+      manual: boolean;
+      itemId: string | null;
+    }>;
+    toBuy: number;
+    covered: Array<{ name: string; value: number | null }>;
+    cost: number | null;
+    unpriced: number;
+    unknown: number;
+  };
+  hasDemoData: boolean;
   weekCost: {
     value: number | null;
     known: number;
@@ -129,12 +148,39 @@ interface MealsBridge {
   }>;
   eatLeftover(mealId: string, leftoverId: string, portions: number): Promise<unknown>;
   updateMealPreferences(changes: Record<string, unknown>): Promise<unknown>;
+  addShoppingItem(input: Record<string, unknown>): Promise<unknown>;
+  removeShoppingItem(id: string): Promise<void>;
+  buyItem(input: Record<string, unknown>): Promise<unknown>;
+  importRecipeUrl(url: string): Promise<ImportedRecipeUI>;
+  loadDemoMeals(): Promise<void>;
+  removeDemoMeals(): Promise<void>;
   onMealsChanged(callback: () => void): () => void;
+}
+
+/** What the importer hands back: a draft to check, never a saved recipe. */
+interface ImportedRecipeUI {
+  name: string;
+  description: string | null;
+  servings: number | null;
+  prepMinutes: number | null;
+  cookMinutes: number | null;
+  ingredients: Array<{
+    text: string;
+    name: string;
+    quantity: number | null;
+    unit: string | null;
+    optional: boolean;
+    warning: string | null;
+  }>;
+  steps: string[];
+  slots: MealSlot[];
+  source: string;
+  needsChecking: number;
 }
 
 const bridge = (): MealsBridge => (window as unknown as { nimbus: MealsBridge }).nimbus;
 
-type MealsView = "today" | "plan" | "recipes" | "pantry" | "settings";
+type MealsView = "today" | "plan" | "recipes" | "shopping" | "pantry" | "settings";
 
 interface MealsUiState {
   view: MealsView;
@@ -147,6 +193,8 @@ interface MealsUiState {
   pantryFilter: "all" | StoragePlace | "expiring" | "unconfirmed";
   /** The plan slot whose editor is open. */
   planning: { date: string; slot: MealSlot; mealId: string | null } | null;
+  /** A recipe read off a web page, waiting to be checked and saved. */
+  imported: ImportedRecipeUI | null;
   message: string;
   error: string;
 }
@@ -159,6 +207,7 @@ const state: MealsUiState = {
   recipeSort: "home",
   pantryFilter: "all",
   planning: null,
+  imported: null,
   message: "",
   error: "",
 };
@@ -274,6 +323,7 @@ function render(): void {
     ["today", "Today"],
     ["plan", "Plan"],
     ["recipes", "Recipes"],
+    ["shopping", "Shopping"],
     ["pantry", "Pantry"],
     ["settings", "Settings"],
   ];
@@ -301,6 +351,7 @@ function render(): void {
   if (state.view === "today") root.appendChild(todayView(snapshot));
   else if (state.view === "plan") root.appendChild(planView(snapshot));
   else if (state.view === "recipes") root.appendChild(recipesView(snapshot));
+  else if (state.view === "shopping") root.appendChild(shoppingView(snapshot));
   else if (state.view === "pantry") root.appendChild(pantryView(snapshot));
   else root.appendChild(settingsView(snapshot));
 }
@@ -802,6 +853,7 @@ function recipesView(data: MealsSnapshot): HTMLElement {
       render();
     })
   );
+  controls.appendChild(button("Import from a URL", "btn btn-ghost", () => openImport()));
   wrap.appendChild(controls);
 
   const term = state.recipeSearch.trim().toLowerCase();
@@ -994,25 +1046,81 @@ function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][number]
   return wrap;
 }
 
+/**
+ * Import from a URL: the main process fetches the page and reads the
+ * recipe data most cooking sites publish for search engines. What comes
+ * back opens in the editor as a draft, with the doubtful lines flagged.
+ * Nothing is saved until you press Save.
+ */
+function openImport(): void {
+  const dialog = make("section", "meals-card");
+  dialog.appendChild(make("h5", "kicker", "Import a recipe"));
+  const url = input("url");
+  url.placeholder = "https://...";
+  const form = make("div", "meals-form");
+  form.appendChild(field("Recipe page", url));
+  dialog.appendChild(form);
+  dialog.appendChild(
+    make(
+      "p",
+      "collection-meta",
+      "No page is shown and nothing is saved until you check it. A site that publishes no recipe data can't be imported."
+    )
+  );
+  const actions = make("div", "meals-row");
+  const go = button("Read the page", "btn btn-secondary", async () => {
+    go.disabled = true;
+    go.textContent = "Reading...";
+    try {
+      state.imported = await bridge().importRecipeUrl(url.value);
+      state.editing = "new";
+      state.error = "";
+      state.message = state.imported.needsChecking
+        ? `Imported. ${state.imported.needsChecking} line(s) need a look before saving.`
+        : "Imported - check it and save.";
+    } catch (err) {
+      state.error = errorText(err);
+    }
+    render();
+  });
+  actions.append(
+    go,
+    button("Cancel", "btn btn-ghost", () => render())
+  );
+  dialog.appendChild(actions);
+  root?.appendChild(dialog);
+  url.focus();
+}
+
 function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
   const existing = id === "new" ? undefined : data.recipes.find((r) => r.recipe.id === id)?.recipe;
+  // A draft read off a web page fills the editor instead of an empty form.
+  const draft = existing ? null : state.imported;
   const wrap = make("div", "meals-view");
-  wrap.appendChild(make("h5", "kicker", existing ? "Edit recipe" : "New recipe"));
+  wrap.appendChild(make("h5", "kicker", existing ? "Edit recipe" : draft ? "Imported recipe" : "New recipe"));
+  if (draft)
+    wrap.appendChild(
+      make(
+        "p",
+        "collection-meta",
+        `From ${draft.source}${draft.needsChecking ? ` - ${draft.needsChecking} line(s) below need an amount or a unit` : ""}`
+      )
+    );
 
   const name = input("text");
   name.maxLength = 200;
-  name.value = existing?.name ?? "";
+  name.value = existing?.name ?? draft?.name ?? "";
   const servings = input("number");
   servings.min = "1";
-  servings.value = String(existing?.servings ?? 2);
+  servings.value = String(existing?.servings ?? draft?.servings ?? 2);
   const prep = input("number");
   prep.min = "0";
-  prep.value = existing?.prepMinutes === null || !existing ? "" : String(existing.prepMinutes);
+  prep.value = minutesValue(existing?.prepMinutes, draft?.prepMinutes);
   const cook = input("number");
   cook.min = "0";
-  cook.value = existing?.cookMinutes === null || !existing ? "" : String(existing.cookMinutes);
+  cook.value = minutesValue(existing?.cookMinutes, draft?.cookMinutes);
   const description = make("textarea", "input meals-textarea");
-  description.value = existing?.description ?? "";
+  description.value = existing?.description ?? draft?.description ?? "";
   const tags = input("text");
   tags.value = existing?.tags.join(", ") ?? "";
   tags.placeholder = "comma separated";
@@ -1022,7 +1130,11 @@ function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
   for (const slot of MEAL_SLOTS) {
     const label = make("label", "meals-check");
     const box = input("checkbox", "");
-    box.checked = existing ? existing.slots.includes(slot) : slot === "dinner";
+    box.checked = existing
+      ? existing.slots.includes(slot)
+      : draft?.slots.length
+        ? draft.slots.includes(slot)
+        : slot === "dinner";
     slotBoxes.set(slot, box);
     label.append(box, document.createTextNode(` ${MEAL_SLOT_LABELS[slot]}`));
     slotRow.appendChild(label);
@@ -1049,7 +1161,13 @@ function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     unit: HTMLSelectElement;
     optional: HTMLInputElement;
   }> = [];
-  const addLine = (line?: { text: string; quantity: number; unit: string; optional: boolean }) => {
+  const addLine = (line?: {
+    text: string;
+    quantity: number | null;
+    unit: string | null;
+    optional: boolean;
+    warning?: string | null;
+  }) => {
     const row = make("div", "meals-line");
     const lineName = input("text");
     lineName.placeholder = "Ingredient";
@@ -1058,7 +1176,7 @@ function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     const quantity = input("number");
     quantity.step = "0.01";
     quantity.min = "0";
-    quantity.value = line ? String(line.quantity) : "";
+    quantity.value = line?.quantity === null || line?.quantity === undefined ? "" : String(line.quantity);
     const unit = select(
       KNOWN_UNITS.map((u) => [u, unitLabel(u) === "×" ? "each" : unitLabel(u)] as [string, string]),
       line?.unit ?? "g"
@@ -1070,6 +1188,10 @@ function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     const entry = { name: lineName, quantity, unit, optional };
     lineRows.push(entry);
     row.append(quantity, unit, lineName, optionalLabel);
+    if (line?.warning) {
+      row.classList.add("meals-line-warning");
+      row.appendChild(make("span", "meals-pill meals-pill-urgent", line.warning));
+    }
     row.appendChild(
       button("✕", "btn btn-ghost", () => {
         const index = lineRows.indexOf(entry);
@@ -1080,13 +1202,23 @@ function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     linesBox.appendChild(row);
   };
   for (const line of existing?.ingredients ?? []) addLine(line);
-  if (!existing) addLine();
+  for (const line of draft?.ingredients ?? [])
+    addLine({
+      text: line.name,
+      quantity: line.quantity,
+      unit: line.unit,
+      optional: line.optional,
+      warning: line.warning,
+    });
+  if (!existing && !draft) addLine();
   wrap.appendChild(linesBox);
   wrap.appendChild(button("+ Add ingredient", "btn btn-ghost", () => addLine()));
 
   wrap.appendChild(make("h5", "kicker collection-heading", "Method"));
   const steps = make("textarea", "input meals-textarea meals-steps-input");
-  steps.value = (existing?.steps ?? []).map((step) => step.text).join("\n");
+  steps.value = existing
+    ? existing.steps.map((step) => step.text).join("\n")
+    : (draft?.steps ?? []).join("\n");
   steps.placeholder = "One step per line";
   wrap.appendChild(steps);
 
@@ -1123,21 +1255,240 @@ function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
                 .map((line) => line.trim())
                 .filter(Boolean)
                 .map((text) => ({ text })),
+              source: draft?.source ?? null,
             },
             existing?.id
           );
           state.editing = null;
+          state.imported = null;
         }, "Recipe saved.")
     )
   );
   actions.appendChild(
     button("Cancel", "btn btn-ghost", () => {
       state.editing = null;
+      state.imported = null;
       render();
     })
   );
   wrap.appendChild(actions);
   return wrap;
+}
+
+/** A minutes field: the saved recipe's value, else an imported one, else empty. */
+function minutesValue(saved: number | null | undefined, imported: number | null | undefined): string {
+  const value = saved ?? imported ?? null;
+  return value === null ? "" : String(value);
+}
+
+// ---------- Shopping ----------
+
+/**
+ * The list is worked out from the plan every time, so there is nothing to
+ * tick: **Bought** puts the food in the pantry, and the line disappears
+ * because the kitchen now covers it.
+ */
+function shoppingView(data: MealsSnapshot): HTMLElement {
+  const wrap = make("div", "meals-view");
+  const list = data.shopping;
+
+  const summary = make("section", "meals-card");
+  summary.appendChild(make("h5", "kicker", `To buy · next 7 days`));
+  summary.appendChild(
+    make("p", "meals-total", list.cost === null ? `${list.toBuy} item(s)` : `≈ ${euro(list.cost)}`)
+  );
+  summary.appendChild(
+    make(
+      "p",
+      "collection-meta",
+      [
+        `${list.toBuy} item(s)`,
+        list.unpriced ? `${list.unpriced} with no price yet` : null,
+        list.covered.length ? `${list.covered.length} covered by the pantry` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    )
+  );
+  wrap.appendChild(summary);
+
+  // Adding something no recipe knows about.
+  const manualName = input("text");
+  manualName.placeholder = "Bin bags, something for Sunday…";
+  const manualQuantity = input("number");
+  manualQuantity.step = "0.01";
+  manualQuantity.min = "0";
+  manualQuantity.placeholder = "amount";
+  const manualUnit = select(
+    KNOWN_UNITS.map((u) => [u, unitLabel(u) === "×" ? "each" : unitLabel(u)] as [string, string]),
+    "piece"
+  );
+  const adder = make("div", "meals-form");
+  adder.append(
+    field("Add to the list", manualName),
+    field("Amount", manualQuantity),
+    field("Unit", manualUnit)
+  );
+  const adderRow = make("div", "meals-row");
+  adderRow.appendChild(
+    button(
+      "Add",
+      "btn btn-ghost",
+      () =>
+        void act(
+          () =>
+            bridge().addShoppingItem({
+              name: manualName.value,
+              quantity: manualQuantity.value ? Number(manualQuantity.value) : null,
+              unit: manualUnit.value,
+            }),
+          "Added to the list."
+        )
+    )
+  );
+  wrap.append(adder, adderRow);
+
+  if (!list.lines.length)
+    wrap.appendChild(
+      make(
+        "p",
+        "feed-empty",
+        "Nothing to buy — the pantry covers what's planned. Plan more meals, or add something by hand."
+      )
+    );
+
+  const rows = make("div", "meals-list");
+  for (const line of list.lines) {
+    const row = make("div", "meals-row-item");
+    row.append(
+      make("span", "meals-amount", line.buy ? formatAmount(line.buy) : "—"),
+      make("strong", undefined, line.name)
+    );
+    const why = line.manual ? "added by hand" : line.forMeals.length ? `for ${line.forMeals.join(", ")}` : "";
+    const detail = [
+      why,
+      line.have ? `${formatAmount({ quantity: line.have, unit: line.needed?.unit ?? "g" })} at home` : null,
+      line.cost === null ? null : `≈ ${euro(line.cost)}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (detail) row.appendChild(make("span", "collection-meta", detail));
+    if (!line.buy) row.appendChild(make("span", "meals-pill", "amount unclear"));
+    else if (line.cost === null) row.appendChild(make("span", "meals-pill meals-pill-est", "no price yet"));
+
+    const actions = make("span", "meals-row-actions");
+    if (line.buy)
+      actions.appendChild(
+        button("Bought", "btn btn-ghost", () =>
+          openBuy({
+            name: line.name,
+            ingredientId: line.ingredientId,
+            quantity: line.buy!.quantity,
+            unit: line.buy!.unit,
+            itemId: line.itemId,
+          })
+        )
+      );
+    if (line.manual && line.itemId)
+      actions.appendChild(
+        button("Remove", "btn btn-ghost", () => void act(() => bridge().removeShoppingItem(line.itemId!)))
+      );
+    row.appendChild(actions);
+    rows.appendChild(row);
+  }
+  wrap.appendChild(rows);
+
+  if (list.covered.length) {
+    wrap.appendChild(make("h5", "kicker collection-heading", "Already in the kitchen"));
+    wrap.appendChild(
+      make(
+        "p",
+        "collection-meta",
+        list.covered
+          .map((entry) => `${entry.name}${entry.value === null ? "" : ` (≈ ${euro(entry.value)})`}`)
+          .join(" · ")
+      )
+    );
+  }
+  wrap.appendChild(
+    make(
+      "p",
+      "builder-footnote",
+      "The list is worked out from the plan each time you open it: the week's recipes added up, minus what's in the pantry. Marking something bought puts it in the pantry, which is what makes the line go away."
+    )
+  );
+  return wrap;
+}
+
+/** Buying: how much came home, what it cost, and where it goes. */
+function openBuy(line: {
+  name: string;
+  ingredientId: string | null;
+  quantity: number;
+  unit: string;
+  itemId: string | null;
+}): void {
+  const dialog = make("section", "meals-card");
+  dialog.appendChild(make("h5", "kicker", `Bought · ${line.name}`));
+  const quantity = input("number");
+  quantity.step = "0.01";
+  quantity.min = "0";
+  quantity.value = String(line.quantity);
+  const unit = select(
+    KNOWN_UNITS.map((u) => [u, unitLabel(u) === "×" ? "each" : unitLabel(u)] as [string, string]),
+    line.unit
+  );
+  const paid = input("number");
+  paid.step = "0.01";
+  paid.min = "0";
+  paid.placeholder = "optional";
+  const place = select(
+    STORAGE_PLACES.map((p) => [p, STORAGE_LABELS[p]] as [string, string]),
+    "cupboard"
+  );
+  const expires = input("date");
+  const form = make("div", "meals-form");
+  form.append(
+    field("Amount", quantity),
+    field("Unit", unit),
+    field("Paid €", paid),
+    field("Where", place),
+    field("Use by", expires)
+  );
+  dialog.appendChild(form);
+  dialog.appendChild(
+    make(
+      "p",
+      "collection-meta",
+      "What you paid becomes this food's price per unit, so recipe costs stop being guesses."
+    )
+  );
+  const actions = make("div", "meals-row");
+  actions.appendChild(
+    button(
+      "Put in the pantry",
+      "btn btn-secondary",
+      () =>
+        void act(
+          () =>
+            bridge().buyItem({
+              itemId: line.itemId,
+              ingredientId: line.ingredientId,
+              name: line.name,
+              quantity: Number(quantity.value),
+              unit: unit.value,
+              paid: paid.value ? Number(paid.value) : null,
+              place: place.value,
+              expiresAt: expires.value || null,
+            }),
+          `${line.name} is in the pantry.`
+        )
+    )
+  );
+  actions.appendChild(button("Cancel", "btn btn-ghost", () => render()));
+  dialog.appendChild(actions);
+  root?.appendChild(dialog);
+  dialog.scrollIntoView({ block: "nearest" });
 }
 
 // ---------- Pantry ----------
@@ -1445,6 +1796,32 @@ function settingsView(data: MealsSnapshot): HTMLElement {
       "Restrictions and dislikes are kept for the meal generator, which isn't built yet — nothing filters recipes today."
     )
   );
+
+  wrap.appendChild(make("h5", "kicker collection-heading", "Demo data"));
+  wrap.appendChild(
+    make(
+      "p",
+      "collection-meta",
+      data.hasDemoData
+        ? "A demo kitchen is loaded. Removing it takes out exactly what it added - anything you made yourself stays, including your own stock of a demo ingredient."
+        : "Fills the tab with a kitchen to try it on: foods with prices and nutrition, four recipes, a stocked pantry with something going off tomorrow, leftovers in the fridge, and meals planned around today."
+    )
+  );
+  const demoRow = make("div", "meals-row");
+  demoRow.appendChild(
+    data.hasDemoData
+      ? button(
+          "Remove demo data",
+          "btn btn-ghost",
+          () => void act(() => bridge().removeDemoMeals(), "Demo data removed.")
+        )
+      : button(
+          "Load demo data",
+          "btn btn-ghost",
+          () => void act(() => bridge().loadDemoMeals(), "Demo data loaded.")
+        )
+  );
+  wrap.appendChild(demoRow);
 
   wrap.appendChild(make("h5", "kicker collection-heading", "Meal slots"));
   const slotRow = make("div", "meals-row");

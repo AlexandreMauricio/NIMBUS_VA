@@ -18,6 +18,31 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.8 — 2026-09-22
+
+- **A shopping list that keeps itself.** The week's planned meals added
+  up, minus what's in the kitchen — with why each line is there ("for
+  Chilli con carne"), what's already at home, and an estimated total.
+  Three dinners wanting 200 g of rice each ask for one 600 g total, not
+  three. **Bought** asks what you paid, puts the food in the pantry as
+  confirmed stock, and records the price per unit — which is where recipe
+  costs come from. The line then disappears by itself, because the pantry
+  covers it. Items no recipe knows about can be added by hand.
+- **Import a recipe from a URL.** Recipes → Import reads the recipe data
+  cooking sites publish for search engines and opens it in the editor as a
+  draft: amounts, units, steps, servings and times, with "½", "1 1/2",
+  "2-3" and "(optional)" understood. Lines it can't pin down ("a pinch of
+  salt") are flagged in amber to fix before saving. Nothing is saved until
+  you press Save, and the address is checked in the main process: http(s)
+  only, never a host on your own network.
+- **Demo data.** Settings → Load demo data fills the tab with a kitchen to
+  try it on — foods with prices and nutrition, four recipes, a stocked
+  pantry with something going off tomorrow, leftovers, and meals planned
+  around today. Remove demo data takes out exactly what it added; anything
+  you made yourself stays.
+
+---
+
 ## 0.6.7 — 2026-09-22
 
 - **Meals: recipes, the pantry and a week's plan.** A new tab with five

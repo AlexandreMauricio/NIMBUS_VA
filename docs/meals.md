@@ -4,11 +4,11 @@ Recipes, what's in the kitchen, and what's being eaten when — the Meals
 tab, and `src/meals/` behind it. Everything is on this PC: no service is
 called, nothing about your food leaves the machine.
 
-This is the first part of a bigger plan. What exists today is the
-foundation the rest sits on: **recipes**, the **pantry**, **leftovers**
-and a **plan you fill in yourself**. The generator, the shopping list,
-receipts and price history are not built — see
-[Not yet](#not-yet).
+What exists today: **recipes** (typed or imported from a URL), the
+**pantry**, **leftovers**, a **plan you fill in yourself**, and the
+**shopping list** that falls out of the two. The meal generator, nutrition
+lookups, purchases and price history are not built — see
+[Not yet](#not-yet). Settings can load **demo data** to try all of it on.
 
 ## The three things, and why they're separate
 
@@ -89,7 +89,7 @@ parsley" rather than showing a confident wrong number.
 
 ## The tab
 
-Five views, all from one snapshot the main process works out
+Six views, all from one snapshot the main process works out
 (`nimbus:get-meals`):
 
 - **Today** — the next meal (with when to start cooking, its cost and how
@@ -101,10 +101,73 @@ Five views, all from one snapshot the main process works out
 - **Recipes** — the library, sorted by how much of each is at home
   (default), quickest, cheapest or by name, with a page per recipe and an
   editor.
+- **Shopping** — what the week needs that the kitchen hasn't got, why
+  each line is there, and **Bought** to put it in the pantry at the price
+  you paid.
 - **Pantry** — stock by food with its expiry state, filters (place,
   expiring, estimated), **Correct**, and the leftovers list.
 - **Settings** — who eats and how much (a label, a multiplier and a note —
   no profiles), restrictions, dislikes, the meal slots, and a daily budget.
+
+## The shopping list
+
+The list is **derived, not stored**: every time it's opened, the planned
+meals for the week are added up, the pantry is taken off, and what's left
+is the list ([shopping.ts](../src/meals/shopping.ts)). That has one
+property worth the trouble — marking something bought puts it in the
+pantry, and the line disappears because the kitchen now covers it. There
+is nothing to tick, un-tick or keep in step.
+
+The subtraction happens once across the whole week, not per meal: three
+dinners each wanting 200 g of rice need 600 g, and the 500 g in the
+cupboard covers all but 100 g — so the list asks for 100 g, not 200 g
+three times.
+
+**Bought** also asks what you paid, and turns it into that ingredient's
+price per unit (€5.49 for a 1 kg pack is €0.00549 a gram). That is how
+recipe costs stop being guesses: every price comes from something you
+actually bought. Things no recipe knows about — bin bags, "something for
+Sunday" — are added by hand and are the only part of the list that is
+stored.
+
+Meals already cooked are left out, and so are optional lines: nobody
+shops for a pinch of salt.
+
+## Importing a recipe from a URL
+
+Recipes → **Import from a URL** reads the page's **schema.org Recipe**
+metadata — the block of JSON nearly every cooking site publishes for
+search engines ([recipeImport.ts](../src/meals/recipeImport.ts)). There
+is no scraping, no site-specific parsing and no AI: a page without that
+block simply can't be imported, and says so.
+
+What comes back is a **draft in the editor**, never a saved recipe.
+Ingredient lines are free text, so each is parsed into an amount, a unit
+and a food — "600g chicken thighs, bone in" becomes 600 g of chicken
+thighs, "1 1/2 tbsp" and "½ lemon" become numbers, "2-3 sprigs" takes the
+larger, "(optional)" and "to taste" mark the line optional. Anything the
+parser can't pin down ("a pinch of salt") is flagged in amber for you to
+fix before saving, because putting a wrong amount into the pantry quietly
+is worse than asking.
+
+The address is the one thing in Meals the renderer names, so the main
+process checks it: http(s) only, never a loopback or private-network host
+(which would make NIMBUS a way to reach your own network), time-bounded,
+and only the first megabyte is read. The page is parsed, never rendered.
+
+## Demo data
+
+Settings → **Load demo data** fills the tab with a kitchen to try it on:
+foods with real prices and nutrition, four recipes, a stocked pantry with
+something going off tomorrow, leftovers in the fridge, and meals planned
+around today — so every state (urgent, soon, estimated, cooked, eating
+out) is visible at once.
+
+Everything it creates is recorded by id in `MealsState.demoIds`, so
+**Remove demo data** takes out exactly those entries. Your own recipes,
+stock and plan are never touched — and a demo ingredient that one of your
+own recipes has started using stays, so nothing you wrote loses its
+ingredients.
 
 ## Where it lives
 
@@ -115,6 +178,9 @@ src/meals/            [1] Core — no Electron, no filesystem
   pantry.ts              Stock summaries, expiry, coverage, deductions
   recipes.ts             Cost, nutrition, timings
   plan.ts                Servings needed, a day's meals, plan cost
+  shopping.ts            The plan minus the pantry, plus manual items
+  recipeImport.ts        schema.org Recipe metadata into a draft
+  demoData.ts            A removable demo kitchen
   mealService.ts         Validation, identity, CRUD and cooking, over a store
 src/main/mealStore.ts [2] meals.json (atomic write, set aside if unreadable)
 src/ui/mealsTab.ts    [5] The tab
@@ -128,22 +194,22 @@ rounding is where most leftovers come from.
 
 Deliberately absent, and the order they're planned in:
 
-1. **Shopping list** — what the plan needs that the pantry doesn't cover.
-   The arithmetic already exists (`coverRecipe`, `planDeductions` report
-   exactly this); it needs a list, manual items and ticking off.
-2. **Recipe import from a URL** — reading a page's recipe metadata
-   (schema.org JSON-LD) into the editor for checking before saving.
-3. **Nutrition from Open Food Facts** — filling an ingredient's per-100 g
-   values by name or barcode, cached locally.
-4. **Purchases and prices** — typed purchases first, then digital PDF
-   invoices parsed on the PC; price-per-store history and a price watch
-   come from those records. Photographs of receipts need OCR, which
-   NIMBUS has no engine for.
-5. **The generator** — filling a week against the objectives (use the
+1. **Nutrition from Open Food Facts** — filling an ingredient's per-100 g
+   values by name or barcode, cached locally. Until then, values are
+   typed (or come from the demo data), and a recipe says how many of its
+   ingredients it could use.
+2. **Purchases and prices** — a purchase records several lines at once,
+   then digital PDF invoices parsed on the PC; price-per-store history and
+   a price watch come from those records. Buying from the shopping list
+   already records one price at a time. Photographs of receipts need OCR,
+   which NIMBUS has no engine for.
+3. **The generator** — filling a week against the objectives (use the
    pantry first, use leftovers, save money, quick, high protein) and the
    budget, with the "why this was suggested" explanation. Restrictions,
    dislikes and the budget are already stored for it; nothing filters
    recipes today.
-6. **The briefing and Attention** — `meals` already exists as a briefing
+4. **The briefing and Attention** — `meals` already exists as a briefing
    category, unused. "Take the chicken out of the freezer" is the obvious
    first signal.
+5. **Shopping by store and category**, and leftovers scheduled into the
+   plan automatically within their safe window.

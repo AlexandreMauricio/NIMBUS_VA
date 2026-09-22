@@ -219,6 +219,22 @@ export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
   dailyBudget: null,
 };
 
+/**
+ * Something on the shopping list that no recipe asked for — bin bags, or
+ * "something for Sunday". The rest of the list is worked out from the
+ * plan every time it's read, so only these are stored.
+ */
+export interface ManualShoppingItem {
+  id: string;
+  name: string;
+  /** Set when it matches a known food, so buying it can go into the pantry. */
+  ingredientId: string | null;
+  quantity: number | null;
+  unit: string | null;
+  note: string | null;
+  addedAt: string;
+}
+
 export interface MealsState {
   version: 1;
   ingredients: Ingredient[];
@@ -226,7 +242,13 @@ export interface MealsState {
   pantry: PantryItem[];
   leftovers: Leftover[];
   plan: PlannedMeal[];
+  shopping: ManualShoppingItem[];
   preferences: MealPreferences;
+  /**
+   * The ids of everything the demo data planted, so "Remove demo data"
+   * takes out exactly what it put in and never touches your own food.
+   */
+  demoIds: string[];
 }
 
 /** The store the service writes through — the same shape as the shelf's and the collection's. */
@@ -243,3 +265,4 @@ export const MAX_PLANNED_MEALS = 5000;
 export const MAX_RECIPE_INGREDIENTS = 60;
 export const MAX_RECIPE_STEPS = 60;
 export const MAX_EATERS = 20;
+export const MAX_SHOPPING_ITEMS = 300;

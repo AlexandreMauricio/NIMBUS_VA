@@ -12,6 +12,7 @@ import {
 import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCookingAt } from "./recipes";
 import { dayRange, mealsOn, nextMeal, planCost, servingsNeeded } from "./plan";
 import { MealService, ingredientKey, parseState } from "./mealService";
+import { durationMinutes, parseIngredientLine, parseRecipePage } from "./recipeImport";
 import type { Ingredient, MealsState, MealsStore, PantryItem, Recipe } from "./types";
 
 test("units: aliases, base amounts, and weight is never turned into volume", () => {
@@ -423,4 +424,171 @@ test("the service: a broken file loses only the broken entries", () => {
     [1, 1, 1, 0]
   );
   assert.deepEqual([state.preferences.dailyBudget, state.preferences.slots], [9, ["dinner"]]);
+});
+
+test("the shopping list: one subtraction across the week, not one per meal", () => {
+  const { service: meals } = service();
+  meals.ensureIngredient("Rice", "g");
+  meals.updateIngredient(meals.findIngredient("Rice")!.id, { lastPrice: 0.0015 });
+  meals.addStock({ name: "Rice", quantity: 500, unit: "g" });
+  const saved = meals.saveRecipe({
+    name: "Rice and beans",
+    servings: 2,
+    ingredients: [
+      { name: "Rice", quantity: 200, unit: "g" },
+      { name: "Black beans", quantity: 1, unit: "tin" },
+    ],
+  });
+  for (const date of ["2026-09-22", "2026-09-23", "2026-09-24"])
+    meals.planMeal({ date, slot: "dinner", kind: "recipe", recipeId: saved.id, servings: 2 });
+
+  const list = meals.shoppingList(["2026-09-22", "2026-09-23", "2026-09-24"]);
+  const rice = list.lines.find((line) => line.name === "Rice")!;
+  // Three dinners want 600 g; 500 g is in the cupboard, so buy 100 g — not 200 g three times.
+  assert.deepEqual(
+    [rice.needed, rice.have, rice.buy],
+    [{ quantity: 600, unit: "g" }, 500, { quantity: 100, unit: "g" }]
+  );
+  assert.deepEqual(rice.forMeals, ["Rice and beans"]);
+  const beans = list.lines.find((line) => line.name === "Black beans")!;
+  assert.deepEqual(beans.buy, { quantity: 3, unit: "piece" });
+  // The beans have no price yet, so the total says so instead of pretending.
+  assert.deepEqual([list.cost, list.unpriced], [0.15, 1]);
+});
+
+test("the shopping list: cooked meals are gone, covered food is credited, manual lines stay", () => {
+  const { service: meals } = service();
+  meals.addStock({ name: "Oats", quantity: 1, unit: "kg" });
+  meals.updateIngredient(meals.findIngredient("Oats")!.id, { lastPrice: 0.002 });
+  const porridge = meals.saveRecipe({
+    name: "Porridge",
+    servings: 1,
+    ingredients: [{ name: "Oats", quantity: 60, unit: "g" }],
+  });
+  meals.planMeal({
+    date: "2026-09-22",
+    slot: "breakfast",
+    kind: "recipe",
+    recipeId: porridge.id,
+    servings: 1,
+  });
+  const cooked = meals.planMeal({
+    date: "2026-09-23",
+    slot: "breakfast",
+    kind: "recipe",
+    recipeId: porridge.id,
+    servings: 1,
+  });
+  meals.cook({ mealId: cooked.id, recipeId: porridge.id, cookServings: 1, eatServings: 1 });
+
+  meals.addShoppingItem({ name: "Bin bags" });
+  const list = meals.shoppingList(["2026-09-22", "2026-09-23"]);
+  // The kilo of oats covers what's left to cook, so only the manual line remains.
+  assert.deepEqual(
+    list.lines.map((line) => [line.name, line.manual]),
+    [["Bin bags", true]]
+  );
+  assert.deepEqual(
+    list.covered.map((entry) => entry.name),
+    ["Oats"]
+  );
+});
+
+test("buying: stock is confirmed, the price is recorded per unit, and the line goes away", () => {
+  const { service: meals } = service();
+  const item = meals.addShoppingItem({ name: "Chicken thighs", quantity: 1, unit: "kg" });
+  meals.buy({
+    itemId: item.id,
+    name: "Chicken thighs",
+    quantity: 1,
+    unit: "kg",
+    paid: 5.49,
+    place: "fridge",
+  });
+  const stock = meals.listPantry();
+  assert.deepEqual([stock.length, stock[0].confidence], [1, "confirmed"]);
+  // €5.49 for a kilo is €0.00549 a gram, so a 600 g recipe costs €3.29.
+  assert.equal(meals.findIngredient("Chicken thighs")!.lastPrice, 0.00549);
+  assert.equal(meals.shoppingList(["2026-09-22"]).lines.length, 0);
+});
+
+test("importing: a page's recipe metadata becomes a draft, with the doubtful lines flagged", () => {
+  const html = `<html><head>
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[
+      {"@type":"WebPage","name":"Not the recipe"},
+      {"@type":["Recipe"],"name":"Lemon chicken traybake","description":"<p>One tray.</p>",
+       "recipeYield":"3 servings","prepTime":"PT15M","cookTime":"PT40M","recipeCategory":"Dinner",
+       "recipeIngredient":["600g chicken thighs, bone in","2 lemons","1 1/2 tbsp olive oil","a pinch of salt","2-3 sprigs parsley (optional)"],
+       "recipeInstructions":[{"@type":"HowToStep","text":"Heat the oven."},{"@type":"HowToStep","text":"Roast for 40 minutes."}]}
+    ]}</script></head><body></body></html>`;
+  const recipe = parseRecipePage(html, "https://example.com/r")!;
+  assert.equal(recipe.name, "Lemon chicken traybake");
+  assert.deepEqual([recipe.servings, recipe.prepMinutes, recipe.cookMinutes], [3, 15, 40]);
+  assert.deepEqual(recipe.slots, ["dinner"]);
+  assert.deepEqual(recipe.steps, ["Heat the oven.", "Roast for 40 minutes."]);
+  assert.deepEqual(
+    recipe.ingredients.map((line) => [line.name, line.quantity, line.unit, line.optional, line.warning]),
+    [
+      ["chicken thighs", 600, "g", false, null],
+      ["lemons", 2, "piece", false, null],
+      ["olive oil", 1.5, "tbsp", false, null],
+      // No number at all: flagged rather than invented.
+      ["pinch of salt", null, null, false, "No amount found"],
+      // A range takes the larger, and "(optional)" is honoured.
+      ["sprigs parsley", 3, "piece", true, null],
+    ]
+  );
+  assert.equal(recipe.needsChecking, 1);
+  assert.equal(parseRecipePage("<html><body>no metadata</body></html>", "https://example.com"), null);
+  assert.equal(durationMinutes("PT1H30M"), 90);
+  assert.equal(durationMinutes("soon"), null);
+});
+
+test("importing: half a lemon, decimals with a comma, and a unit NIMBUS doesn't know", () => {
+  assert.deepEqual(
+    [
+      parseIngredientLine("½ lemon"),
+      parseIngredientLine("0,5 l milk"),
+      parseIngredientLine("2 sprigs thyme"),
+    ].map((line) => [line.name, line.quantity, line.unit]),
+    [
+      ["lemon", 0.5, "piece"],
+      ["milk", 0.5, "l"],
+      // "sprigs" isn't a unit NIMBUS measures, so it stays part of the food and counts as pieces.
+      ["sprigs thyme", 2, "piece"],
+    ]
+  );
+});
+
+test("demo data: loads a working kitchen, and removing it takes out exactly what it added", () => {
+  const { service: meals } = service();
+  const mine = meals.saveRecipe({
+    name: "My own recipe",
+    servings: 2,
+    ingredients: [{ name: "Rice", quantity: 100, unit: "g" }],
+  });
+  const myRice = meals.findIngredient("Rice")!.id;
+
+  meals.loadDemoData();
+  assert.equal(meals.hasDemoData(), true);
+  assert.equal(meals.listRecipes().length > 1, true);
+  assert.equal(meals.listPantry().length > 5, true);
+  assert.equal(meals.listPlan().length > 5, true);
+  // Today's dinner is planned, so the tab has something to show at once.
+  assert.equal(
+    meals.listPlan().some((meal) => meal.date === meals.today() && meal.slot === "dinner"),
+    true
+  );
+  assert.throws(() => meals.loadDemoData(), /already loaded/);
+
+  meals.removeDemoData();
+  assert.equal(meals.hasDemoData(), false);
+  assert.deepEqual(
+    meals.listRecipes().map((recipe) => recipe.id),
+    [mine.id]
+  );
+  assert.equal(meals.listPlan().length, 0);
+  assert.equal(meals.listLeftovers().length, 0);
+  // My own ingredient survives, because my recipe still uses it.
+  assert.equal(meals.findIngredient("Rice")!.id, myRice);
 });

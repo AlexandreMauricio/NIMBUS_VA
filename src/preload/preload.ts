@@ -412,6 +412,14 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:update-ingredient", id, changes),
   updateMealPreferences: (changes: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:update-meal-preferences", changes),
+  addShoppingItem: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:add-shopping-item", input),
+  removeShoppingItem: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-shopping-item", id),
+  buyItem: (input: Record<string, unknown>): Promise<unknown> => ipcRenderer.invoke("nimbus:buy-item", input),
+  /** The one Meals call that names an address: http(s) only, and never a host on this network. */
+  importRecipeUrl: (url: string): Promise<unknown> => ipcRenderer.invoke("nimbus:import-recipe-url", url),
+  loadDemoMeals: (): Promise<void> => ipcRenderer.invoke("nimbus:load-demo-meals"),
+  removeDemoMeals: (): Promise<void> => ipcRenderer.invoke("nimbus:remove-demo-meals"),
   onMealsChanged: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on("nimbus:meals-changed", listener);

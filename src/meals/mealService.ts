@@ -17,8 +17,11 @@
 
 import { randomUUID } from "crypto";
 import { logger } from "../logging/logger";
+import { buildDemoData } from "./demoData";
 import { isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
-import { scaleFor } from "./recipes";
+import { pricePerBaseUnit, scaleFor } from "./recipes";
+import { buildShoppingList } from "./shopping";
+import type { ShoppingList } from "./shopping";
 import {
   DEFAULT_MEAL_PREFERENCES,
   Eater,
@@ -32,7 +35,9 @@ import {
   MAX_RECIPES,
   MAX_RECIPE_INGREDIENTS,
   MAX_RECIPE_STEPS,
+  MAX_SHOPPING_ITEMS,
   MEAL_SLOTS,
+  ManualShoppingItem,
   MealPreferences,
   MealSlot,
   MealsState,
@@ -304,6 +309,22 @@ export function parsePreferences(raw: unknown): MealPreferences {
   };
 }
 
+export function parseManualShoppingItem(raw: unknown): ManualShoppingItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const name = text(r.name, 120);
+  if (typeof r.id !== "string" || !r.id || !name) return null;
+  return {
+    id: r.id,
+    name,
+    ingredientId: typeof r.ingredientId === "string" && r.ingredientId ? r.ingredientId : null,
+    quantity: positive(r.quantity),
+    unit: normaliseUnit(r.unit),
+    note: text(r.note, 200),
+    addedAt: stamp(r.addedAt),
+  };
+}
+
 /** The whole file, checked entry by entry. Anything malformed is dropped with a warning. */
 export function parseState(raw: unknown): MealsState {
   const empty: MealsState = {
@@ -313,7 +334,9 @@ export function parseState(raw: unknown): MealsState {
     pantry: [],
     leftovers: [],
     plan: [],
+    shopping: [],
     preferences: { ...DEFAULT_MEAL_PREFERENCES },
+    demoIds: [],
   };
   if (!raw || typeof raw !== "object") return empty;
   const r = raw as Record<string, unknown>;
@@ -331,6 +354,10 @@ export function parseState(raw: unknown): MealsState {
     pantry: take(r.pantry, parsePantryItem, MAX_PANTRY_ITEMS),
     leftovers: take(r.leftovers, parseLeftover, MAX_LEFTOVERS),
     plan: take(r.plan, parsePlannedMeal, MAX_PLANNED_MEALS),
+    shopping: take(r.shopping, parseManualShoppingItem, MAX_SHOPPING_ITEMS),
+    demoIds: Array.isArray(r.demoIds)
+      ? r.demoIds.filter((entry): entry is string => typeof entry === "string").slice(0, 10_000)
+      : [],
     preferences: parsePreferences(r.preferences),
   };
 }
@@ -848,6 +875,138 @@ export class MealService {
     return this.updateLeftover(leftover.id, {
       portions: Math.round((leftover.portions - eaten) * 100) / 100,
     });
+  }
+
+  // ---------- The shopping list ----------
+
+  /**
+   * What the days in `dates` need that the kitchen doesn't have, plus
+   * whatever was added by hand. Worked out fresh every time — see
+   * shopping.ts for why nothing about it is stored.
+   */
+  shoppingList(dates: string[]): ShoppingList {
+    const days = new Set(dates);
+    return buildShoppingList(
+      this.state.plan.filter((meal) => days.has(meal.date)),
+      new Map(this.state.recipes.map((recipe) => [recipe.id, recipe])),
+      this.state.pantry,
+      new Map(this.state.ingredients.map((ingredient) => [ingredient.id, ingredient])),
+      this.state.shopping
+    );
+  }
+
+  addShoppingItem(input: unknown): ManualShoppingItem {
+    const r = (input ?? {}) as Record<string, unknown>;
+    const name = text(r.name, 120);
+    if (!name) throw new Error("What should go on the list?");
+    if (this.state.shopping.length >= MAX_SHOPPING_ITEMS) throw new Error("The shopping list is full.");
+    const known = this.findIngredient(name);
+    const item: ManualShoppingItem = {
+      id: randomUUID(),
+      name,
+      ingredientId: known?.id ?? null,
+      quantity: positive(r.quantity),
+      unit: normaliseUnit(r.unit),
+      note: text(r.note, 200),
+      addedAt: this.now(),
+    };
+    this.state.shopping.push(item);
+    this.save();
+    return item;
+  }
+
+  removeShoppingItem(id: unknown): void {
+    this.state.shopping = this.state.shopping.filter((item) => item.id !== id);
+    this.save();
+  }
+
+  /**
+   * Buying something: it goes into the pantry as **confirmed** stock, and
+   * what it cost becomes that ingredient's price per unit, so every recipe
+   * using it is costed from a real receipt rather than a guess. A manual
+   * line is removed once bought; a line the plan asked for disappears by
+   * itself, because the pantry now covers it.
+   */
+  buy(input: unknown): PantryItem {
+    const r = (input ?? {}) as Record<string, unknown>;
+    const quantity = positive(r.quantity);
+    const unit = normaliseUnit(r.unit);
+    if (quantity === null || !unit) throw new Error("How much did you buy?");
+    const item = this.addStock({
+      ingredientId: r.ingredientId,
+      name: r.name,
+      quantity,
+      unit,
+      place: r.place,
+      expiresAt: r.expiresAt,
+      packaging: r.packaging,
+      confidence: "confirmed",
+    });
+    const paid = typeof r.paid === "number" && Number.isFinite(r.paid) && r.paid >= 0 ? r.paid : null;
+    if (paid !== null) {
+      const price = pricePerBaseUnit(paid, { quantity, unit });
+      if (price !== null) this.updateIngredient(item.ingredientId, { lastPrice: price });
+    }
+    if (typeof r.itemId === "string" && r.itemId) this.removeShoppingItem(r.itemId);
+    else this.save();
+    return item;
+  }
+
+  // ---------- Demo data ----------
+
+  /** True when the demo kitchen is loaded — the button says "Remove" instead. */
+  hasDemoData(): boolean {
+    return this.state.demoIds.length > 0;
+  }
+
+  /**
+   * Plants a kitchen to try the tab with. Everything it adds is recorded
+   * by id, so removing it later takes out exactly these entries.
+   */
+  loadDemoData(): void {
+    if (this.hasDemoData()) throw new Error("The demo data is already loaded.");
+    const demo = buildDemoData(new Date(), () => randomUUID());
+    this.state.ingredients.push(...demo.ingredients);
+    this.state.recipes.push(...demo.recipes);
+    this.state.pantry.push(...demo.pantry);
+    this.state.leftovers.push(...demo.leftovers);
+    this.state.plan.push(...demo.plan);
+    this.state.demoIds = [
+      ...demo.ingredients.map((entry) => entry.id),
+      ...demo.recipes.map((entry) => entry.id),
+      ...demo.pantry.map((entry) => entry.id),
+      ...demo.leftovers.map((entry) => entry.id),
+      ...demo.plan.map((entry) => entry.id),
+    ];
+    this.save();
+    logger.info("Meals demo data loaded", { entries: this.state.demoIds.length });
+  }
+
+  /**
+   * Takes the demo kitchen back out. Only ids it planted are removed —
+   * anything you added yourself stays, including stock of a demo
+   * ingredient, which keeps its own ingredient so the entry still reads.
+   */
+  removeDemoData(): void {
+    const ids = new Set(this.state.demoIds);
+    if (!ids.size) return;
+    this.state.plan = this.state.plan.filter((meal) => !ids.has(meal.id));
+    this.state.leftovers = this.state.leftovers.filter((entry) => !ids.has(entry.id));
+    this.state.pantry = this.state.pantry.filter((item) => !ids.has(item.id));
+    this.state.recipes = this.state.recipes.filter((recipe) => !ids.has(recipe.id));
+    // An ingredient the demo created is only removed once nothing points
+    // at it — a recipe you wrote using demo chicken keeps its chicken.
+    const used = new Set<string>();
+    for (const recipe of this.state.recipes)
+      for (const line of recipe.ingredients) used.add(line.ingredientId);
+    for (const item of this.state.pantry) used.add(item.ingredientId);
+    for (const item of this.state.shopping) if (item.ingredientId) used.add(item.ingredientId);
+    this.state.ingredients = this.state.ingredients.filter(
+      (ingredient) => !ids.has(ingredient.id) || used.has(ingredient.id)
+    );
+    this.state.demoIds = [];
+    this.save();
+    logger.info("Meals demo data removed", { remaining: this.state.ingredients.length });
   }
 
   // ---------- Preferences ----------

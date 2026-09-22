@@ -121,15 +121,20 @@ which modules are portable "Core" versus Windows-specific.
   volume, mute) and `system.lock`.
 - **Timer popup** and **suggestion popup** — small always-on-top windows
   that never steal focus.
-- **Meals tab** — recipes, the pantry and the week's plan. Add what's in
+- **Meals tab** — recipes, the pantry, a shopping list and the week's plan. Add what's in
   the kitchen with its use-by date; write or edit recipes; put a meal in
   any slot of the next seven days; press Cook and NIMBUS takes the
   ingredients out of the pantry (oldest first), keeps the extra portions
   as leftovers with an eat-by date, and marks the meal cooked. Stock it
   worked out is labelled an estimate until you confirm it. Costs come
   from the last price you recorded, nutrition from each ingredient's
-  values, and both say how many ingredients they used. See
-  [docs/meals.md](docs/meals.md).
+  values, and both say how many ingredients they used. The **shopping
+  list** is the week's meals minus what's in the kitchen; marking
+  something bought puts it in the pantry at the price you paid, which is
+  where recipe costs come from. Recipes can be **imported from a URL**
+  (the recipe data cooking sites publish for search engines, checked in
+  the editor before saving), and Settings can load and remove **demo
+  data** to try it all on. See [docs/meals.md](docs/meals.md).
 - **Updates** — an installed NIMBUS updates itself from GitHub Releases
   (see [Updates](#updates)).
 - **Your week** — a Home summary of the last 7 days: activity time, app
@@ -189,8 +194,7 @@ These exist in the code as shapes or seams, but nothing uses them yet:
 
 ### Planned / not implemented
 
-A meal generator, a shopping list, recipe import from a URL, nutrition
-lookups and receipt/invoice parsing (see
+A meal generator, nutrition lookups and receipt/invoice parsing (see
 [docs/meals.md](docs/meals.md#not-yet)), AI/LLM reasoning,
 natural-language commands, voice/TTS, code signing for
 the installer, multi-device sync or a backend, Android/web clients, OAuth-based
