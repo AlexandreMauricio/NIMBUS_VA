@@ -117,6 +117,11 @@ import { checkForUpdates, getUpdateState, installUpdate, startUpdater } from "./
 import { buildWeeklySummary } from "../summary/weeklySummary";
 import type { CalendarEvent } from "../context/providers/calendar/types";
 import { FileBookStore } from "./bookStore";
+import { FileMealStore } from "./mealStore";
+import { MealService } from "../meals/mealService";
+import { coverRecipe, coverageCount, isoDate, summariseStock, usableLeftovers } from "../meals/pantry";
+import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../meals/recipes";
+import { dayRange, mealName, planCost, servingsNeeded } from "../meals/plan";
 import {
   ActivityService,
   ActivityMapping,
@@ -161,6 +166,7 @@ let bookService: BookService;
 /** Background GCD lookups of read issues' characters and creators — set up with the IPC handlers. */
 let creditsQueue: CreditsQueue | undefined;
 let deckService: DeckService;
+let mealService: MealService;
 let gcdCatalog: GcdCatalog;
 let wikipediaCollections: WikipediaCollections;
 
@@ -1085,6 +1091,107 @@ function registerIpcHandlers(): void {
     return { added, notFound: lookup.notFound, failed: lookup.failed, retry: retry.join("\n"), unread };
   });
 
+  /**
+   * Everything the Meals tab draws, worked out here rather than in the
+   * page: the pantry grouped by food with its expiry state, usable
+   * leftovers, each recipe with what it costs and how much of it is at
+   * home, and the plan for the days around today with its cost against
+   * the budget. The renderer gets numbers, not the arithmetic.
+   */
+  const mealsSnapshot = () => {
+    const now = new Date();
+    const today = isoDate(now);
+    const state = mealService.getState();
+    const ingredients = new Map(state.ingredients.map((ingredient) => [ingredient.id, ingredient]));
+    const recipes = new Map(state.recipes.map((recipe) => [recipe.id, recipe]));
+    const lookup = (id: string) => ingredients.get(id);
+    const needed = servingsNeeded(state.preferences.eaters);
+    const days = dayRange(new Date(now.getFullYear(), now.getMonth(), now.getDate()), 7);
+    const cost = planCost(
+      state.plan.filter((meal) => days.includes(meal.date)),
+      recipes,
+      lookup,
+      state.preferences
+    );
+    return {
+      today,
+      servingsNeeded: needed,
+      preferences: state.preferences,
+      ingredients: state.ingredients,
+      recipes: state.recipes.map((recipe) => {
+        const coverage = coverRecipe(recipe.ingredients, state.pantry, scaleFor(recipe, recipe.servings));
+        return {
+          recipe,
+          minutes: totalMinutes(recipe),
+          cost: recipeCost(recipe, recipe.servings, lookup),
+          nutrition: perServing(recipeNutrition(recipe, recipe.servings, lookup), recipe.servings),
+          coverage: coverageCount(coverage),
+          lines: coverage.map((line) => ({
+            text: line.ingredient.text,
+            ingredientId: line.ingredient.ingredientId,
+            optional: line.ingredient.optional,
+            needed: line.needed,
+            status: line.status,
+            short: line.short,
+          })),
+        };
+      }),
+      stock: summariseStock(state.pantry, now),
+      leftovers: usableLeftovers(state.leftovers, now),
+      plan: state.plan.map((meal) => ({
+        meal,
+        name: mealName(meal, recipes),
+        cost:
+          meal.cost ??
+          (meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
+            ? recipeCost(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup).value
+            : null),
+      })),
+      days,
+      weekCost: cost,
+    };
+  };
+
+  // Meals (src/meals/): recipes, the pantry, leftovers and the plan. All of
+  // it is local — no service is called — so the handlers are thin wrappers
+  // over the service, which validates every field it is given.
+  ipcMain.handle("nimbus:get-meals", () => mealsSnapshot());
+  ipcMain.handle("nimbus:save-recipe", (_event, input: unknown, id: unknown) =>
+    mealService.saveRecipe(input, typeof id === "string" && id ? id : undefined)
+  );
+  ipcMain.handle("nimbus:remove-recipe", (_event, id: unknown) => mealService.removeRecipe(String(id ?? "")));
+  ipcMain.handle("nimbus:add-stock", (_event, input: unknown) => mealService.addStock(input));
+  ipcMain.handle("nimbus:update-stock", (_event, id: unknown, changes: unknown) =>
+    mealService.updateStock(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:correct-stock", (_event, id: unknown, quantity: unknown, unit: unknown) =>
+    mealService.correctStock(String(id ?? ""), quantity, unit)
+  );
+  ipcMain.handle("nimbus:remove-stock", (_event, id: unknown) => mealService.removeStock(String(id ?? "")));
+  ipcMain.handle("nimbus:add-leftover", (_event, input: unknown) => mealService.addLeftover(input));
+  ipcMain.handle("nimbus:update-leftover", (_event, id: unknown, changes: unknown) =>
+    mealService.updateLeftover(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:remove-leftover", (_event, id: unknown) =>
+    mealService.removeLeftover(String(id ?? ""))
+  );
+  ipcMain.handle("nimbus:plan-meal", (_event, input: unknown, id: unknown) =>
+    mealService.planMeal(input, typeof id === "string" && id ? id : undefined)
+  );
+  ipcMain.handle("nimbus:remove-planned-meal", (_event, id: unknown) =>
+    mealService.removePlannedMeal(String(id ?? ""))
+  );
+  ipcMain.handle("nimbus:cook-meal", (_event, input: unknown) => mealService.cook(input));
+  ipcMain.handle("nimbus:eat-leftover", (_event, mealId: unknown, leftoverId: unknown, portions: unknown) =>
+    mealService.eatLeftover(String(mealId ?? ""), String(leftoverId ?? ""), portions)
+  );
+  ipcMain.handle("nimbus:update-ingredient", (_event, id: unknown, changes: unknown) =>
+    mealService.updateIngredient(String(id ?? ""), changes)
+  );
+  ipcMain.handle("nimbus:update-meal-preferences", (_event, changes: unknown) =>
+    mealService.updatePreferences(changes)
+  );
+
   // Books (src/collections/books/): comics collected editions and manga.
   // GCD lookups take a series name or a numeric volume id only; the URL is
   // built in the main process.
@@ -1976,6 +2083,11 @@ export function startApp(): void {
   // volumes up in (read-only, no account; only the series name or volume
   // id is sent).
   bookService = new BookService(new FileBookStore());
+  // Meals: recipes, the pantry and the plan, all on this PC.
+  mealService = new MealService(new FileMealStore());
+  mealService.onChange(() => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:meals-changed");
+  });
   gcdCatalog = new GcdCatalog();
   wikipediaCollections = new WikipediaCollections();
   bookService.onChange(() => {

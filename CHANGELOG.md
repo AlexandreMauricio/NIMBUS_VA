@@ -18,6 +18,24 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.7 — 2026-09-22
+
+- **Meals: recipes, the pantry and a week's plan.** A new tab with five
+  views. Write recipes (ingredients, steps, servings, timings); record
+  what's in the kitchen with where it is and its use-by date; put meals
+  in the slots of the next seven days; press **Cook** and NIMBUS deducts
+  the ingredients using the package that expires first, keeps the extra
+  portions as leftovers with an eat-by date, and marks the meal cooked.
+  Stock NIMBUS worked out is labelled an **estimate** until you correct
+  it. Recipes are sorted by how much of each is already at home, and
+  costs and nutrition always say how many ingredients they were worked
+  out from. Everything stays on this PC. See
+  [docs/meals.md](docs/meals.md) — including what is deliberately not
+  built yet (shopping list, URL import, nutrition lookups, purchases, the
+  generator).
+
+---
+
 ## 0.6.6 — 2026-09-16
 
 - **Commander comparison: sort and group the card lists, from the curve.**

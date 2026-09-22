@@ -380,6 +380,43 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.on("nimbus:books-changed", listener);
     return () => ipcRenderer.removeListener("nimbus:books-changed", listener);
   },
+  /**
+   * Meals: recipes, the pantry, leftovers and the plan. Everything stays on
+   * this PC — no service is called — and the main process works out the
+   * costs, coverage and expiry states the tab shows.
+   */
+  getMeals: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-meals"),
+  saveRecipe: (input: Record<string, unknown>, id?: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:save-recipe", input, id ?? null),
+  removeRecipe: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-recipe", id),
+  addStock: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:add-stock", input),
+  updateStock: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-stock", id, changes),
+  correctStock: (id: string, quantity: number, unit?: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:correct-stock", id, quantity, unit ?? null),
+  removeStock: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-stock", id),
+  addLeftover: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:add-leftover", input),
+  updateLeftover: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-leftover", id, changes),
+  removeLeftover: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-leftover", id),
+  planMeal: (input: Record<string, unknown>, id?: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:plan-meal", input, id ?? null),
+  removePlannedMeal: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-planned-meal", id),
+  cookMeal: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:cook-meal", input),
+  eatLeftover: (mealId: string, leftoverId: string, portions: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:eat-leftover", mealId, leftoverId, portions),
+  updateIngredient: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-ingredient", id, changes),
+  updateMealPreferences: (changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-meal-preferences", changes),
+  onMealsChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:meals-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:meals-changed", listener);
+  },
   onCollectionChanged: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on("nimbus:collection-changed", listener);

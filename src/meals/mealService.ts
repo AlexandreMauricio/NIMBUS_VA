@@ -1,0 +1,893 @@
+/**
+ * The Meals service: ingredients, recipes, the pantry, leftovers and the
+ * plan, over an injected store (`meals.json` in the main process).
+ *
+ * It owns three things the pure modules deliberately don't:
+ *
+ *  - **validation of anything persisted or typed.** Every list is checked
+ *    item by item on load, and a malformed entry is dropped rather than
+ *    poisoning the rest — the same rule the shelf and the collection follow.
+ *  - **identity.** Recipe lines and pantry items point at an ingredient id,
+ *    so `ensureIngredient` is the one place a new food comes into being,
+ *    matching on name and aliases before creating anything.
+ *  - **cooking**, the only operation that changes several things at once:
+ *    it deducts stock (marking what it touched as an estimate), turns extra
+ *    portions into leftovers, and marks the planned meal cooked.
+ */
+
+import { randomUUID } from "crypto";
+import { logger } from "../logging/logger";
+import { isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
+import { scaleFor } from "./recipes";
+import {
+  DEFAULT_MEAL_PREFERENCES,
+  Eater,
+  Ingredient,
+  Leftover,
+  MAX_EATERS,
+  MAX_INGREDIENTS,
+  MAX_LEFTOVERS,
+  MAX_PANTRY_ITEMS,
+  MAX_PLANNED_MEALS,
+  MAX_RECIPES,
+  MAX_RECIPE_INGREDIENTS,
+  MAX_RECIPE_STEPS,
+  MEAL_SLOTS,
+  MealPreferences,
+  MealSlot,
+  MealsState,
+  MealsStore,
+  NutritionPer100,
+  PantryItem,
+  PlannedMeal,
+  PlannedMealKind,
+  Recipe,
+  RecipeIngredient,
+  RecipeStep,
+  STORAGE_PLACES,
+  StoragePlace,
+} from "./types";
+import { normaliseUnit, toBase } from "./units";
+
+function text(value: unknown, max: number): string | null {
+  return typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ").slice(0, max) : null;
+}
+
+function positive(value: unknown, fallback: number | null = null): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value * 1000) / 1000
+    : fallback;
+}
+
+function isoTime(value: unknown): string | null {
+  return typeof value === "string" && /^\d{2}:\d{2}$/.test(value) ? value : null;
+}
+
+function isoDay(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function stamp(value: unknown): string {
+  return typeof value === "string" && value ? value : new Date(0).toISOString();
+}
+
+function list(value: unknown, max: number, length: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    const cleaned = text(entry, length);
+    if (cleaned && !out.includes(cleaned)) out.push(cleaned);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** Names match loosely — case, accents and a trailing plural "s" don't make a new food. */
+export function ingredientKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/s$/, "");
+}
+
+function parseNutrition(raw: unknown): NutritionPer100 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const value = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+  const nutrition = {
+    kcal: value(r.kcal),
+    protein: value(r.protein),
+    carbs: value(r.carbs),
+    fat: value(r.fat),
+  };
+  return Object.values(nutrition).some((v) => v !== null) ? nutrition : null;
+}
+
+export function parseIngredient(raw: unknown): Ingredient | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const name = text(r.name, 120);
+  if (typeof r.id !== "string" || !r.id || !name) return null;
+  return {
+    id: r.id,
+    name,
+    aliases: list(r.aliases, 20, 120),
+    unit: normaliseUnit(r.unit) ?? "g",
+    category: text(r.category, 60),
+    nutrition: parseNutrition(r.nutrition),
+    nutritionSource: text(r.nutritionSource, 80),
+    lastPrice:
+      typeof r.lastPrice === "number" && Number.isFinite(r.lastPrice) && r.lastPrice >= 0
+        ? r.lastPrice
+        : null,
+    fridgeDays: positive(r.fridgeDays),
+    addedAt: stamp(r.addedAt),
+    updatedAt: stamp(r.updatedAt),
+  };
+}
+
+function parseRecipeIngredient(raw: unknown): RecipeIngredient | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const quantity = positive(r.quantity);
+  const unit = normaliseUnit(r.unit);
+  if (typeof r.ingredientId !== "string" || !r.ingredientId || quantity === null || !unit) return null;
+  return {
+    ingredientId: r.ingredientId,
+    text: text(r.text, 200) ?? "",
+    quantity,
+    unit,
+    optional: r.optional === true,
+  };
+}
+
+function parseStep(raw: unknown): RecipeStep | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const body = text(r.text, 2000);
+  if (!body) return null;
+  return { text: body, minutes: positive(r.minutes) };
+}
+
+export function parseRecipe(raw: unknown): Recipe | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const name = text(r.name, 200);
+  if (typeof r.id !== "string" || !r.id || !name) return null;
+  const slots = Array.isArray(r.slots)
+    ? (r.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot)) as MealSlot[])
+    : [];
+  return {
+    id: r.id,
+    name,
+    description: text(r.description, 2000),
+    slots: slots.length ? [...new Set(slots)] : ["dinner"],
+    servings: positive(r.servings, 2)!,
+    prepMinutes: positive(r.prepMinutes),
+    cookMinutes: positive(r.cookMinutes),
+    ingredients: Array.isArray(r.ingredients)
+      ? r.ingredients
+          .map(parseRecipeIngredient)
+          .filter((i): i is RecipeIngredient => i !== null)
+          .slice(0, MAX_RECIPE_INGREDIENTS)
+      : [],
+    steps: Array.isArray(r.steps)
+      ? r.steps
+          .map(parseStep)
+          .filter((s): s is RecipeStep => s !== null)
+          .slice(0, MAX_RECIPE_STEPS)
+      : [],
+    tags: list(r.tags, 20, 40),
+    source: text(r.source, 500),
+    notes: text(r.notes, 2000),
+    favourite: r.favourite === true,
+    lastCookedAt: typeof r.lastCookedAt === "string" ? r.lastCookedAt : null,
+    timesCooked: typeof r.timesCooked === "number" && r.timesCooked >= 0 ? Math.floor(r.timesCooked) : 0,
+    addedAt: stamp(r.addedAt),
+    updatedAt: stamp(r.updatedAt),
+  };
+}
+
+export function parsePantryItem(raw: unknown): PantryItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const name = text(r.name, 120);
+  const quantity =
+    typeof r.quantity === "number" && Number.isFinite(r.quantity) && r.quantity >= 0 ? r.quantity : null;
+  const unit = normaliseUnit(r.unit);
+  if (
+    typeof r.id !== "string" ||
+    !r.id ||
+    typeof r.ingredientId !== "string" ||
+    !name ||
+    quantity === null ||
+    !unit
+  )
+    return null;
+  return {
+    id: r.id,
+    ingredientId: r.ingredientId,
+    name,
+    quantity,
+    unit,
+    place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "cupboard",
+    confidence: r.confidence === "estimated" ? "estimated" : "confirmed",
+    packaging: text(r.packaging, 120),
+    openedAt: typeof r.openedAt === "string" ? r.openedAt : null,
+    expiresAt: isoDay(r.expiresAt),
+    addedAt: stamp(r.addedAt),
+    updatedAt: stamp(r.updatedAt),
+  };
+}
+
+export function parseLeftover(raw: unknown): Leftover | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const name = text(r.name, 200);
+  const portions = positive(r.portions);
+  if (typeof r.id !== "string" || !r.id || !name || portions === null) return null;
+  return {
+    id: r.id,
+    name,
+    recipeId: typeof r.recipeId === "string" && r.recipeId ? r.recipeId : null,
+    portions,
+    place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "fridge",
+    cookedAt: stamp(r.cookedAt),
+    eatBy: isoDay(r.eatBy),
+    addedAt: stamp(r.addedAt),
+    updatedAt: stamp(r.updatedAt),
+  };
+}
+
+const MEAL_KINDS: PlannedMealKind[] = ["recipe", "leftover", "custom", "out"];
+
+export function parsePlannedMeal(raw: unknown): PlannedMeal | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const date = isoDay(r.date);
+  if (typeof r.id !== "string" || !r.id || !date) return null;
+  if (!MEAL_SLOTS.includes(r.slot as MealSlot)) return null;
+  if (!MEAL_KINDS.includes(r.kind as PlannedMealKind)) return null;
+  return {
+    id: r.id,
+    date,
+    slot: r.slot as MealSlot,
+    kind: r.kind as PlannedMealKind,
+    recipeId: typeof r.recipeId === "string" && r.recipeId ? r.recipeId : null,
+    leftoverId: typeof r.leftoverId === "string" && r.leftoverId ? r.leftoverId : null,
+    name: text(r.name, 200),
+    servings: positive(r.servings, 1)!,
+    cookServings: positive(r.cookServings),
+    time: isoTime(r.time),
+    cost: typeof r.cost === "number" && Number.isFinite(r.cost) && r.cost >= 0 ? r.cost : null,
+    notes: text(r.notes, 1000),
+    cookedAt: typeof r.cookedAt === "string" ? r.cookedAt : null,
+    addedAt: stamp(r.addedAt),
+    updatedAt: stamp(r.updatedAt),
+  };
+}
+
+function parseEater(raw: unknown): Eater | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const name = text(r.name, 60);
+  if (typeof r.id !== "string" || !r.id || !name) return null;
+  return {
+    id: r.id,
+    name,
+    portionFactor: Math.min(5, positive(r.portionFactor, 1)!),
+    notes: text(r.notes, 200),
+  };
+}
+
+export function parsePreferences(raw: unknown): MealPreferences {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_MEAL_PREFERENCES };
+  const r = raw as Record<string, unknown>;
+  const slots = Array.isArray(r.slots)
+    ? (r.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot)) as MealSlot[])
+    : [];
+  return {
+    eaters: Array.isArray(r.eaters)
+      ? r.eaters
+          .map(parseEater)
+          .filter((e): e is Eater => e !== null)
+          .slice(0, MAX_EATERS)
+      : [],
+    restrictions: list(r.restrictions, 40, 60),
+    dislikes: list(r.dislikes, 60, 60),
+    slots: slots.length ? [...new Set(slots)] : [...DEFAULT_MEAL_PREFERENCES.slots],
+    dailyBudget: positive(r.dailyBudget),
+  };
+}
+
+/** The whole file, checked entry by entry. Anything malformed is dropped with a warning. */
+export function parseState(raw: unknown): MealsState {
+  const empty: MealsState = {
+    version: 1,
+    ingredients: [],
+    recipes: [],
+    pantry: [],
+    leftovers: [],
+    plan: [],
+    preferences: { ...DEFAULT_MEAL_PREFERENCES },
+  };
+  if (!raw || typeof raw !== "object") return empty;
+  const r = raw as Record<string, unknown>;
+  const take = <T>(value: unknown, parse: (entry: unknown) => T | null, max: number): T[] =>
+    Array.isArray(value)
+      ? value
+          .map(parse)
+          .filter((entry): entry is T => entry !== null)
+          .slice(0, max)
+      : [];
+  return {
+    version: 1,
+    ingredients: take(r.ingredients, parseIngredient, MAX_INGREDIENTS),
+    recipes: take(r.recipes, parseRecipe, MAX_RECIPES),
+    pantry: take(r.pantry, parsePantryItem, MAX_PANTRY_ITEMS),
+    leftovers: take(r.leftovers, parseLeftover, MAX_LEFTOVERS),
+    plan: take(r.plan, parsePlannedMeal, MAX_PLANNED_MEALS),
+    preferences: parsePreferences(r.preferences),
+  };
+}
+
+export interface CookInput {
+  /** The planned meal being cooked, when it came from the plan. */
+  mealId?: string;
+  recipeId: string;
+  /** How many servings are actually being cooked — may be more than are eaten. */
+  cookServings: number;
+  /** How many are eaten now; the rest become leftovers. */
+  eatServings: number;
+  leftoverPlace?: StoragePlace;
+  /** Skip the pantry deduction (you cooked from something you hadn't recorded). */
+  skipPantry?: boolean;
+}
+
+export interface CookResult {
+  deducted: Array<{ name: string; used: string }>;
+  short: Array<{ name: string; reason: "short" | "unknown" }>;
+  leftover: Leftover | null;
+}
+
+/**
+ * Meals, over a store. Every mutating method saves; readers return copies
+ * so a caller can't edit the state by accident.
+ */
+export class MealService {
+  private state: MealsState;
+  private readonly listeners: Array<() => void> = [];
+
+  constructor(private readonly store: MealsStore) {
+    this.state = parseState(store.load());
+  }
+
+  getState(): MealsState {
+    return JSON.parse(JSON.stringify(this.state)) as MealsState;
+  }
+
+  /** Told after every change, so the windows can redraw — as decks and books do. */
+  onChange(listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
+  private save(): void {
+    this.store.save(this.state);
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (err) {
+        logger.warn("A meals listener threw", { error: String(err) });
+      }
+    }
+  }
+
+  private now(): string {
+    return new Date().toISOString();
+  }
+
+  // ---------- Ingredients ----------
+
+  listIngredients(): Ingredient[] {
+    return [...this.state.ingredients].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  findIngredient(name: string): Ingredient | undefined {
+    const key = ingredientKey(name);
+    if (!key) return undefined;
+    return this.state.ingredients.find(
+      (ingredient) =>
+        ingredientKey(ingredient.name) === key ||
+        ingredient.aliases.some((alias) => ingredientKey(alias) === key)
+    );
+  }
+
+  /** The one way a food comes into being: found by name or alias, or created. */
+  ensureIngredient(name: unknown, unit: unknown = "g"): Ingredient {
+    const cleaned = text(name, 120);
+    if (!cleaned) throw new Error("An ingredient needs a name.");
+    const existing = this.findIngredient(cleaned);
+    if (existing) return existing;
+    if (this.state.ingredients.length >= MAX_INGREDIENTS) throw new Error("Too many ingredients.");
+    const ingredient: Ingredient = {
+      id: randomUUID(),
+      name: cleaned,
+      aliases: [],
+      unit: normaliseUnit(unit) ?? "g",
+      category: null,
+      nutrition: null,
+      nutritionSource: null,
+      lastPrice: null,
+      fridgeDays: null,
+      addedAt: this.now(),
+      updatedAt: this.now(),
+    };
+    this.state.ingredients.push(ingredient);
+    this.save();
+    return ingredient;
+  }
+
+  updateIngredient(id: unknown, changes: unknown): Ingredient {
+    const ingredient = this.state.ingredients.find((i) => i.id === id);
+    if (!ingredient) throw new Error("That ingredient is gone.");
+    const c = (changes ?? {}) as Record<string, unknown>;
+    if (c.name !== undefined) ingredient.name = text(c.name, 120) ?? ingredient.name;
+    if (c.aliases !== undefined) ingredient.aliases = list(c.aliases, 20, 120);
+    if (c.unit !== undefined) ingredient.unit = normaliseUnit(c.unit) ?? ingredient.unit;
+    if (c.category !== undefined) ingredient.category = text(c.category, 60);
+    if (c.nutrition !== undefined) ingredient.nutrition = parseNutrition(c.nutrition);
+    if (c.nutritionSource !== undefined) ingredient.nutritionSource = text(c.nutritionSource, 80);
+    if (c.lastPrice !== undefined)
+      ingredient.lastPrice =
+        typeof c.lastPrice === "number" && Number.isFinite(c.lastPrice) && c.lastPrice >= 0
+          ? c.lastPrice
+          : null;
+    if (c.fridgeDays !== undefined) ingredient.fridgeDays = positive(c.fridgeDays);
+    ingredient.updatedAt = this.now();
+    this.save();
+    return ingredient;
+  }
+
+  /** Only an ingredient nothing points at can go — otherwise recipes would lose their lines. */
+  removeIngredient(id: unknown): void {
+    const used =
+      this.state.recipes.some((recipe) => recipe.ingredients.some((line) => line.ingredientId === id)) ||
+      this.state.pantry.some((item) => item.ingredientId === id);
+    if (used) throw new Error("That ingredient is used by a recipe or is in the pantry.");
+    this.state.ingredients = this.state.ingredients.filter((i) => i.id !== id);
+    this.save();
+  }
+
+  // ---------- Recipes ----------
+
+  listRecipes(): Recipe[] {
+    return [...this.state.recipes].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getRecipe(id: unknown): Recipe | null {
+    return this.state.recipes.find((recipe) => recipe.id === id) ?? null;
+  }
+
+  /**
+   * Saves a recipe from the editor or an import. Ingredient lines arrive as
+   * names — each is matched to an ingredient or creates one, so a recipe is
+   * never saved pointing at a food that doesn't exist.
+   */
+  saveRecipe(input: unknown, id?: unknown): Recipe {
+    const r = (input ?? {}) as Record<string, unknown>;
+    const name = text(r.name, 200);
+    if (!name) throw new Error("A recipe needs a name.");
+    const lines = Array.isArray(r.ingredients) ? r.ingredients.slice(0, MAX_RECIPE_INGREDIENTS) : [];
+    const ingredients: RecipeIngredient[] = [];
+    for (const raw of lines) {
+      const line = (raw ?? {}) as Record<string, unknown>;
+      const lineName = text(line.name, 200) ?? text(line.text, 200);
+      const quantity = positive(line.quantity);
+      const unit = normaliseUnit(line.unit);
+      if (!lineName || quantity === null || !unit) continue;
+      const ingredient =
+        typeof line.ingredientId === "string" && line.ingredientId
+          ? (this.state.ingredients.find((i) => i.id === line.ingredientId) ??
+            this.ensureIngredient(lineName, unit))
+          : this.ensureIngredient(lineName, unit);
+      ingredients.push({
+        ingredientId: ingredient.id,
+        text: text(line.text, 200) ?? lineName,
+        quantity,
+        unit,
+        optional: line.optional === true,
+      });
+    }
+    const steps = Array.isArray(r.steps)
+      ? r.steps
+          .map((raw) => {
+            const step = typeof raw === "string" ? { text: raw } : ((raw ?? {}) as Record<string, unknown>);
+            return parseStep(step);
+          })
+          .filter((s): s is RecipeStep => s !== null)
+          .slice(0, MAX_RECIPE_STEPS)
+      : [];
+    const existing = id ? this.state.recipes.find((recipe) => recipe.id === id) : undefined;
+    if (id && !existing) throw new Error("That recipe is gone.");
+    if (!existing && this.state.recipes.length >= MAX_RECIPES) throw new Error("Too many recipes.");
+    const slots = Array.isArray(r.slots)
+      ? (r.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot)) as MealSlot[])
+      : [];
+    const recipe: Recipe = {
+      id: existing?.id ?? randomUUID(),
+      name,
+      description: text(r.description, 2000),
+      slots: slots.length ? [...new Set(slots)] : (existing?.slots ?? ["dinner"]),
+      servings: positive(r.servings, existing?.servings ?? 2)!,
+      prepMinutes: positive(r.prepMinutes),
+      cookMinutes: positive(r.cookMinutes),
+      ingredients,
+      steps,
+      tags: list(r.tags, 20, 40),
+      source: text(r.source, 500) ?? existing?.source ?? null,
+      notes: text(r.notes, 2000),
+      favourite: r.favourite === undefined ? (existing?.favourite ?? false) : r.favourite === true,
+      lastCookedAt: existing?.lastCookedAt ?? null,
+      timesCooked: existing?.timesCooked ?? 0,
+      addedAt: existing?.addedAt ?? this.now(),
+      updatedAt: this.now(),
+    };
+    this.state.recipes = existing
+      ? this.state.recipes.map((entry) => (entry.id === recipe.id ? recipe : entry))
+      : [...this.state.recipes, recipe];
+    this.save();
+    return recipe;
+  }
+
+  removeRecipe(id: unknown): void {
+    this.state.recipes = this.state.recipes.filter((recipe) => recipe.id !== id);
+    // Planned meals keep their name so the plan still reads, but lose the link.
+    this.state.plan = this.state.plan.map((meal) =>
+      meal.recipeId === id
+        ? { ...meal, kind: "custom" as const, recipeId: null, name: meal.name ?? "Deleted recipe" }
+        : meal
+    );
+    this.save();
+  }
+
+  // ---------- Pantry ----------
+
+  listPantry(): PantryItem[] {
+    return [...this.state.pantry];
+  }
+
+  /** Adds stock, merging into a matching line rather than making a second row. */
+  addStock(input: unknown): PantryItem {
+    const r = (input ?? {}) as Record<string, unknown>;
+    const quantity = positive(r.quantity);
+    const unit = normaliseUnit(r.unit);
+    if (quantity === null || !unit) throw new Error("How much, and in what unit?");
+    if (this.state.pantry.length >= MAX_PANTRY_ITEMS) throw new Error("The pantry is full.");
+    const ingredient =
+      typeof r.ingredientId === "string" && r.ingredientId
+        ? this.state.ingredients.find((i) => i.id === r.ingredientId)
+        : this.ensureIngredient(r.name, unit);
+    if (!ingredient) throw new Error("That ingredient is gone.");
+    const item: PantryItem = {
+      id: randomUUID(),
+      ingredientId: ingredient.id,
+      name: ingredient.name,
+      quantity,
+      unit,
+      place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "cupboard",
+      confidence: r.confidence === "estimated" ? "estimated" : "confirmed",
+      packaging: text(r.packaging, 120),
+      openedAt: null,
+      expiresAt: isoDay(r.expiresAt),
+      addedAt: this.now(),
+      updatedAt: this.now(),
+    };
+    this.state.pantry = mergeInto(this.state.pantry, item);
+    this.save();
+    return this.state.pantry.find((entry) => entry.id === item.id) ?? item;
+  }
+
+  updateStock(id: unknown, changes: unknown): PantryItem | null {
+    const item = this.state.pantry.find((entry) => entry.id === id);
+    if (!item) throw new Error("That pantry item is gone.");
+    const c = (changes ?? {}) as Record<string, unknown>;
+    if (c.quantity !== undefined) {
+      const quantity =
+        typeof c.quantity === "number" && c.quantity >= 0 ? Math.round(c.quantity * 1000) / 1000 : null;
+      if (quantity === null) throw new Error("That amount doesn't make sense.");
+      item.quantity = quantity;
+    }
+    if (c.unit !== undefined) item.unit = normaliseUnit(c.unit) ?? item.unit;
+    if (c.place !== undefined && STORAGE_PLACES.includes(c.place as StoragePlace))
+      item.place = c.place as StoragePlace;
+    if (c.packaging !== undefined) item.packaging = text(c.packaging, 120);
+    if (c.expiresAt !== undefined) item.expiresAt = isoDay(c.expiresAt);
+    if (c.opened !== undefined) item.openedAt = c.opened === true ? (item.openedAt ?? this.now()) : null;
+    if (c.confidence !== undefined)
+      item.confidence = c.confidence === "estimated" ? "estimated" : "confirmed";
+    item.updatedAt = this.now();
+    if (item.quantity === 0) {
+      this.state.pantry = this.state.pantry.filter((entry) => entry.id !== item.id);
+      this.save();
+      return null;
+    }
+    this.save();
+    return item;
+  }
+
+  /**
+   * "Correct stock": the user says what's actually there. Whatever the
+   * number, the item becomes **confirmed** — that's the whole point of the
+   * screen, and the only way an estimate stops being one.
+   */
+  correctStock(id: unknown, quantity: unknown, unit?: unknown): PantryItem | null {
+    const item = this.state.pantry.find((entry) => entry.id === id);
+    if (!item) throw new Error("That pantry item is gone.");
+    const amount =
+      typeof quantity === "number" && Number.isFinite(quantity) && quantity >= 0 ? quantity : null;
+    if (amount === null) throw new Error("That amount doesn't make sense.");
+    item.quantity = Math.round(amount * 1000) / 1000;
+    if (unit !== undefined) item.unit = normaliseUnit(unit) ?? item.unit;
+    item.confidence = "confirmed";
+    item.updatedAt = this.now();
+    if (item.quantity === 0) {
+      this.state.pantry = this.state.pantry.filter((entry) => entry.id !== item.id);
+      this.save();
+      return null;
+    }
+    this.save();
+    return item;
+  }
+
+  removeStock(id: unknown): void {
+    this.state.pantry = this.state.pantry.filter((item) => item.id !== id);
+    this.save();
+  }
+
+  // ---------- Leftovers ----------
+
+  listLeftovers(): Leftover[] {
+    return [...this.state.leftovers];
+  }
+
+  addLeftover(input: unknown): Leftover {
+    const r = (input ?? {}) as Record<string, unknown>;
+    const name = text(r.name, 200);
+    const portions = positive(r.portions);
+    if (!name || portions === null) throw new Error("Leftovers need a name and how many portions.");
+    if (this.state.leftovers.length >= MAX_LEFTOVERS) throw new Error("Too many leftovers recorded.");
+    const place = STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "fridge";
+    const cookedAt = new Date();
+    const leftover: Leftover = {
+      id: randomUUID(),
+      name,
+      recipeId: typeof r.recipeId === "string" && r.recipeId ? r.recipeId : null,
+      portions,
+      place,
+      cookedAt: cookedAt.toISOString(),
+      eatBy: isoDay(r.eatBy) ?? (place === "cupboard" ? null : suggestEatBy(cookedAt, place)),
+      addedAt: this.now(),
+      updatedAt: this.now(),
+    };
+    this.state.leftovers.push(leftover);
+    this.save();
+    return leftover;
+  }
+
+  /** Eating some of it: portions go down, and the entry goes when it's finished. */
+  updateLeftover(id: unknown, changes: unknown): Leftover | null {
+    const leftover = this.state.leftovers.find((entry) => entry.id === id);
+    if (!leftover) throw new Error("Those leftovers are gone.");
+    const c = (changes ?? {}) as Record<string, unknown>;
+    if (c.portions !== undefined) {
+      const portions =
+        typeof c.portions === "number" && c.portions >= 0 ? Math.round(c.portions * 100) / 100 : null;
+      if (portions === null) throw new Error("That number of portions doesn't make sense.");
+      leftover.portions = portions;
+    }
+    if (c.place !== undefined && STORAGE_PLACES.includes(c.place as StoragePlace))
+      leftover.place = c.place as StoragePlace;
+    if (c.eatBy !== undefined) leftover.eatBy = isoDay(c.eatBy);
+    if (c.name !== undefined) leftover.name = text(c.name, 200) ?? leftover.name;
+    leftover.updatedAt = this.now();
+    if (leftover.portions === 0) {
+      this.state.leftovers = this.state.leftovers.filter((entry) => entry.id !== leftover.id);
+      this.save();
+      return null;
+    }
+    this.save();
+    return leftover;
+  }
+
+  removeLeftover(id: unknown): void {
+    this.state.leftovers = this.state.leftovers.filter((entry) => entry.id !== id);
+    this.save();
+  }
+
+  // ---------- The plan ----------
+
+  listPlan(): PlannedMeal[] {
+    return [...this.state.plan];
+  }
+
+  planMeal(input: unknown, id?: unknown): PlannedMeal {
+    const r = (input ?? {}) as Record<string, unknown>;
+    const date = isoDay(r.date);
+    if (!date) throw new Error("A planned meal needs a day.");
+    if (!MEAL_SLOTS.includes(r.slot as MealSlot)) throw new Error("A planned meal needs a slot.");
+    const kind = MEAL_KINDS.includes(r.kind as PlannedMealKind) ? (r.kind as PlannedMealKind) : "recipe";
+    const recipeId = typeof r.recipeId === "string" && r.recipeId ? r.recipeId : null;
+    const leftoverId = typeof r.leftoverId === "string" && r.leftoverId ? r.leftoverId : null;
+    if (kind === "recipe" && !this.getRecipe(recipeId)) throw new Error("Choose a recipe.");
+    if (kind === "leftover" && !this.state.leftovers.some((l) => l.id === leftoverId))
+      throw new Error("Choose which leftovers.");
+    const existing = id ? this.state.plan.find((meal) => meal.id === id) : undefined;
+    if (id && !existing) throw new Error("That planned meal is gone.");
+    if (!existing && this.state.plan.length >= MAX_PLANNED_MEALS) throw new Error("The plan is full.");
+    const meal: PlannedMeal = {
+      id: existing?.id ?? randomUUID(),
+      date,
+      slot: r.slot as MealSlot,
+      kind,
+      recipeId: kind === "recipe" ? recipeId : null,
+      leftoverId: kind === "leftover" ? leftoverId : null,
+      name: text(r.name, 200),
+      servings: positive(r.servings, existing?.servings ?? 1)!,
+      cookServings: positive(r.cookServings),
+      time: isoTime(r.time),
+      cost: typeof r.cost === "number" && Number.isFinite(r.cost) && r.cost >= 0 ? r.cost : null,
+      notes: text(r.notes, 1000),
+      cookedAt: existing?.cookedAt ?? null,
+      addedAt: existing?.addedAt ?? this.now(),
+      updatedAt: this.now(),
+    };
+    this.state.plan = existing
+      ? this.state.plan.map((entry) => (entry.id === meal.id ? meal : entry))
+      : [...this.state.plan, meal];
+    this.save();
+    return meal;
+  }
+
+  removePlannedMeal(id: unknown): void {
+    this.state.plan = this.state.plan.filter((meal) => meal.id !== id);
+    this.save();
+  }
+
+  // ---------- Cooking ----------
+
+  /**
+   * Cooking a recipe, in one step: take the ingredients out of the pantry
+   * (soonest expiry first), turn extra portions into leftovers, and mark
+   * the planned meal cooked.
+   *
+   * Everything it touches in the pantry becomes **estimated**, because
+   * "the recipe said 300 g" is not the same as knowing what came out of
+   * the bag. What the pantry couldn't cover is reported, not invented.
+   */
+  cook(input: unknown): CookResult {
+    const r = (input ?? {}) as CookInput & Record<string, unknown>;
+    const recipe = this.getRecipe(r.recipeId);
+    if (!recipe) throw new Error("That recipe is gone.");
+    const cookServings = positive(r.cookServings, recipe.servings)!;
+    const eatServings = Math.min(cookServings, positive(r.eatServings, cookServings)!);
+    const result: CookResult = { deducted: [], short: [], leftover: null };
+
+    if (r.skipPantry !== true) {
+      const plan = planDeductions(recipe.ingredients, this.state.pantry, scaleFor(recipe, cookServings));
+      for (const deduction of plan.deductions) {
+        const item = this.state.pantry.find((entry) => entry.id === deduction.itemId);
+        if (!item) continue;
+        item.quantity = deduction.remaining.quantity;
+        item.unit = deduction.remaining.unit;
+        item.confidence = "estimated";
+        item.updatedAt = this.now();
+        result.deducted.push({
+          name: item.name,
+          used: `${deduction.use.quantity} ${deduction.use.unit}`,
+        });
+      }
+      this.state.pantry = this.state.pantry.filter((item) => {
+        const base = toBase({ quantity: item.quantity, unit: item.unit });
+        return !base || base.quantity > 0;
+      });
+      result.short = plan.short.map((entry) => ({
+        name: entry.ingredient.text || "ingredient",
+        reason: entry.reason,
+      }));
+    }
+
+    const extra = Math.round((cookServings - eatServings) * 100) / 100;
+    if (extra > 0) {
+      const place = STORAGE_PLACES.includes(r.leftoverPlace as StoragePlace)
+        ? (r.leftoverPlace as StoragePlace)
+        : "fridge";
+      result.leftover = this.addLeftover({
+        name: recipe.name,
+        recipeId: recipe.id,
+        portions: extra,
+        place,
+      });
+    }
+
+    recipe.timesCooked += 1;
+    recipe.lastCookedAt = this.now();
+    recipe.updatedAt = this.now();
+
+    if (typeof r.mealId === "string") {
+      const meal = this.state.plan.find((entry) => entry.id === r.mealId);
+      if (meal) {
+        meal.cookedAt = this.now();
+        meal.cookServings = cookServings;
+        meal.updatedAt = this.now();
+      }
+    }
+    this.save();
+    logger.info("Cooked a meal", {
+      recipe: recipe.name,
+      cookServings,
+      deducted: result.deducted.length,
+      short: result.short.length,
+    });
+    return result;
+  }
+
+  /** Eating leftovers: portions go down by what was eaten, and the meal is marked done. */
+  eatLeftover(mealId: unknown, leftoverId: unknown, portions: unknown): Leftover | null {
+    const leftover = this.state.leftovers.find((entry) => entry.id === leftoverId);
+    if (!leftover) throw new Error("Those leftovers are gone.");
+    const eaten = Math.min(leftover.portions, positive(portions, 1)!);
+    const meal = this.state.plan.find((entry) => entry.id === mealId);
+    if (meal) {
+      meal.cookedAt = this.now();
+      meal.updatedAt = this.now();
+    }
+    return this.updateLeftover(leftover.id, {
+      portions: Math.round((leftover.portions - eaten) * 100) / 100,
+    });
+  }
+
+  // ---------- Preferences ----------
+
+  getPreferences(): MealPreferences {
+    return JSON.parse(JSON.stringify(this.state.preferences)) as MealPreferences;
+  }
+
+  updatePreferences(changes: unknown): MealPreferences {
+    const c = (changes ?? {}) as Record<string, unknown>;
+    const current = this.state.preferences;
+    if (c.eaters !== undefined && Array.isArray(c.eaters)) {
+      current.eaters = c.eaters
+        .map((raw) => {
+          const e = (raw ?? {}) as Record<string, unknown>;
+          const name = text(e.name, 60);
+          if (!name) return null;
+          return {
+            id: typeof e.id === "string" && e.id ? e.id : randomUUID(),
+            name,
+            portionFactor: Math.min(5, positive(e.portionFactor, 1)!),
+            notes: text(e.notes, 200),
+          };
+        })
+        .filter((e): e is Eater => e !== null)
+        .slice(0, MAX_EATERS);
+    }
+    if (c.restrictions !== undefined) current.restrictions = list(c.restrictions, 40, 60);
+    if (c.dislikes !== undefined) current.dislikes = list(c.dislikes, 60, 60);
+    if (c.slots !== undefined && Array.isArray(c.slots)) {
+      const slots = c.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot));
+      if (slots.length) current.slots = [...new Set(slots)];
+    }
+    if (c.dailyBudget !== undefined) current.dailyBudget = positive(c.dailyBudget);
+    this.save();
+    return this.getPreferences();
+  }
+
+  /** Today, as the rest of the app writes it. */
+  today(): string {
+    return isoDate(new Date());
+  }
+}

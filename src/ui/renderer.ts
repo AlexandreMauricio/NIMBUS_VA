@@ -25,6 +25,7 @@ import {
 import { initMemoryTab } from "./memoryTab";
 import { initCollectionsTab } from "./collectionsTab";
 import { initBooksTab } from "./booksTab";
+import { initMealsTab } from "./mealsTab";
 import { initDecksTab } from "./decksTab";
 import { initCardPage } from "./cardPage";
 import { initHomeWeek, refreshUsageList, USAGE_PROMOTION_EVENT, UsagePromotion } from "./homeWeek";
@@ -4281,6 +4282,7 @@ initNetworkTab();
 initMemoryTab();
 initCollectionsTab();
 initBooksTab();
+initMealsTab();
 initDecksTab();
 initCardPage();
 initHomeWeek();

@@ -121,6 +121,15 @@ which modules are portable "Core" versus Windows-specific.
   volume, mute) and `system.lock`.
 - **Timer popup** and **suggestion popup** — small always-on-top windows
   that never steal focus.
+- **Meals tab** — recipes, the pantry and the week's plan. Add what's in
+  the kitchen with its use-by date; write or edit recipes; put a meal in
+  any slot of the next seven days; press Cook and NIMBUS takes the
+  ingredients out of the pantry (oldest first), keeps the extra portions
+  as leftovers with an eat-by date, and marks the meal cooked. Stock it
+  worked out is labelled an estimate until you confirm it. Costs come
+  from the last price you recorded, nutrition from each ingredient's
+  values, and both say how many ingredients they used. See
+  [docs/meals.md](docs/meals.md).
 - **Updates** — an installed NIMBUS updates itself from GitHub Releases
   (see [Updates](#updates)).
 - **Your week** — a Home summary of the last 7 days: activity time, app
@@ -180,7 +189,10 @@ These exist in the code as shapes or seams, but nothing uses them yet:
 
 ### Planned / not implemented
 
-AI/LLM reasoning, natural-language commands, voice/TTS, code signing for
+A meal generator, a shopping list, recipe import from a URL, nutrition
+lookups and receipt/invoice parsing (see
+[docs/meals.md](docs/meals.md#not-yet)), AI/LLM reasoning,
+natural-language commands, voice/TTS, code signing for
 the installer, multi-device sync or a backend, Android/web clients, OAuth-based
 calendar/email integrations, a browser extension for real URL detection,
 and any confirmation/permission enforcement for actions. Email is
@@ -217,6 +229,7 @@ src/
   attention/       Attention & Priority — what deserves attention now
   network/         Network awareness — local devices, observation only
   memory/          Persistent memory — saved, learned and observed, apart
+  meals/           Recipes, the pantry, leftovers and the meal plan
   collections/     Cards, decks (builder, EDHREC comparison) and the comics &
                    manga shelf, with the databases they use
   presence/        At the PC, home, or out
@@ -316,6 +329,7 @@ that subsystem.
 | [Spotify](docs/spotify.md)                   | Registering a Spotify app, the PKCE flow, and playback control                                 |
 | [Network](docs/network.md)                   | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
 | [Collections](docs/collections.md)           | Cards, decks (builder and EDHREC comparison) and the comics & manga shelf                      |
+| [Meals](docs/meals.md)                       | Recipes, the pantry, cooking, and what is deliberately not built yet                            |
 | [Memory](docs/memory.md)                     | The three memory tiers, trust and expiry, what is recorded, and the Memory tab                 |
 | [Stocks](docs/stocks.md)                     | Tracked positions, the estimates, market data and news, and their limits                       |
 
@@ -491,6 +505,7 @@ Everything is written under Electron's per-user data directory
 | `memory\explicit.json`, `memory\learned.json`, `memory\observed.json` | What NIMBUS remembers, one file per tier (see [docs/memory.md](docs/memory.md))                                                               | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `collection.json`                                                     | Your card collection: printings, quantities, foil, status, notes                                                                              | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `decks.json`                                                          | Your decks per game and format                                                                                                                | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
+| `meals.json`                                                          | Recipes, ingredients, the pantry, leftovers, the plan and who eats                                                                            | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `books.json`                                                          | Comics collected editions and manga volumes, with the issue runs each collects                                                                | Plain JSON, atomic write; an unreadable file is set aside, not overwritten |
 | `book-covers\<book id>.jpg`                                           | Covers you chose for books, resized                                                                                                           | Plain files                                                                |
 | `logs\nimbus.log`                                                     | The application log                                                                                                                           | Plain text; never contains credentials                                     |

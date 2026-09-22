@@ -54,6 +54,14 @@
             </svg>
             Stocks
           </button>
+          <button class="side-link" data-tab="meals">
+            <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor">
+              <path
+                d="M72,88V32a8,8,0,0,1,16,0V88a8,8,0,0,0,16,0V32a8,8,0,0,1,16,0V88a32,32,0,0,1-24,31v97a8,8,0,0,1-16,0V119A32,8,0,0,1,72,88ZM184,32c-22,0-40,26-40,58,0,25,11,45,28,54v76a8,8,0,0,0,16,0V32Z"
+              />
+            </svg>
+            Meals
+          </button>
           <!-- The things collected and played outside the computer. -->
           <div class="sidebar-group" data-group="collections">
             <button class="sidebar-group-toggle" type="button" aria-expanded="true">
@@ -450,6 +458,15 @@
               this always reflects (and edits) the same list you see in the Todoist app.
             </p>
           </div>
+        </section>
+
+        <section id="tab-meals" class="panel">
+          <!-- Today, the week's plan, recipes, the pantry and who eats.
+               Everything inside is drawn by src/ui/mealsTab.ts. -->
+          <div class="panel-header">
+            <h6 class="kicker">Meals</h6>
+          </div>
+          <div id="mealsRoot" class="meals-root"></div>
         </section>
 
         <section id="tab-stocks" class="panel">

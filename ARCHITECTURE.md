@@ -17,7 +17,7 @@ unnecessarily painful later.
 
 | Layer                         | What it means                                                                                                                                 | Owns                                                                                                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. Core**                   | Platform-independent logic. Zero dependency on Electron or any OS API.                                                                        | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Memory, Presence, Collections, Briefing, the weekly summary, the assistant-event contract, settings schema, generic utilities |
+| **1. Core**                   | Platform-independent logic. Zero dependency on Electron or any OS API.                                                                        | Context, Actions, Events, Routines, Activity, Timers, Attention, Network, Memory, Presence, Collections, Meals, Briefing, the weekly summary, the assistant-event contract, settings schema, generic utilities |
 | **2. Device/client-specific** | Code that only makes sense because this client is "a Windows desktop app."                                                                    | Windows, tray, lifecycle, autostart, updates, IPC wiring, desktop activity monitoring, credential/state files, Spotify's OAuth flow, popups                   |
 | **3. External integrations**  | Code that talks to a third-party service. Portable in principle, organized as an implementation detail behind a Core adapter.                 | Open-Meteo, IP geolocation, ICS fetching, IMAP, Todoist, Spotify Web API, Yahoo Finance, the card databases, EDHREC, the Grand Comics Database, Wikipedia                                                              |
 | **4. User data/context**      | The data itself: what NIMBUS knows and what the user has told it. A _slice_ of Core, called out because it is what would sync across devices. | Context snapshots, briefings, `UserPreferences`                                                                                                      |
@@ -181,6 +181,23 @@ src/
                                    [3] (editions' contents, lists downloaded
                                    whole)
 
+  meals/                    [1] Core — Meals
+    types.ts                     Ingredients, recipes, pantry items,
+                                   leftovers, planned meals, preferences
+    units.ts                     g / ml / piece: normalising, converting
+                                   within a base unit only, scaling,
+                                   formatting — pure
+    pantry.ts                    Stock summaries, expiry states, a recipe's
+                                   coverage, and what cooking deducts
+                                   (soonest expiry first) — pure
+    recipes.ts                   Cost from the last price paid, nutrition
+                                   per 100 g/ml, timings — pure, and every
+                                   figure carries how many lines it used
+    plan.ts                      Servings needed, a day's meals, plan cost
+                                   against the budget — pure
+    mealService.ts               Validation, ingredient identity, CRUD and
+                                   cooking, over an injected store
+
   summary/                  [1] Core — "Your week" on Home
     weeklySummary.ts             The last 7 days of sessions, app and site
                                    time, collection additions and upcoming
@@ -239,6 +256,7 @@ src/
     collectionStore.ts            The card collection (collection.json)
     deckStore.ts                  Decks (decks.json)
     bookStore.ts                  The comics and manga shelf (books.json)
+    mealStore.ts                  Meals: recipes, pantry, plan (meals.json)
     coverStore.ts                 Covers you choose: picked in main's own
                                    dialog, resized, saved in book-covers/,
                                    served only as nimbus-cover://cover/<id>.jpg
@@ -309,6 +327,7 @@ renderer can only call what its preload exposes.
 | Network                | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings`                                                                                                                                                          |
 | Presence               | `nimbus:get-presence`, `nimbus:set-presence-phone` (a Network tab device id, checked against the list)                                                                                                                                                                                                                                                                                                 |
 | Decks                  | `nimbus:get-card-detail` (game and catalog id only), `nimbus:get-decks`, `nimbus:get-deck`, `nimbus:create-deck`, `nimbus:update-deck`, `nimbus:remove-deck`, `nimbus:add-deck-card` (catalog id only — the card is fetched in the main process), `nimbus:set-deck-card-quantity`, `nimbus:move-deck-card`, `nimbus:import-decklist` (text, capped), `nimbus:refresh-deck-cards` (cards already in the deck), `nimbus:card-synergy`, `nimbus:builder-archetypes`, `nimbus:builder-browse`, `nimbus:builder-create-deck` (cards by id only, from what main browsed), `nimbus:deck-compare-options`, `nimbus:deck-compare` (a deck id and EDHREC variant ids — only the commander's name is sent); pushes `nimbus:decks-changed` |
+| Meals                  | `nimbus:get-meals` (the tab's whole snapshot, worked out in main), `nimbus:save-recipe`, `nimbus:remove-recipe`, `nimbus:add-stock`, `nimbus:update-stock`, `nimbus:correct-stock`, `nimbus:remove-stock`, `nimbus:add-leftover`, `nimbus:update-leftover`, `nimbus:remove-leftover`, `nimbus:plan-meal`, `nimbus:remove-planned-meal`, `nimbus:cook-meal`, `nimbus:eat-leftover`, `nimbus:update-ingredient`, `nimbus:update-meal-preferences`; pushes `nimbus:meals-changed`. Nothing leaves the PC |
 | Books                  | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book`, `nimbus:get-comic-issue` (series name, year and number only), `nimbus:open-comic-link` (League of Comic Geeks or GCD; the address is built in the main process), `nimbus:search-book-editions` and `nimbus:find-book-contents` (searched on the PC in Wikipedia's lists — nothing about the book is sent), `nimbus:get-book-years`, `nimbus:work-out-book-years`, `nimbus:set-run-year`, `nimbus:choose-book-cover` (main opens the file dialog; the renderer never names a path), `nimbus:clear-book-cover`; reading log: `nimbus:log-issue-readings`, `nimbus:remove-issue-reading`, `nimbus:set-issues-read`, `nimbus:set-minutes-per-issue`, `nimbus:set-my-issue-credits`, `nimbus:use-my-issue-credits`, `nimbus:reading-credits-state` (also pushed) |
 | Collections            | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card`                                                                                                                                |
 | Memory                 | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings`                                                                                                                                                                                                               |
@@ -324,7 +343,7 @@ renderer can only call what its preload exposes.
 
 **Pushes from main to renderer**: `nimbus:briefing-updated`,
 `nimbus:assistant-event`, `nimbus:activity-changed`,
-`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:presence-changed`, `nimbus:decks-changed`, `nimbus:reading-credits-state`,
+`nimbus:now-playing-changed`, `nimbus:network-changed`, `nimbus:memory-changed`, `nimbus:collection-changed`, `nimbus:books-changed`, `nimbus:presence-changed`, `nimbus:decks-changed`, `nimbus:meals-changed`, `nimbus:reading-credits-state`,
 `nimbus:update-state-changed`, `nimbus:zoom-changed`, `nimbus:open-activity-editor` (main window) and
 `nimbus:popup-suggestion-updated` (suggestion popup).
 
@@ -364,6 +383,7 @@ written atomically (temp file, fsync, rename):
 | `books.json`                                                          | `bookStore.ts`            | The comics and manga shelf: `{version: 1, books}`, each with its issue runs; validated per book and per run                                      |
 | `decks.json`                                                          | `deckStore.ts`            | Decks: validated deck by deck and card by card; an unparseable file is renamed `decks.unreadable-<time>.json`                                    |
 | `collection.json`                                                     | `collectionStore.ts`      | The card collection: `{version: 1, cards}`, validated per entry; an unparseable file is renamed `collection.unreadable-<time>.json`              |
+| `meals.json`                                                          | `mealStore.ts`            | Meals: `{version: 1, ingredients, recipes, pantry, leftovers, plan, preferences}`, validated entry by entry; an unparseable file is renamed `meals.unreadable-<time>.json` |
 | `book-covers/<book id>.jpg`                                           | `coverStore.ts`           | Covers you chose for books, resized to at most 600 px wide                                                                                       |
 | `logs/nimbus.log`                                                     | `logger.ts`               | Log lines; never credentials                                                                                                                     |
 

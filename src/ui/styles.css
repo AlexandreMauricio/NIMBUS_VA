@@ -4743,3 +4743,267 @@ details.context-card > summary .context-card-title {
 .deck-compare-group {
   margin: var(--space-2) 0 0;
 }
+
+/* ---------- Meals: today, the plan, recipes and the pantry (mealsTab.ts) ---------- */
+
+.meals-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.meals-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.meals-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.meals-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.meals-next-name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.meals-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+}
+
+.meals-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.meals-fact-label,
+.meals-field-label {
+  font-size: 0.72rem;
+  color: var(--color-neutral-400);
+}
+
+.meals-total {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.meals-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.meals-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.meals-row-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-divider) 60%, transparent);
+}
+
+.meals-row-item:last-child {
+  border-bottom: none;
+}
+
+.meals-row-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.meals-done strong,
+.meals-done .meals-cell-name {
+  color: var(--color-neutral-400);
+  text-decoration: line-through;
+}
+
+.meals-slot {
+  min-width: 6.5rem;
+  font-size: 0.75rem;
+  color: var(--color-neutral-400);
+}
+
+.meals-amount {
+  min-width: 5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-neutral-300);
+}
+
+.meals-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--color-neutral-300);
+  border: 1px solid var(--color-divider);
+}
+
+.meals-pill-urgent {
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+}
+
+.meals-pill-soon {
+  color: var(--color-accent-200);
+  border-color: var(--color-accent-600);
+}
+
+.meals-pill-ok {
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+}
+
+.meals-pill-est {
+  border-style: dashed;
+}
+
+.meals-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.meals-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meals-field .input,
+.meals-field .select {
+  width: auto;
+  min-width: 8rem;
+}
+
+.meals-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+
+.meals-textarea {
+  min-height: 4rem;
+  width: 100%;
+  resize: vertical;
+}
+
+.meals-steps-input {
+  min-height: 8rem;
+}
+
+.meals-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px 0;
+}
+
+.meals-line .input {
+  width: auto;
+}
+
+.meals-week {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+}
+
+.meals-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.meals-today {
+  outline: 1px solid var(--color-accent-600);
+}
+
+.meals-day-label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-neutral-300);
+}
+
+.meals-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1) 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-divider) 50%, transparent);
+  font-size: 0.78rem;
+}
+
+.meals-cell-name {
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+}
+
+.meals-empty .btn {
+  padding: 0;
+  color: var(--color-neutral-400);
+}
+
+.meals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-2);
+}
+
+.meals-recipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.meals-recipe-card:hover {
+  border-color: var(--color-accent-700);
+}
+
+.meals-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.88rem;
+}
