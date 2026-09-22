@@ -1139,7 +1139,10 @@ function registerIpcHandlers(): void {
           })),
         };
       }),
-      stock: summariseStock(state.pantry, now),
+      stock: summariseStock(state.pantry, now).map((entry) => ({
+        ...entry,
+        category: ingredients.get(entry.ingredientId)?.category ?? null,
+      })),
       leftovers: usableLeftovers(state.leftovers, now),
       plan: state.plan.map((meal) => ({
         meal,
@@ -1149,7 +1152,29 @@ function registerIpcHandlers(): void {
           (meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
             ? recipeCost(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup).value
             : null),
+        nutrition:
+          meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
+            ? perServing(
+                recipeNutrition(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup),
+                meal.cookServings ?? meal.servings
+              )
+            : null,
       })),
+      // Per day, for the week's spend bars: what's typed is a fact, what
+      // comes from ingredient prices is drawn as an estimate.
+      spend: days.map((date) => {
+        const meals = state.plan.filter((meal) => meal.date === date);
+        const dayCost = planCost(meals, recipes, lookup, state.preferences);
+        const confirmed = meals.reduce((sum, meal) => sum + (meal.cost ?? 0), 0);
+        return {
+          date,
+          total: dayCost.value,
+          confirmed: Math.round(confirmed * 100) / 100,
+          estimated: Math.round(((dayCost.value ?? 0) - confirmed) * 100) / 100,
+          over:
+            state.preferences.dailyBudget !== null && (dayCost.value ?? 0) > state.preferences.dailyBudget,
+        };
+      }),
       days,
       weekCost: cost,
       shopping: mealService.shoppingList(days),

@@ -353,6 +353,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     name: ingredients.get(key)!.name,
     quantity,
     unit,
+    startQuantity: quantity,
     place,
     confidence: estimated ? "estimated" : "confirmed",
     packaging,

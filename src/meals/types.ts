@@ -127,6 +127,12 @@ export interface PantryItem {
   name: string;
   quantity: number;
   unit: string;
+  /**
+   * How much there was when this item was last added or confirmed — the
+   * reference a "half a pack left" bar is drawn against. Never used in
+   * arithmetic, only to show how far through a package you are.
+   */
+  startQuantity: number;
   place: StoragePlace;
   confidence: StockConfidence;
   /** The package it came in, e.g. "1 kg pack" — free text, for recognising it. */
@@ -209,6 +215,10 @@ export interface MealPreferences {
   slots: MealSlot[];
   /** A day's food budget in euros, or null for no budget. */
   dailyBudget: number | null;
+  /** Daily calories per person, for the "how much of today" rings. Null hides them. */
+  dailyKcal: number | null;
+  /** Daily protein per person, in grams. */
+  dailyProtein: number | null;
 }
 
 export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
@@ -217,6 +227,8 @@ export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
   dislikes: [],
   slots: ["breakfast", "lunch", "dinner"],
   dailyBudget: null,
+  dailyKcal: null,
+  dailyProtein: null,
 };
 
 /**

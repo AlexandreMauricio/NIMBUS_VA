@@ -26,6 +26,14 @@ only place a food comes into being: it matches on name and aliases first,
 ignoring case, accents and a trailing plural, so "Chicken thighs",
 "chicken thigh" and "CHICKEN THIGHS" are one food, not three.
 
+## How an estimate looks
+
+The one visual rule the tab never breaks: **an estimate looks like an
+estimate.** Anything NIMBUS worked out is hatched or dashed and carries
+"≈" — the pantry bar of estimated stock, the estimated part of a day's
+spend column, the "estimated" pill, the header's estimated total.
+Anything you confirmed is drawn solid.
+
 ## Confirmed and estimated
 
 The rule the whole pantry is built around: **NIMBUS may do the
@@ -90,22 +98,33 @@ parsley" rather than showing a confident wrong number.
 ## The tab
 
 Six views, all from one snapshot the main process works out
-(`nimbus:get-meals`):
+(`nimbus:get-meals`). The layout follows the design mock-up the feature
+was drawn from — a hero card for the next meal, panels for the day's
+figures, chips for filters, counters above the lists, and grouped tables
+for the shopping list and the pantry:
 
-- **Today** — the next meal (with when to start cooking, its cost and how
-  much of it is at home), today's meals, what needs eating first, and what
-  the next seven days cost against the budget.
+- **Today** — a hero card for the next meal (when to start cooking, its
+  cost, how much of it is at home, and what it is short of beside it),
+  a card per meal today, then panels: **nutrition** as dials against the
+  daily target, **spend** as a column a day with the budget as a dashed
+  line, **what needs eating**, **leftovers**, the shopping total, and the
+  week's dinners as a strip.
 - **Plan** — a column per day for the next week, a cell per meal slot.
   A cell takes a recipe, leftovers, something you'll make, or a night out
   with its own price. Nothing is generated: you put meals in slots.
-- **Recipes** — the library, sorted by how much of each is at home
-  (default), quickest, cheapest or by name, with a page per recipe and an
-  editor.
+- **Recipes** — chips for the meal and for filters (all at home, ≤ 30 min,
+  ≤ 2 €/serving, favourites, imported), each with a count; cards showing
+  time, calories, protein, cost per serving and how much is at home; and a
+  recipe page with a **servings stepper** that rescales every amount, the
+  ingredients against the pantry, numbered method steps, nutrition, where
+  it appears in your plan, and how often you've cooked it.
 - **Shopping** — what the week needs that the kitchen hasn't got, why
   each line is there, and **Bought** to put it in the pantry at the price
   you paid.
-- **Pantry** — stock by food with its expiry state, filters (place,
-  expiring, estimated), **Correct**, and the leftovers list.
+- **Pantry** — four counters (expiring within 48 h, this week, needing a
+  check, confirmed), chips to filter, then a group per place with a bar
+  per item showing how much of the package is left, **Correct**, and the
+  prepared food and leftovers below.
 - **Settings** — who eats and how much (a label, a multiplier and a note —
   no profiles), restrictions, dislikes, the meal slots, and a daily budget.
 

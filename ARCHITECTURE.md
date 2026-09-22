@@ -202,7 +202,11 @@ src/
     demoData.ts                  A demo kitchen, every entry recorded by id
                                    so it can be removed exactly — pure
     mealService.ts               Validation, ingredient identity, CRUD and
-                                   cooking, over an injected store
+                                   cooking, over an injected store. Pantry
+                                   items keep a `startQuantity`, the
+                                   reference the "how much is left" bars
+                                   are drawn against — never used in
+                                   arithmetic
 
   summary/                  [1] Core — "Your week" on Home
     weeklySummary.ts             The last 7 days of sessions, app and site

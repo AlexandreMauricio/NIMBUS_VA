@@ -219,6 +219,7 @@ export function parsePantryItem(raw: unknown): PantryItem | null {
     name,
     quantity,
     unit,
+    startQuantity: positive(r.startQuantity, quantity)!,
     place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "cupboard",
     confidence: r.confidence === "estimated" ? "estimated" : "confirmed",
     packaging: text(r.packaging, 120),
@@ -306,6 +307,8 @@ export function parsePreferences(raw: unknown): MealPreferences {
     dislikes: list(r.dislikes, 60, 60),
     slots: slots.length ? [...new Set(slots)] : [...DEFAULT_MEAL_PREFERENCES.slots],
     dailyBudget: positive(r.dailyBudget),
+    dailyKcal: positive(r.dailyKcal),
+    dailyProtein: positive(r.dailyProtein),
   };
 }
 
@@ -605,6 +608,7 @@ export class MealService {
       name: ingredient.name,
       quantity,
       unit,
+      startQuantity: quantity,
       place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "cupboard",
       confidence: r.confidence === "estimated" ? "estimated" : "confirmed",
       packaging: text(r.packaging, 120),
@@ -659,6 +663,9 @@ export class MealService {
     if (amount === null) throw new Error("That amount doesn't make sense.");
     item.quantity = Math.round(amount * 1000) / 1000;
     if (unit !== undefined) item.unit = normaliseUnit(unit) ?? item.unit;
+    // Confirming resets the "how far through the package" reference: this
+    // amount is now the full one, so the bar starts from what's really there.
+    item.startQuantity = item.quantity;
     item.confidence = "confirmed";
     item.updatedAt = this.now();
     if (item.quantity === 0) {
@@ -1041,6 +1048,8 @@ export class MealService {
       if (slots.length) current.slots = [...new Set(slots)];
     }
     if (c.dailyBudget !== undefined) current.dailyBudget = positive(c.dailyBudget);
+    if (c.dailyKcal !== undefined) current.dailyKcal = positive(c.dailyKcal);
+    if (c.dailyProtein !== undefined) current.dailyProtein = positive(c.dailyProtein);
     this.save();
     return this.getPreferences();
   }

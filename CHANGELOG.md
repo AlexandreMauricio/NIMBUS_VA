@@ -18,6 +18,25 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.9 — 2026-09-22
+
+- **Meals looks like its design now.** The tab was rebuilt to the mock-up
+  it came from: a glowing hero card for the next meal with what it is
+  short of beside it, cards for today's meals, and panels for nutrition
+  (dials against a daily calorie and protein target you can now set),
+  the week's spend (a column a day, the budget as a dashed line), what
+  needs eating, leftovers, the shopping total and the week's dinners.
+  Recipes gained category and filter chips with counts, richer cards and
+  a two-column recipe page with a servings stepper that rescales every
+  amount, numbered method steps, nutrition, "in your plan" and history.
+  The shopping list and pantry are grouped tables, the pantry has four
+  counters and a bar per item showing how much of the package is left,
+  and Settings uses steppers for how much each person eats.
+- **An estimate now looks like one everywhere**: hatched bars and fills,
+  dashed pills, and "≈" — while anything you confirmed is drawn solid.
+
+---
+
 ## 0.6.8 — 2026-09-22
 
 - **A shopping list that keeps itself.** The week's planned meals added

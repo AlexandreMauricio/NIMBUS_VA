@@ -288,6 +288,8 @@ export function mergeInto(items: PantryItem[], incoming: PantryItem): PantryItem
       ? {
           ...item,
           quantity: total.quantity,
+          // Topping up a half-empty pack makes the fuller amount the reference.
+          startQuantity: Math.max(item.startQuantity, total.quantity),
           // Confirmed only when both halves are: adding a known purchase to
           // an estimated remainder still leaves the total a guess.
           confidence:
