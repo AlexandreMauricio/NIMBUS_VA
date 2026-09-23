@@ -6410,3 +6410,15 @@ button.meals-alt-btn:hover {
   padding: 3px 10px;
   font-size: 0.8rem;
 }
+
+/* A receipt line becoming a new food: a name box and the guesses. */
+.meals-review-naming {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.meals-review-naming[hidden] {
+  display: none;
+}

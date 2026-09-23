@@ -113,6 +113,35 @@ export function wordsOf(text: string): Set<string> {
   return words;
 }
 
+/** Receipt words that aren't part of a food's name: amounts, units, packaging. */
+const NOT_NAME = /^(\d[\d.,]*\w*|kg|gr?|un|und|emb|lt?|ml|cl|x\d*|c\/|s\/|pack|pcs?)$/i;
+
+/**
+ * Names to offer when a receipt line becomes a new food: the line's own
+ * words with the amounts dropped and the abbreviations spelled out
+ * ("COXA FRANGO KG" → "Coxa frango"), and, when every word is one it
+ * knows, the English ("Chicken thigh"). Only ever a starting point.
+ */
+export function foodNameGuesses(raw: string): string[] {
+  const words = raw
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, ""))
+    .filter((word) => word.length > 1 && !NOT_NAME.test(word));
+  const plain = (word: string) => word.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const spelled = words.map((word) => EXPANSIONS[plain(word)] ?? word.toLowerCase());
+  if (!spelled.length) return [];
+  const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+  const guesses = [capital(spelled.join(" "))];
+  const content = spelled
+    .join(" ")
+    .split(" ")
+    .filter((word) => !/^(de|da|do|das|dos|com)$/.test(plain(word)));
+  const english = content.map((word) => PT_EN[plain(word)]);
+  // Portuguese puts the thing first ("coxa de frango"); English puts it last ("chicken thigh").
+  if (english.every(Boolean)) guesses.unshift(capital(english.reverse().join(" ")));
+  return [...new Set(guesses)];
+}
+
 export interface LineMatch {
   ingredientId: string | null;
   confidence: number;

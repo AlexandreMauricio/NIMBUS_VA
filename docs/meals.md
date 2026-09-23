@@ -217,6 +217,12 @@ names understood ("COXA FRANGO" is chicken thighs) — with how sure the
 match is. Nothing changes yet: the purchase waits in **review**, where
 uncertain lines are outlined and each can be pointed at a food, a new
 food, or **not food** (a bag stays in the total, never in the kitchen).
+A **new food** is named by you: receipts shorten and spell things every
+way, so the box starts from a guess — the amounts dropped, the
+abbreviations spelled out, and the English when every word is known
+("COXA FRANGO KG" offers "Chicken thigh" or "Coxa frango") — and you
+write what it really is. Typing the name of a food you already have
+links the line to it instead.
 
 **Confirm import** then applies the lines you checked, to what you tick:
 **prices** (per unit, at that shop, on that day), the **pantry** (as

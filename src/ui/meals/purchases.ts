@@ -1,3 +1,4 @@
+import { foodNameGuesses } from "../../meals/purchases";
 import { KNOWN_UNITS, unitLabel } from "../../meals/units";
 import {
   MealsSnapshot,
@@ -379,7 +380,7 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
   const foodOptions: Array<[string, string]> = [
     ["", "? Choose a food"],
     ["__notfood", "Not food · skip"],
-    ["__new", "New food: as written"],
+    ["__new", "New food…"],
     ...data.ingredients
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -409,6 +410,25 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
               : "No match"
       )
     );
+    // A new food is named by you — the receipt's words are only a start, and stay as its alias.
+    const naming = make("div", "meals-review-naming");
+    const newName = input("text");
+    newName.maxLength = 120;
+    newName.placeholder = "What is it?";
+    const guesses = foodNameGuesses(line.raw);
+    newName.value = guesses[0] ?? "";
+    const suggestions = make("div", "meals-chips");
+    for (const guess of guesses)
+      suggestions.appendChild(
+        chip(guess, false, () => {
+          newName.value = guess;
+          newName.focus();
+        })
+      );
+    naming.appendChild(newName);
+    if (guesses.length > 1) naming.appendChild(suggestions);
+    naming.hidden = true;
+    matchCell.appendChild(naming);
     row.appendChild(matchCell);
     const quantity = input("number");
     quantity.step = "0.001";
@@ -428,19 +448,37 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
     price.value = line.price === null ? "" : String(line.price);
     price.disabled = !reviewing;
     row.appendChild(price);
-    const save = () =>
+    const save = () => {
+      if (food.value === "__new" && !newName.value.trim()) {
+        newName.focus();
+        return;
+      }
       void act(() =>
         bridge().updatePurchaseLine(purchase.id, line.id, {
           ingredientId: food.value && !food.value.startsWith("__") ? food.value : null,
-          newFood: food.value === "__new" ? line.raw : undefined,
+          newFood: food.value === "__new" ? newName.value.trim() : undefined,
           notFood: food.value === "__notfood",
           quantity: quantity.value ? Number(quantity.value) : null,
           unit: unit.value,
           price: price.value ? Number(price.value) : null,
         })
       );
+    };
     if (reviewing) {
-      for (const control of [food, quantity, unit, price]) control.addEventListener("change", save);
+      food.addEventListener("change", () => {
+        naming.hidden = food.value !== "__new";
+        if (food.value === "__new") {
+          newName.focus();
+          newName.select();
+        } else save();
+      });
+      newName.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && newName.value.trim()) save();
+      });
+      for (const control of [quantity, unit, price])
+        control.addEventListener("change", () => {
+          if (food.value !== "__new") save();
+        });
       row.appendChild(
         line.confirmed ? make("span", "meals-review-ok", "✓") : button("✓", "btn btn-secondary", save)
       );

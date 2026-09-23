@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseReceiptText, readDate, reconcile, repairOcrLine, sizeFromDescription } from "./receiptText";
-import { linePricePerBase, matchLine, pricesByStore, splitShopSaving } from "./purchases";
+import { foodNameGuesses, linePricePerBase, matchLine, pricesByStore, splitShopSaving } from "./purchases";
 import { MealService } from "./mealService";
 import type { MealsState, MealsStore, PriceRecord } from "./types";
 
@@ -257,4 +257,28 @@ test("purchases: text read off a photo — prices repaired where OCR slips, and 
       ["IDG GREGO NAT 4X1256", 2.48],
     ]
   );
+});
+
+test("purchases: a new food's name is guessed from the receipt line, amounts dropped", () => {
+  assert.deepEqual(foodNameGuesses("COXA FRANGO KG"), ["Chicken thigh", "Coxa frango"]);
+  assert.deepEqual(foodNameGuesses("PEITO DE FRANGO 1,210 kg"), ["Chicken breast", "Peito de frango"]);
+  assert.deepEqual(foodNameGuesses("IOG. NAT. 4X125G"), ["Iogurte natural"]);
+  assert.deepEqual(foodNameGuesses("LTE MG UHT 1L"), ["Leite meio gordo uht"]);
+  assert.deepEqual(foodNameGuesses("1,99"), []);
+});
+
+test("purchases: a new food takes the name you write, and the receipt's words match it next time", () => {
+  const meals = service();
+  const lines = [{ name: "BEB SOJA ALPRO 1L", quantity: 1, unit: "l", price: 2.19 }];
+  const first = meals.createPurchase({ store: "Continente", lines });
+  const line = first.lines[0];
+  assert.equal(line.ingredientId, null);
+  meals.updatePurchaseLine(first.id, line.id, { newFood: "Soy milk", quantity: 1, unit: "l", price: 2.19 });
+  meals.confirmPurchase(first.id, { prices: true, pantry: true, shopping: false });
+  const soy = meals.getState().ingredients.find((i) => i.name === "Soy milk")!;
+  assert.ok(soy, "named as written by you, not by the receipt");
+  assert.ok(soy.aliases.includes("BEB SOJA ALPRO 1L"));
+  const second = meals.createPurchase({ store: "Continente", lines });
+  assert.equal(second.lines[0].ingredientId, soy.id);
+  assert.equal(second.lines[0].confidence, 1);
 });

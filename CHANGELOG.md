@@ -20,6 +20,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.21 — 2026-09-23
+
+- **A new food from a receipt gets the name you write.** "New food…" in
+  the purchase review opens a name box instead of taking the receipt's
+  words as they are. It starts from a guess — amounts and units dropped,
+  abbreviations spelled out, and the English when every word is known
+  ("COXA FRANGO KG" → "Chicken thigh", or "Coxa frango") — and a name you
+  already have links the line to that food. The receipt's own words are
+  still learned as the food's alias, so the same line matches by itself
+  next time.
+
 ## 0.6.20 — 2026-09-23
 
 - **The planner.** Above the plan, a controls bar — how long, how many
