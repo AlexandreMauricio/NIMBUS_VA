@@ -245,3 +245,36 @@ export function reconcile(
   const unpriced = lines.filter((line) => line.price === null).length;
   return { sum, matches: total === null ? null : Math.abs(sum - total) < 0.015, unpriced };
 }
+
+/** A piece of text on a page, where the PDF put it (x from the left, y from the bottom). */
+export interface PlacedText {
+  text: string;
+  x: number;
+  y: number;
+  page: number;
+}
+
+/**
+ * A PDF gives text as placed pieces, not lines. Pieces at the same height
+ * (within a couple of points) are one line, read left to right, with a
+ * wide gap kept as a double space so a price still reads as the end of
+ * its line; pages follow one another, top to bottom.
+ */
+export function linesFromPlacedText(pieces: PlacedText[]): string {
+  const rows: Array<{ page: number; y: number; items: PlacedText[] }> = [];
+  for (const piece of pieces) {
+    if (!piece.text.trim()) continue;
+    const row = rows.find((r) => r.page === piece.page && Math.abs(r.y - piece.y) <= 2);
+    if (row) row.items.push(piece);
+    else rows.push({ page: piece.page, y: piece.y, items: [piece] });
+  }
+  rows.sort((a, b) => a.page - b.page || b.y - a.y);
+  return rows
+    .map((row) =>
+      row.items
+        .sort((a, b) => a.x - b.x)
+        .map((item) => item.text.trim())
+        .join("  ")
+    )
+    .join("\n");
+}

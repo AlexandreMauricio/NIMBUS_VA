@@ -20,6 +20,18 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.18 — 2026-09-23
+
+- **Invoice PDFs are read on the PC.** Purchases & imports → **Upload
+  file** reads an invoice PDF's text with pdfjs-dist — nothing is sent
+  anywhere — and holds what it found for the same review: shop, date,
+  total and lines, each matched to a food and waiting to be checked. A
+  scanned PDF (a picture with no text) says so rather than guessing.
+- New dependency: `pdfjs-dist`. After updating from source, run
+  `npm install` once.
+
+---
+
 ## 0.6.17 — 2026-09-23
 
 Meals, step 3 of 4 towards the "Meals v3" design: purchases, shops and

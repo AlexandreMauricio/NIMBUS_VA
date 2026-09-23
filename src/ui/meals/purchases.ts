@@ -134,15 +134,30 @@ function addPanel(data: MealsSnapshot): HTMLElement {
     data.spent.toReview ? pill(`● ${data.spent.toReview} waiting for review`, "soon") : undefined
   );
   box.classList.add("meals-drop");
+  body.appendChild(pill("PDF"));
   body.appendChild(
     make(
       "p",
       "meals-note",
-      "Type what you bought, or bring in a receipt. Each line is matched to your foods and waits for you to check it — nothing changes until you confirm."
+      "An invoice PDF is read here on the PC, or type what you bought. Each line is matched to your foods and waits for you to check it — nothing changes until you confirm."
     )
   );
   const actions = make("div", "meals-row");
-  actions.appendChild(button("Type a purchase", "btn btn-primary", () => openManualPurchase(data)));
+  actions.append(
+    button(
+      "Upload file",
+      "btn btn-primary",
+      () =>
+        void act(async () => {
+          const purchase = await bridge().importReceipt();
+          if (purchase) {
+            state.view = "purchases";
+            state.reviewing = purchase.id;
+          }
+        })
+    ),
+    button("Type a purchase", "btn btn-secondary", () => openManualPurchase(data))
+  );
   body.appendChild(actions);
   return box;
 }

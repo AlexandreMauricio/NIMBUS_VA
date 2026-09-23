@@ -424,6 +424,7 @@ contextBridge.exposeInMainWorld("nimbus", {
   buyItem: (input: Record<string, unknown>): Promise<unknown> => ipcRenderer.invoke("nimbus:buy-item", input),
   createPurchase: (input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:create-purchase", input),
+  importReceipt: (): Promise<unknown> => ipcRenderer.invoke("nimbus:import-receipt"),
   updatePurchase: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:update-purchase", id, changes),
   updatePurchaseLine: (id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown> =>

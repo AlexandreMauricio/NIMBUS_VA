@@ -197,8 +197,11 @@ shops for a pinch of salt.
 ## Purchases, shops and prices
 
 **Purchases & imports** keeps what you bought. A purchase is typed in
-line by line (receipts and invoices are read in later versions), and each
-line is **matched** to one of your foods — by its words, receipt
+line by line, or read from an **invoice PDF** — chosen in NIMBUS's own
+dialog and read on this PC with pdfjs, its text parsed the same way typed
+text is ([receiptText.ts](../src/meals/receiptText.ts): weights,
+multiples, discounts, and the header, total, VAT and payment lines left
+out). Each line is **matched** to one of your foods — by its words, receipt
 abbreviations spelled out ("IOG" is iogurte) and common Portuguese food
 names understood ("COXA FRANGO" is chicken thighs) — with how sure the
 match is. Nothing changes yet: the purchase waits in **review**, where
@@ -298,9 +301,8 @@ Deliberately absent, and the order they're planned in:
    values by name or barcode, cached locally. Until then, values are
    typed (or come from the demo data), and a recipe says how many of its
    ingredients it could use.
-2. **Reading receipts** — invoice PDFs and photographed receipts, read on
-   the PC into the same review. The parser for their text exists
-   ([receiptText.ts](../src/meals/receiptText.ts)); the reading is next.
+2. **Photographed receipts** — read on the PC into the same review.
+   Invoice PDFs already are; a scanned PDF (a picture, no text) needs this.
 3. **The generator** — filling a week against the objectives (use the
    pantry first, use leftovers, save money, quick, high protein) and the
    budget, with the "why this was suggested" explanation. Restrictions,

@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 
 /** The tools every build step needs, by the folder each installs into. */
-const REQUIRED = ["typescript", "esbuild", "electron"];
+const REQUIRED = ["typescript", "esbuild", "electron", "pdfjs-dist"];
 
 function missingDependencies(root) {
   return REQUIRED.filter((name) => !fs.existsSync(path.join(root, "node_modules", name)));

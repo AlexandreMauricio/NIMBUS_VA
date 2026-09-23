@@ -15,6 +15,7 @@ import type { PublicPage } from "../publicFetch";
 import { BrowserWindow } from "electron";
 import { recipePhotoUrl } from "../../meals/types";
 import { choosePictureFile, removePictureFile } from "../coverStore";
+import { chooseAndReadReceipt } from "../receiptImport";
 import { currentPrice, pricesByStore, splitShopSaving } from "../../meals/purchases";
 import type { StorePrice } from "../../meals/purchases";
 import { reconcile } from "../../meals/receiptText";
@@ -278,6 +279,21 @@ export function registerMealsIpc(ctx: IpcContext): void {
   // Purchases: created for review, checked line by line, then confirmed into
   // prices, the pantry and the list — nothing moves before the confirm.
   handle("nimbus:create-purchase", (_event, input: unknown) => ctx.mealService.createPurchase(input));
+  // A receipt or invoice: main opens the dialog, reads the file on the PC,
+  // and holds what it read for review. The renderer names nothing.
+  handle("nimbus:import-receipt", async () => {
+    const read = await chooseAndReadReceipt(BrowserWindow.getFocusedWindow());
+    if (!read) return null;
+    if (!read.lines.length) throw new Error("No purchase lines could be read from that file.");
+    return ctx.mealService.createPurchase({
+      source: read.source,
+      store: read.store,
+      date: read.date,
+      total: read.total,
+      lines: read.lines,
+      fileName: read.fileName,
+    });
+  });
   handle("nimbus:update-purchase", (_event, id: unknown, changes: unknown) =>
     ctx.mealService.updatePurchase(String(id ?? ""), changes)
   );

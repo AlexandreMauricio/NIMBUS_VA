@@ -260,6 +260,7 @@ export interface MealsBridge {
   previewCook(recipeId: string, servings: number): Promise<CookPreviewUI>;
   addMissingToShopping(recipeId: string, servings: number): Promise<number>;
   createPurchase(input: Record<string, unknown>): Promise<PurchaseUI>;
+  importReceipt(): Promise<PurchaseUI | null>;
   updatePurchase(id: string, changes: Record<string, unknown>): Promise<unknown>;
   updatePurchaseLine(id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown>;
   confirmPurchase(id: string, apply: Record<string, boolean>): Promise<unknown>;

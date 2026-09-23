@@ -210,6 +210,7 @@ marks anything.
 - **esbuild** — bundles each renderer into one plain script per window.
 - **dotenv** — loads `.env` for environment-driven configuration.
 - **imapflow** — the IMAP client behind the email provider.
+- **pdfjs-dist** — reads the text of invoice PDFs, on the PC.
 
 ## Project structure
 
