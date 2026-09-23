@@ -554,5 +554,7 @@ export interface PlanProposal {
   leftoverPortions: number;
   leftoverMeals: number;
   toBuy: number;
+  /** Meals that couldn't be filled even with the soft rules relaxed, and why. */
+  gaps: Array<{ date: string; slot: MealSlot; why: string }>;
   createdAt: string;
 }

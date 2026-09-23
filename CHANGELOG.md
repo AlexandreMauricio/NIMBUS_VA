@@ -20,6 +20,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.29 — 2026-09-23
+
+- **The planner fills every meal.** When nothing passes every rule, the
+  soft ones give way in turn — a repeat first, then the cooking-time and
+  difficulty limits, never a restriction — and the meal says so ("A repeat
+  — nothing else fits this meal this week"). Slots freed by a budget swap
+  are filled again. A meal that still can't be filled is listed under the
+  proposal with the reason.
+- **Locked meals show a 🔒** in the plan; the planner never replaces them.
+- **Other weeks**: ‹ and › above the plan move a week at a time. Past days
+  can be looked at, not changed; a later week is planned from its first
+  day.
+
 ## 0.6.28 — 2026-09-23
 
 - **Leftovers a planned batch will leave are offered when planning a

@@ -361,6 +361,14 @@ plan, and the objectives — and anything left alone comes from Household.
    "Budget swap: −3,10 €". What's still over becomes the banner's fixes:
    raise the budget to the cost, allow repeats, or swap a named meal.
 
+**You still have to eat**: when no recipe passes every rule for a meal,
+the soft rules give way in turn — max repeats first, then the cooking-time
+and difficulty limits — and the meal's first reason says which. A
+restriction never gives way; a meal that still can't be filled is listed
+under the proposal with why. Locked meals (🔒 in the grid) are never
+replaced. ‹ › above the grid move between weeks: past days are read-only,
+and a later week is planned from its first day.
+
 The result is a **proposal** — dashed, "Proposed · not yet accepted",
 with its cost, pantry lines used, leftovers placed and lines to buy — kept
 in `meals.json` until **Accept plan** (which replaces only the planner's

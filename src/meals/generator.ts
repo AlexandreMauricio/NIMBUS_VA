@@ -527,29 +527,73 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
 
   const perDayBudget =
     request.budgetPerDay ?? (request.budgetTotal !== null ? request.budgetTotal / days.length : null);
-  for (const date of days) {
-    for (const slot of request.slots) {
-      if (taken.has(key({ date, slot }))) continue;
-      // Today's share of what's planned: a batch counts for the servings eaten now.
-      const spent = [...kept, ...proposed]
-        .filter((meal) => meal.date === date)
-        .reduce((sum, meal) => sum + (mealShare(meal, input) ?? 0), 0);
-      const budgetLeft = perDayBudget === null ? null : perDayBudget - spent;
-      const candidates = input.recipes
-        .filter((recipe) => !allowed(recipe, slot, date, input, counts, allowRepeats))
-        .map((recipe) =>
-          scoreRecipe(recipe, date, request.eating, input, pantry, objectives, lastPlanned, budgetLeft)
-        )
-        .sort(
-          (a, b) =>
-            b.score - a.score ||
-            a.recipe.name.localeCompare(b.recipe.name) ||
-            a.recipe.id.localeCompare(b.recipe.id)
-        );
-      const best = candidates[0];
-      if (best) place(date, slot, best, request.eating, 0);
+  // You still have to eat: when nothing passes every rule, the soft ones give way in turn —
+  // repeats first, then the cooking time and difficulty — never a restriction. Each says so.
+  const relaxedTime: PlannerInput = {
+    ...input,
+    preferences: { ...input.preferences, cookingTime: { weekday: null, weekend: null }, difficulty: "any" },
+  };
+  const levels: Array<{
+    check: (recipe: Recipe, slot: MealSlot, date: string) => string | null;
+    why: string | null;
+  }> = [
+    { check: (recipe, slot, date) => allowed(recipe, slot, date, input, counts, allowRepeats), why: null },
+    {
+      check: (recipe, slot, date) => allowed(recipe, slot, date, input, counts, true),
+      why: "A repeat — nothing else fits this meal this week",
+    },
+    {
+      check: (recipe, slot, date) => allowed(recipe, slot, date, relaxedTime, counts, true),
+      why: "Over your cooking-time or difficulty limit — nothing else fits this meal",
+    },
+  ];
+  const gaps: Array<{ date: string; slot: MealSlot; why: string }> = [];
+  const fillEmpty = () => {
+    for (const date of days) {
+      for (const slot of request.slots) {
+        if (taken.has(key({ date, slot }))) continue;
+        // Today's share of what's planned: a batch counts for the servings eaten now.
+        const spent = [...kept, ...proposed]
+          .filter((meal) => meal.date === date)
+          .reduce((sum, meal) => sum + (mealShare(meal, input) ?? 0), 0);
+        const budgetLeft = perDayBudget === null ? null : perDayBudget - spent;
+        let placed = false;
+        for (const level of levels) {
+          const best = input.recipes
+            .filter((recipe) => !level.check(recipe, slot, date))
+            .map((recipe) =>
+              scoreRecipe(recipe, date, request.eating, input, pantry, objectives, lastPlanned, budgetLeft)
+            )
+            .sort(
+              (a, b) =>
+                b.score - a.score ||
+                a.recipe.name.localeCompare(b.recipe.name) ||
+                a.recipe.id.localeCompare(b.recipe.id)
+            )[0];
+          if (!best) continue;
+          place(
+            date,
+            slot,
+            best,
+            request.eating,
+            0,
+            level.why ? [level.why, ...best.reasons].slice(0, 4) : undefined
+          );
+          placed = true;
+          break;
+        }
+        if (!placed && !gaps.some((gap) => gap.date === date && gap.slot === slot))
+          gaps.push({
+            date,
+            slot,
+            why: input.recipes.some((recipe) => recipe.slots.includes(slot))
+              ? "every recipe for it has something you never eat"
+              : `no recipe is marked for ${slot}`,
+          });
+      }
     }
-  }
+  };
+  fillEmpty();
 
   const budget =
     request.budgetTotal ??
@@ -636,12 +680,16 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
       }
       if (!swapped) break;
     }
+    // Slots a swapped batch's leftovers had taken are filled again.
+    fillEmpty();
   }
 
   return {
     request,
     meals: proposed,
     ...proposalFigures(input, request, proposed),
+    // What couldn't be filled at all, and why — said in the proposal, not left as a silent gap.
+    gaps: gaps.filter((gap) => !taken.has(key(gap))),
     createdAt: input.now,
   };
 }
@@ -655,7 +703,7 @@ export function proposalFigures(
   input: PlannerInput,
   request: PlanRequest,
   proposed: PlannedMeal[]
-): Omit<PlanProposal, "request" | "meals" | "createdAt"> {
+): Omit<PlanProposal, "request" | "meals" | "createdAt" | "gaps"> {
   const days = dayRange(new Date(`${request.from}T12:00:00`), request.days);
   const kept = input.plan.filter(
     (meal) => days.includes(meal.date) && (meal.origin === "user" || meal.locked || meal.cookedAt)

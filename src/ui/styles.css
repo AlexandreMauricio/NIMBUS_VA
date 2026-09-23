@@ -6538,3 +6538,22 @@ button.meals-alt-btn:hover {
 .meals-prow-amount .meals-stepper {
   width: max-content;
 }
+
+/* Moving between weeks above the plan. */
+.meals-week-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+
+.meals-pcell.is-past {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.meals-pcell-lock {
+  margin-left: 6px;
+  font-size: 0.75em;
+}

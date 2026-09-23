@@ -526,6 +526,18 @@ function parseProposal(raw: unknown): PlanProposal | null {
     leftoverPortions: count(r.leftoverPortions),
     leftoverMeals: count(r.leftoverMeals),
     toBuy: count(r.toBuy),
+    gaps: Array.isArray(r.gaps)
+      ? r.gaps
+          .map((raw) => {
+            const g = (raw ?? {}) as Record<string, unknown>;
+            const date = isoDay(g.date);
+            return date && MEAL_SLOTS.includes(g.slot as MealSlot)
+              ? { date, slot: g.slot as MealSlot, why: text(g.why, 200) ?? "" }
+              : null;
+          })
+          .filter((gap): gap is { date: string; slot: MealSlot; why: string } => gap !== null)
+          .slice(0, 50)
+      : [],
     createdAt: stamp(r.createdAt),
   };
 }

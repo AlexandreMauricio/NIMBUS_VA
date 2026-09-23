@@ -76,11 +76,14 @@ test("planner: restrictions never appear, and max repeats holds", () => {
   });
   const chilli = meals.getState().recipes.find((r) => r.name === "Chilli con carne")!;
   assert.ok(!proposal.meals.some((m) => m.recipeId === chilli.id), "chilli has beef");
+  // Max repeats holds, unless nothing else fits — and then the meal says it's a repeat.
   const counts = new Map<string, number>();
-  for (const meal of proposal.meals)
+  for (const meal of proposal.meals.filter((m) => !m.reasons[0]?.startsWith("A repeat")))
     if (meal.recipeId) counts.set(meal.recipeId, (counts.get(meal.recipeId) ?? 0) + 1);
-  for (const [, count] of counts) assert.ok(count <= 1, "no recipe more than once");
-  assert.ok(proposal.meals.length < 14, "slots stay empty rather than break a rule");
+  for (const [, count] of counts) assert.ok(count <= 1, "no recipe more than once without saying so");
+  // You still have to eat: every slot is filled, or the proposal says why not.
+  const filled = new Set(proposal.meals.map((m) => `${m.date}|${m.slot}`));
+  assert.equal(filled.size + proposal.gaps.length, 14);
 });
 
 test("planner: your picks and locked meals are kept, and accepting replaces only the planner's own", () => {

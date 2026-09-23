@@ -147,6 +147,7 @@ export interface MealsSnapshot {
     leftoverPortions: number;
     leftoverMeals: number;
     toBuy: number;
+    gaps: Array<{ date: string; slot: MealSlot; why: string }>;
   } | null;
   spend: Array<{ date: string; total: number | null; confirmed: number; estimated: number; over: boolean }>;
   days: string[];
@@ -407,6 +408,8 @@ export interface MealsUiState {
   /** The meal open in the replace drawer. */
   replacing: string | null;
   replaceTab: "suggestions" | "mine" | "custom";
+  /** Which week the plan shows: 0 is the seven days from today, −1 the week before, 1 the one after. */
+  weekOffset: number;
   /** What the planner is asked for, as the controls bar sets it. */
   planner: {
     days: number;
@@ -438,6 +441,7 @@ export const state: MealsUiState = {
   watching: null,
   replacing: null,
   replaceTab: "suggestions",
+  weekOffset: 0,
   planner: {
     days: 7,
     eating: null,

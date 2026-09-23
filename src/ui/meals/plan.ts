@@ -1,3 +1,4 @@
+import { dayRange } from "../../meals/plan";
 import { servingsSlider } from "./servings";
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, PLAN_OBJECTIVES, PLAN_OBJECTIVE_LABELS } from "../../meals/types";
 import type { MealSlot } from "../../meals/types";
@@ -114,7 +115,8 @@ function plannerControls(data: MealsSnapshot): HTMLElement {
 function plannerRequest(data: MealsSnapshot, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const p = state.planner;
   return {
-    from: data.today,
+    // A later week is planned from its first day; this week from today — never the past.
+    from: state.weekOffset > 0 ? weekDays(data)[0] : data.today,
     days: p.days,
     eating: p.eating ?? data.servingsNeeded,
     slots: p.slots ?? data.preferences.slots,
@@ -219,12 +221,62 @@ function proposalHeader(data: MealsSnapshot): HTMLElement | null {
     banner.appendChild(fixes);
     wrap.appendChild(banner);
   }
+  if (proposal.gaps.length)
+    wrap.appendChild(
+      make(
+        "p",
+        "meals-note",
+        `Left empty: ${proposal.gaps
+          .map((gap) => `${dayLabel(gap.date)} ${MEAL_SLOT_LABELS[gap.slot].toLowerCase()} — ${gap.why}`)
+          .join(" · ")}.`
+      )
+    );
   return wrap;
+}
+
+/** The days the plan shows: the seven from today, or the same seven moved by whole weeks. */
+function weekDays(data: MealsSnapshot): string[] {
+  if (state.weekOffset === 0) return data.days;
+  const from = new Date(`${data.today}T12:00:00`);
+  from.setDate(from.getDate() + state.weekOffset * 7);
+  return dayRange(from, 7);
+}
+
+/** ‹ Last week · This week · Next week › — any week can be looked at; only today onwards changed. */
+function weekNav(data: MealsSnapshot, days: string[]): HTMLElement {
+  const nav = make("div", "meals-week-nav");
+  const offset = state.weekOffset;
+  const name =
+    offset === 0
+      ? "This week"
+      : offset === 1
+        ? "Next week"
+        : offset === -1
+          ? "Last week"
+          : offset > 0
+            ? `In ${offset} weeks`
+            : `${-offset} weeks ago`;
+  const go = (by: number | null) => () => {
+    state.weekOffset = by === null ? 0 : state.weekOffset + by;
+    rerender();
+  };
+  nav.append(
+    button("‹", "btn btn-ghost", go(-1)),
+    make("strong", undefined, name),
+    make("span", "meals-line-meta", `${dayLabel(days[0])} – ${dayLabel(days[days.length - 1])}`),
+    button("›", "btn btn-ghost", go(1))
+  );
+  if (offset !== 0) nav.appendChild(button("Back to this week", "meals-link", go(null)));
+  if (days[days.length - 1] < data.today)
+    nav.appendChild(make("span", "meals-line-meta", "· past days can be looked at, not changed"));
+  return nav;
 }
 
 export function planView(data: MealsSnapshot): HTMLElement {
   const wrap = make("div", "meals-view");
-  wrap.appendChild(plannerControls(data));
+  const days = weekDays(data);
+  // Planning is for today onwards: the controls go when the whole week is past.
+  if (days[days.length - 1] >= data.today) wrap.appendChild(plannerControls(data));
   const header = proposalHeader(data);
   if (header) wrap.appendChild(header);
   if (state.planning) wrap.appendChild(planEditor(data, state.planning));
@@ -240,12 +292,25 @@ export function planView(data: MealsSnapshot): HTMLElement {
   // As the design draws it: a row per meal slot, a column per day. The
   // row label carries the slot's usual time and what it costs this week;
   // a day's header turns amber when the day goes over its budget.
+  wrap.appendChild(weekNav(data, days));
+  // A day's cost: worked out in main for this week, added up here for any other.
+  const spendOf = (date: string) => {
+    const known = data.spend.find((entry) => entry.date === date);
+    if (known) return known;
+    const costs = entries.filter((p) => p.meal.date === date && p.cost !== null).map((p) => p.cost!);
+    const total = costs.length ? Math.round(costs.reduce((sum, cost) => sum + cost, 0) * 100) / 100 : null;
+    return {
+      date,
+      total,
+      over: data.preferences.dailyBudget !== null && (total ?? 0) > data.preferences.dailyBudget,
+    };
+  };
   const scroller = make("div", "meals-plan-scroll");
   const grid = make("div", "meals-plan-grid");
-  grid.style.gridTemplateColumns = `6rem repeat(${data.days.length}, minmax(0, 1fr))`;
+  grid.style.gridTemplateColumns = `6rem repeat(${days.length}, minmax(0, 1fr))`;
   grid.appendChild(make("div"));
-  for (const date of data.days) {
-    const spend = data.spend.find((entry) => entry.date === date);
+  for (const date of days) {
+    const spend = spendOf(date);
     const head = make("div", `meals-plan-day${date === data.today ? " is-today" : ""}`);
     const [weekday, day] = dayLabel(date).split(" ");
     head.append(
@@ -261,7 +326,7 @@ export function planView(data: MealsSnapshot): HTMLElement {
   }
 
   for (const slot of data.preferences.slots) {
-    const row = entries.filter((p) => p.meal.slot === slot && data.days.includes(p.meal.date));
+    const row = entries.filter((p) => p.meal.slot === slot && days.includes(p.meal.date));
     const times = row.map((p) => p.meal.time).filter((t): t is string => Boolean(t));
     const usual = times.sort(
       (a, b) => times.filter((t) => t === b).length - times.filter((t) => t === a).length
@@ -275,7 +340,8 @@ export function planView(data: MealsSnapshot): HTMLElement {
     );
     grid.appendChild(label);
 
-    for (const date of data.days) {
+    for (const date of days) {
+      const past = date < data.today;
       // Leftovers first, then anything cooked alongside them for whoever they don't feed.
       const here = row
         .filter((p) => p.meal.date === date)
@@ -284,6 +350,7 @@ export function planView(data: MealsSnapshot): HTMLElement {
       const beside = here.slice(1);
       const classes = ["meals-pcell"];
       if (date === data.today) classes.push("is-today");
+      if (past) classes.push("is-past");
       if (!entry) classes.push("is-empty");
       if (entry?.meal.cookedAt) classes.push("is-done");
       if (entry?.badge?.kind === "leftover") classes.push("is-leftover");
@@ -292,12 +359,20 @@ export function planView(data: MealsSnapshot): HTMLElement {
       if (entry && data.proposal?.meals.includes(entry)) classes.push("is-proposed");
       // A meal opens the replace drawer; an empty slot, the form to fill it.
       const cell = button("", classes.join(" "), () => {
+        if (past) return;
         if (entry) state.replacing = entry.meal.id;
         else state.planning = { date, slot, mealId: null };
         rerender();
       });
       if (entry) {
-        cell.appendChild(make("span", "meals-pcell-name", entry.name));
+        const title = make("span", "meals-pcell-name", entry.name);
+        // Locked: kept exactly as it is whenever the planner runs.
+        if (entry.meal.locked) {
+          const lock = make("span", "meals-pcell-lock", "🔒");
+          lock.title = "Locked — never replaced when the planner runs";
+          title.appendChild(lock);
+        }
+        cell.appendChild(title);
         const foot = make("span", "meals-pcell-foot");
         if (entry.badge) foot.appendChild(pill(entry.badge.label, BADGE_PILL[entry.badge.kind]));
         foot.appendChild(
@@ -334,7 +409,7 @@ export function planView(data: MealsSnapshot): HTMLElement {
           cell.appendChild(part);
         }
       } else {
-        cell.appendChild(make("span", "meals-cell-add", "+ Add"));
+        if (!past) cell.appendChild(make("span", "meals-cell-add", "+ Add"));
       }
       grid.appendChild(cell);
     }
