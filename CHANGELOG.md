@@ -11,10 +11,29 @@ NIMBUS uses `MAJOR.MINOR.PATCH`:
 | **PATCH** | Everything else — fixes, features, refactors, docs.                                                                          |
 
 The version lives in `package.json` and is shown in the sidebar, so what
-you see running is what you can point at in the history. Each release is
-tagged (`v0.2.0`), so `git log v0.1.0..v0.2.0` shows exactly what changed.
+you see running is what you can point at in the history. Each minor
+milestone is tagged (`v0.2.0`), so `git log v0.1.0..v0.2.0` shows exactly
+what changed; patch versions are found by their commit subjects, which
+end with the version.
 
 Dates are the day the work landed.
+
+---
+
+## 0.6.13 — 2026-09-23
+
+- **Fixed: cooking a planned meal twice took its ingredients out of the
+  pantry twice.** A meal already cooked now says so and leaves the pantry
+  alone.
+- **Removing the demo kitchen keeps meals you planned from its recipes**,
+  under the recipe's name, instead of leaving them pointing at a recipe
+  that's gone (they read as just "Meal"). Leftovers forget a deleted
+  recipe the same way.
+- **Calendar feeds accept `webcal://` links** — the "subscribe" links
+  Google, iCloud and Outlook hand out — and fetch them over https.
+- Saving startup settings no longer fails on an empty request.
+- Docs: stale lines fixed in `src/services/README.md`, `.env.example` and
+  this file's note on tags.
 
 ---
 

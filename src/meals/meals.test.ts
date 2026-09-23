@@ -595,6 +595,47 @@ test("demo data: loads a working kitchen, and removing it takes out exactly what
   assert.equal(meals.findIngredient("Rice")!.id, myRice);
 });
 
+test("demo data: a meal you planned from a demo recipe outlives it, still named", () => {
+  const { service: meals } = service();
+  meals.loadDemoData();
+  const demoRecipe = meals.listRecipes()[0];
+  const mine = meals.planMeal({
+    date: "2026-10-01",
+    slot: "lunch",
+    kind: "recipe",
+    recipeId: demoRecipe.id,
+    servings: 2,
+  });
+  meals.removeDemoData();
+  const kept = meals.listPlan().find((meal) => meal.id === mine.id)!;
+  assert.equal(kept.recipeId, null);
+  assert.equal(kept.kind, "custom");
+  assert.equal(kept.name, demoRecipe.name);
+});
+
+test("the service: a planned meal can't be cooked twice", () => {
+  const { service: meals } = service();
+  const rice = meals.ensureIngredient("Rice", "g");
+  meals.addStock({ ingredientId: rice.id, quantity: 1, unit: "kg", place: "cupboard" });
+  const saved = meals.saveRecipe({
+    name: "Rice",
+    servings: 2,
+    ingredients: [{ name: "Rice", quantity: 200, unit: "g" }],
+  });
+  const meal = meals.planMeal({
+    date: "2026-09-22",
+    slot: "dinner",
+    kind: "recipe",
+    recipeId: saved.id,
+    servings: 2,
+  });
+  meals.cook({ mealId: meal.id, recipeId: saved.id });
+  const left = meals.listPantry()[0].quantity;
+  assert.throws(() => meals.cook({ mealId: meal.id, recipeId: saved.id }), /already cooked/);
+  assert.equal(meals.listPantry()[0].quantity, left);
+  assert.equal(meals.getRecipe(saved.id)?.timesCooked, 1);
+});
+
 test("a planned meal reads as what it is: the recipe, the leftovers, or where you ate", () => {
   const { service: meals } = service();
   const saved = meals.saveRecipe({ name: "Porridge", servings: 1, ingredients: [] });

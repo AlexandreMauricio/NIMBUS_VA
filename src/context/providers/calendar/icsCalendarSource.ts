@@ -43,8 +43,11 @@ export class IcsCalendarSource {
   ) {}
 
   async fetchRaw(): Promise<string> {
-    if (/^https?:\/\//i.test(this.address)) {
-      const response = await this.fetchFn(this.address, { signal: httpTimeoutSignal() });
+    // Calendar apps hand out subscription links as webcal:// — the same
+    // feed over HTTPS, named so a browser opens a calendar app instead.
+    const address = this.address.trim().replace(/^webcals?:\/\//i, "https://");
+    if (/^https?:\/\//i.test(address)) {
+      const response = await this.fetchFn(address, { signal: httpTimeoutSignal() });
       if (!response.ok) {
         throw new Error(`Calendar feed request failed with status ${response.status}`);
       }

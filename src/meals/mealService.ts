@@ -574,14 +574,32 @@ export class MealService {
   }
 
   removeRecipe(id: unknown): void {
-    this.state.recipes = this.state.recipes.filter((recipe) => recipe.id !== id);
-    // Planned meals keep their name so the plan still reads, but lose the link.
+    if (typeof id !== "string") return;
+    this.unlinkRecipes(new Set([id]));
+    this.save();
+  }
+
+  /**
+   * Takes recipes out. Planned meals keep a name so the plan still reads —
+   * the recipe's own, when the meal had none — but lose the link, and
+   * leftovers forget which recipe they came from.
+   */
+  private unlinkRecipes(ids: Set<string>): void {
+    const names = new Map(this.state.recipes.map((recipe) => [recipe.id, recipe.name]));
+    this.state.recipes = this.state.recipes.filter((recipe) => !ids.has(recipe.id));
     this.state.plan = this.state.plan.map((meal) =>
-      meal.recipeId === id
-        ? { ...meal, kind: "custom" as const, recipeId: null, name: meal.name ?? "Deleted recipe" }
+      meal.recipeId && ids.has(meal.recipeId)
+        ? {
+            ...meal,
+            kind: "custom" as const,
+            recipeId: null,
+            name: meal.name ?? names.get(meal.recipeId) ?? "Deleted recipe",
+          }
         : meal
     );
-    this.save();
+    this.state.leftovers = this.state.leftovers.map((leftover) =>
+      leftover.recipeId && ids.has(leftover.recipeId) ? { ...leftover, recipeId: null } : leftover
+    );
   }
 
   // ---------- Pantry ----------
@@ -809,6 +827,11 @@ export class MealService {
     const cookServings = positive(r.cookServings, recipe.servings)!;
     const eatServings = Math.min(cookServings, positive(r.eatServings, cookServings)!);
     const result: CookResult = { deducted: [], short: [], leftover: null };
+    // Checked before anything moves: cooking a planned meal twice would
+    // take its ingredients out of the pantry twice.
+    const planned =
+      typeof r.mealId === "string" ? this.state.plan.find((entry) => entry.id === r.mealId) : undefined;
+    if (planned?.cookedAt) throw new Error("That meal is already cooked.");
 
     if (r.skipPantry !== true) {
       const plan = planDeductions(recipe.ingredients, this.state.pantry, scaleFor(recipe, cookServings));
@@ -851,13 +874,10 @@ export class MealService {
     recipe.lastCookedAt = this.now();
     recipe.updatedAt = this.now();
 
-    if (typeof r.mealId === "string") {
-      const meal = this.state.plan.find((entry) => entry.id === r.mealId);
-      if (meal) {
-        meal.cookedAt = this.now();
-        meal.cookServings = cookServings;
-        meal.updatedAt = this.now();
-      }
+    if (planned) {
+      planned.cookedAt = this.now();
+      planned.cookServings = cookServings;
+      planned.updatedAt = this.now();
     }
     this.save();
     logger.info("Cooked a meal", {
@@ -1000,7 +1020,8 @@ export class MealService {
     this.state.plan = this.state.plan.filter((meal) => !ids.has(meal.id));
     this.state.leftovers = this.state.leftovers.filter((entry) => !ids.has(entry.id));
     this.state.pantry = this.state.pantry.filter((item) => !ids.has(item.id));
-    this.state.recipes = this.state.recipes.filter((recipe) => !ids.has(recipe.id));
+    // Meals you planned yourself from a demo recipe stay, named, unlinked.
+    this.unlinkRecipes(ids);
     // An ingredient the demo created is only removed once nothing points
     // at it — a recipe you wrote using demo chicken keeps its chicken.
     const used = new Set<string>();

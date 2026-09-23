@@ -360,10 +360,12 @@ function registerIpcHandlers(): void {
   handle("nimbus:get-zoom", () => settings.windowsClient.zoomPercent);
   handle("nimbus:set-zoom", (_event, percent: unknown) => applyZoom(percent));
 
-  handle("nimbus:update-settings", (_event, partial: Partial<typeof settings.windowsClient.startup>) => {
+  handle("nimbus:update-settings", (_event, partial: unknown) => {
     settings.windowsClient.startup = mergeKnown(settings.windowsClient.startup, partial);
     saveSettings(settings);
-    if (partial.launchWithWindows !== undefined) {
+    // Re-applied whenever it is sent, even unchanged: that is how a moved
+    // app folder re-registers its login item.
+    if (partial && typeof partial === "object" && "launchWithWindows" in partial) {
       applyAutostart(settings.windowsClient.startup.launchWithWindows);
     }
     logger.info("Settings updated", settings.windowsClient.startup);

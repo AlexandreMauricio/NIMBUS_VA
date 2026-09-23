@@ -333,7 +333,7 @@ that subsystem.
 | [Spotify](docs/spotify.md)                   | Registering a Spotify app, the PKCE flow, and playback control                                 |
 | [Network](docs/network.md)                   | Local devices: how discovery works, identity by MAC, labels, and what is deliberately excluded |
 | [Collections](docs/collections.md)           | Cards, decks (builder and EDHREC comparison) and the comics & manga shelf                      |
-| [Meals](docs/meals.md)                       | Recipes, the pantry, cooking, and what is deliberately not built yet                            |
+| [Meals](docs/meals.md)                       | Recipes, the pantry, cooking, and what is deliberately not built yet                           |
 | [Memory](docs/memory.md)                     | The three memory tiers, trust and expiry, what is recorded, and the Memory tab                 |
 | [Stocks](docs/stocks.md)                     | Tracked positions, the estimates, market data and news, and their limits                       |
 

@@ -65,3 +65,16 @@ test("an http(s) URL is still fetched regardless of its extension", async () => 
 
   assert.equal(await source.fetchRaw(), "RAW");
 });
+
+test("a webcal:// subscription link is fetched over https", async () => {
+  // What Google, iCloud and Outlook hand out as a "subscribe" link.
+  const asked: string[] = [];
+  const fakeFetch = (async (url: string) => {
+    asked.push(url);
+    return { ok: true, status: 200, text: async () => "RAW" } as unknown as Response;
+  }) as unknown as typeof fetch;
+  for (const address of ["webcal://p01-caldav.icloud.com/published/2/abc", "WEBCALS://example.com/cal"]) {
+    assert.equal(await new IcsCalendarSource(address, fakeFetch, neverReads()).fetchRaw(), "RAW");
+  }
+  assert.deepEqual(asked, ["https://p01-caldav.icloud.com/published/2/abc", "https://example.com/cal"]);
+});

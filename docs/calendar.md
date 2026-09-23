@@ -16,7 +16,8 @@ code isolated behind it.
   show it back for editing and it only grants read access to calendar
   data.
 - **Sources** ([icsCalendarSource.ts](../src/context/providers/calendar/icsCalendarSource.ts)):
-  an `http://`/`https://` address is fetched (with a 10-second timeout);
+  an `http://`/`https://` address is fetched (with a 10-second timeout),
+  and a `webcal://` subscription link is fetched as `https://`;
   anything else must be a path to a local `.ics`, `.ical` or `.ifb` file.
   Other local paths are refused, so a feed address can't become a way to
   read arbitrary files.
