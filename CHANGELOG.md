@@ -20,6 +20,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.23 — 2026-09-23
+
+- **Food families.** A food can count as a more general one — Soy milk
+  counts as Milk — set by clicking its name in the pantry, or when a
+  receipt line becomes a new food. A recipe asking for Milk is then
+  covered by either (at home, the shopping list and cooking); one asking
+  for Soy milk takes only soy; the pantry keeps them apart. When both are
+  at home, the cook dialog asks which to use.
+
 ## 0.6.22 — 2026-09-23
 
 - **The purchase review says where each line goes.** A "Goes to" column

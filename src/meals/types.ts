@@ -75,6 +75,12 @@ export interface Ingredient {
   fridgeDays: number | null;
   /** The package it last came in ("1 kg pack"), so the shopping side can say what to buy. */
   lastPackaging: string | null;
+  /**
+   * A more general food this one can stand in for: Soy milk counts as Milk.
+   * A recipe line asking for Milk takes either; one asking for Soy milk
+   * takes only soy. In the pantry they stay apart. One level only.
+   */
+  countsAs: string | null;
   addedAt: string;
   updatedAt: string;
 }

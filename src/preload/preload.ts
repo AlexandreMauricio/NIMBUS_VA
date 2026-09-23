@@ -408,8 +408,8 @@ contextBridge.exposeInMainWorld("nimbus", {
   removePlannedMeal: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-planned-meal", id),
   cookMeal: (input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:cook-meal", input),
-  previewCook: (recipeId: string, servings: number): Promise<unknown> =>
-    ipcRenderer.invoke("nimbus:preview-cook", recipeId, servings),
+  previewCook: (recipeId: string, servings: number, choose?: Record<string, string>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:preview-cook", recipeId, servings, choose ?? {}),
   addMissingToShopping: (recipeId: string, servings: number): Promise<number> =>
     ipcRenderer.invoke("nimbus:add-missing-to-shopping", recipeId, servings),
   eatLeftover: (mealId: string, leftoverId: string, portions: number): Promise<unknown> =>

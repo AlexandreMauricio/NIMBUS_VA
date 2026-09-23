@@ -429,6 +429,16 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
       );
     naming.appendChild(newName);
     if (guesses.length > 1) naming.appendChild(suggestions);
+    const countsAs = select(
+      [
+        ["", "Counts as · nothing else"],
+        ...generalFoods(data).map((food) => [food.id, `Counts as ${food.name}`] as [string, string]),
+      ],
+      ""
+    );
+    countsAs.title =
+      "Soy milk counts as Milk: a recipe asking for milk can use it; in the pantry they stay apart";
+    naming.appendChild(countsAs);
     naming.hidden = true;
     matchCell.appendChild(naming);
     row.appendChild(matchCell);
@@ -470,6 +480,7 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
         bridge().updatePurchaseLine(purchase.id, line.id, {
           ingredientId: food.value && !food.value.startsWith("__") ? food.value : null,
           newFood: food.value === "__new" ? newName.value.trim() : undefined,
+          countsAs: food.value === "__new" && countsAs.value ? countsAs.value : undefined,
           notFood: food.value === "__notfood",
           quantity: quantity.value ? Number(quantity.value) : null,
           unit: unit.value,
@@ -635,4 +646,9 @@ function confirmDelete(purchase: PurchaseUI): void {
   );
   box.appendChild(actions);
   showModal(box);
+}
+
+/** Foods another can count as: the general ones (a food counting as another isn't one). */
+export function generalFoods(data: MealsSnapshot): MealsSnapshot["ingredients"] {
+  return data.ingredients.filter((food) => !food.countsAs).sort((a, b) => a.name.localeCompare(b.name));
 }

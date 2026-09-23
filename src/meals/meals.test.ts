@@ -5,6 +5,8 @@ import {
   coverRecipe,
   coverageCount,
   expiryState,
+  familyChoices,
+  familyOf,
   planDeductions,
   suggestEatBy,
   summariseStock,
@@ -231,6 +233,7 @@ const ingredient = (id: string, over: Partial<Ingredient> = {}): Ingredient => (
   lastPrice: null,
   fridgeDays: null,
   lastPackaging: null,
+  countsAs: null,
   addedAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
   ...over,
@@ -943,4 +946,98 @@ test("step 2: only NIMBUS's own recipe photo addresses are kept", () => {
     meals.setRecipePhoto(saved.id, recipePhotoUrl(saved.id, 1)).photo,
     recipePhotoUrl(saved.id, 1)
   );
+});
+
+test("families: soy milk does for a recipe's milk, not the other way round, and the pantry keeps them apart", () => {
+  const family = familyOf([
+    { id: "milk", countsAs: null },
+    { id: "soy", countsAs: "milk" },
+  ]);
+  const pantry = [
+    pantryItem("a", "milk", 200, "ml", "2026-09-30"),
+    pantryItem("b", "soy", 500, "ml", "2026-09-25"),
+  ];
+  const line = (ingredientId: string) => ({
+    ingredientId,
+    text: ingredientId,
+    quantity: 400,
+    unit: "ml",
+    optional: false,
+    componentId: null,
+  });
+  const scale = (i: { quantity: number; unit: string }) => ({ quantity: i.quantity, unit: i.unit });
+  // Milk: either will do — 700 ml at home.
+  assert.equal(coverRecipe([line("milk")], pantry, scale, family)[0].status, "have");
+  assert.equal(
+    coverRecipe([line("milk")], pantry, scale)[0].status,
+    "partial",
+    "without families, only milk"
+  );
+  // Soy milk specifically: only soy.
+  assert.equal(
+    coverRecipe([line("soy")], [pantryItem("a", "milk", 900, "ml")], scale, family)[0].status,
+    "missing"
+  );
+  // Cooking: the named food first, then the family; a choice puts that one first.
+  const plain = planDeductions([line("milk")], pantry, scale, { family });
+  assert.deepEqual(
+    plain.deductions.map((d) => [d.itemId, d.use.quantity]),
+    [
+      ["a", 200],
+      ["b", 200],
+    ]
+  );
+  const soyFirst = planDeductions([line("milk")], pantry, scale, {
+    family,
+    choose: new Map([["milk", "soy"]]),
+  });
+  assert.deepEqual(
+    soyFirst.deductions.map((d) => [d.itemId, d.use.quantity]),
+    [["b", 400]]
+  );
+  // The cook dialog asks only when more than one food would do.
+  assert.equal(familyChoices([line("milk")], pantry, family)[0].foods.join(), "milk,soy");
+  assert.equal(familyChoices([line("soy")], pantry, family).length, 0);
+});
+
+test("families: counts-as stays one level deep, and removing the general food frees the others", () => {
+  const { service: meals } = service();
+  const milk = meals.ensureIngredient("Milk", "ml");
+  const plantMilk = meals.ensureIngredient("Plant milk", "ml");
+  const soy = meals.ensureIngredient("Soy milk", "ml");
+  meals.updateIngredient(soy.id, { countsAs: plantMilk.id });
+  meals.updateIngredient(plantMilk.id, { countsAs: milk.id });
+  const byName = (name: string) => meals.getState().ingredients.find((i) => i.name === name)!;
+  assert.equal(byName("Plant milk").countsAs, milk.id);
+  assert.equal(byName("Soy milk").countsAs, milk.id, "soy follows plant milk up to milk");
+  assert.throws(() => meals.updateIngredient(milk.id, { countsAs: soy.id }), /itself/);
+  meals.updateIngredient(soy.id, { countsAs: null });
+  assert.equal(byName("Soy milk").countsAs, null);
+  meals.updateIngredient(soy.id, { countsAs: milk.id });
+  meals.removeIngredient(milk.id);
+  assert.equal(byName("Soy milk").countsAs, null);
+});
+
+test("families: cooking uses the food you chose, and the shopping list counts the family", () => {
+  const { service: meals } = service();
+  const recipe = meals.saveRecipe({
+    name: "Pancakes",
+    servings: 2,
+    slots: ["breakfast"],
+    ingredients: [{ name: "Milk", quantity: 300, unit: "ml" }],
+  });
+  const milk = meals.getState().ingredients.find((i) => i.name === "Milk")!;
+  const soy = meals.ensureIngredient("Soy milk", "ml");
+  meals.updateIngredient(soy.id, { countsAs: milk.id });
+  meals.addStock({ ingredientId: milk.id, quantity: 1000, unit: "ml", place: "fridge" });
+  meals.addStock({ ingredientId: soy.id, quantity: 1000, unit: "ml", place: "cupboard" });
+  const preview = meals.previewCook(recipe.id, 2);
+  assert.deepEqual(
+    preview.choices[0].foods.map((f) => f.name),
+    ["Milk", "Soy milk"]
+  );
+  meals.cook({ recipeId: recipe.id, cookServings: 2, eatServings: 2, choose: { [milk.id]: soy.id } });
+  const left = new Map(meals.listPantry().map((item) => [item.name, item.quantity]));
+  assert.equal(left.get("Soy milk"), 700);
+  assert.equal(left.get("Milk"), 1000);
 });

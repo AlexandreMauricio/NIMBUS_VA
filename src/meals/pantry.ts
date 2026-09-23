@@ -95,16 +95,43 @@ export function summariseStock(items: PantryItem[], today: Date): StockSummary[]
 }
 
 /**
+ * Food families: each food that counts as a more general one, to that one
+ * (Soy milk → Milk). A recipe line for Milk takes either; a line for Soy
+ * milk takes only soy.
+ */
+export type Family = ReadonlyMap<string, string>;
+
+export const NO_FAMILY: Family = new Map();
+
+export function familyOf(ingredients: Iterable<{ id: string; countsAs: string | null }>): Family {
+  const family = new Map<string, string>();
+  for (const ingredient of ingredients)
+    if (ingredient.countsAs && ingredient.countsAs !== ingredient.id)
+      family.set(ingredient.id, ingredient.countsAs);
+  return family;
+}
+
+/** Whether pantry food `have` will do for a recipe line asking for `wanted`. */
+export function fits(have: string, wanted: string, family: Family): boolean {
+  return have === wanted || family.get(have) === wanted;
+}
+
+/**
  * How much of one ingredient there is, in the base unit of `unit`. Zero
  * means "none of it" — a real answer. Null means the question can't be
  * asked at all, because the unit isn't one NIMBUS can measure.
  */
-export function stockOf(items: PantryItem[], ingredientId: string, unit: string): number | null {
+export function stockOf(
+  items: PantryItem[],
+  ingredientId: string,
+  unit: string,
+  family: Family = NO_FAMILY
+): number | null {
   const wanted = toBase({ quantity: 1, unit });
   if (!wanted) return null;
   let total = 0;
   for (const item of items) {
-    if (item.ingredientId !== ingredientId) continue;
+    if (!fits(item.ingredientId, ingredientId, family)) continue;
     const base = toBase({ quantity: item.quantity, unit: item.unit });
     if (!base || base.unit !== wanted.unit) continue;
     total += base.quantity;
@@ -132,12 +159,13 @@ export interface IngredientCoverage {
 export function coverRecipe(
   ingredients: RecipeIngredient[],
   pantry: PantryItem[],
-  scale: (ingredient: RecipeIngredient) => Amount
+  scale: (ingredient: RecipeIngredient) => Amount,
+  family: Family = NO_FAMILY
 ): IngredientCoverage[] {
   return ingredients.map((ingredient) => {
     const needed = scale(ingredient);
     const base = toBase(needed);
-    const have = base ? stockOf(pantry, ingredient.ingredientId, needed.unit) : null;
+    const have = base ? stockOf(pantry, ingredient.ingredientId, needed.unit, family) : null;
     if (!base || have === null) {
       return { ingredient, needed, have, status: "unknown" as const, short: null };
     }
@@ -192,8 +220,14 @@ export interface DeductionPlan {
 export function planDeductions(
   ingredients: RecipeIngredient[],
   pantry: PantryItem[],
-  scale: (ingredient: RecipeIngredient) => Amount
+  scale: (ingredient: RecipeIngredient) => Amount,
+  options: {
+    family?: Family;
+    /** For a line the family can fill more than one way: the food you chose (line's food → chosen food). */
+    choose?: ReadonlyMap<string, string>;
+  } = {}
 ): DeductionPlan {
+  const family = options.family ?? NO_FAMILY;
   const remaining = new Map<string, Amount>();
   const plan: DeductionPlan = { deductions: [], short: [] };
   for (const ingredient of ingredients) {
@@ -204,10 +238,13 @@ export function planDeductions(
       plan.short.push({ ingredient, missing: null, reason: "unknown" });
       continue;
     }
+    // The food you chose first, else the one the recipe names; then the rest of the family.
+    const first = options.choose?.get(ingredient.ingredientId) ?? ingredient.ingredientId;
     const candidates = pantry
-      .filter((item) => item.ingredientId === ingredient.ingredientId && comparable(item, needed))
+      .filter((item) => fits(item.ingredientId, ingredient.ingredientId, family) && comparable(item, needed))
       .sort(
         (a, b) =>
+          Number(b.ingredientId === first) - Number(a.ingredientId === first) ||
           (a.expiresAt ?? "9999-12-31").localeCompare(b.expiresAt ?? "9999-12-31") ||
           a.addedAt.localeCompare(b.addedAt)
       );
@@ -239,6 +276,31 @@ export function planDeductions(
       });
   }
   return plan;
+}
+
+/**
+ * Recipe lines the pantry can fill with more than one food of a family —
+ * milk or soy milk — for the cook dialog to ask which. Each food in stock
+ * that fits, the one the recipe names first.
+ */
+export function familyChoices(
+  ingredients: RecipeIngredient[],
+  pantry: PantryItem[],
+  family: Family
+): Array<{ ingredient: RecipeIngredient; foods: string[] }> {
+  const choices: Array<{ ingredient: RecipeIngredient; foods: string[] }> = [];
+  for (const ingredient of ingredients) {
+    if (ingredient.optional) continue;
+    const foods = [
+      ...new Set(
+        pantry
+          .filter((item) => item.quantity > 0 && fits(item.ingredientId, ingredient.ingredientId, family))
+          .map((item) => item.ingredientId)
+      ),
+    ].sort((a, b) => Number(b === ingredient.ingredientId) - Number(a === ingredient.ingredientId));
+    if (foods.length > 1) choices.push({ ingredient, foods });
+  }
+  return choices;
 }
 
 /**

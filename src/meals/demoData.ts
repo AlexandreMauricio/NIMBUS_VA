@@ -329,6 +329,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       lastPrice: entry.price,
       fridgeDays: entry.fridgeDays,
       lastPackaging: null,
+      countsAs: null,
       addedAt: now,
       updatedAt: now,
     });

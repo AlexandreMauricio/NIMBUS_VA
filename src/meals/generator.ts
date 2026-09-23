@@ -31,6 +31,7 @@
 
 import { ingredientKey } from "./names";
 import { coverRecipe, coverageCount, expiryState, planDeductions, usableLeftovers } from "./pantry";
+import type { Family } from "./pantry";
 import { dayRange } from "./plan";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "./recipes";
 import type { IngredientLookup } from "./recipes";
@@ -54,6 +55,8 @@ export interface PlannerInput {
   /** Ingredients with their current price (the cheapest recent one). */
   lookup: IngredientLookup;
   pantry: PantryItem[];
+  /** Foods that count as others (Soy milk → Milk), for what's at home. */
+  family: Family;
   leftovers: Leftover[];
   /** The plan as it is — kept where you placed, locked or cooked something. */
   plan: PlannedMeal[];
@@ -220,7 +223,7 @@ export function scoreRecipe(
   const reasons: string[] = [];
   let score = 0;
   const scale = scaleFor(recipe, servings);
-  const coverage = coverageCount(coverRecipe(recipe.ingredients, pantry, scale));
+  const coverage = coverageCount(coverRecipe(recipe.ingredients, pantry, scale, input.family));
   const share = coverage.total ? coverage.have / coverage.total : 0;
   if (objectives.has("pantry")) {
     score += share * 3;
@@ -289,8 +292,8 @@ export function scoreRecipe(
 }
 
 /** Takes what a recipe uses out of a copy of the pantry, so the next choice sees what's left. */
-function useUp(pantry: PantryItem[], recipe: Recipe, servings: number): PantryItem[] {
-  const plan = planDeductions(recipe.ingredients, pantry, scaleFor(recipe, servings));
+function useUp(pantry: PantryItem[], recipe: Recipe, servings: number, family: Family): PantryItem[] {
+  const plan = planDeductions(recipe.ingredients, pantry, scaleFor(recipe, servings), { family });
   return pantry.map((item) => {
     const deduction = plan.deductions.find((d) => d.itemId === item.id);
     return deduction
@@ -416,7 +419,7 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
       taken.add(`${date}|${slot}`);
       counts.set(best.recipe.id, (counts.get(best.recipe.id) ?? 0) + 1);
       lastPlanned.set(best.recipe.id, date);
-      pantry = useUp(pantry, best.recipe, request.eating);
+      pantry = useUp(pantry, best.recipe, request.eating, input.family);
       spent += best.cost ?? 0;
     }
   }
@@ -530,10 +533,12 @@ export function proposalFigures(
   for (const meal of proposed.filter((m) => m.kind === "recipe")) {
     const recipe = input.recipes.find((r) => r.id === meal.recipeId);
     if (!recipe) continue;
-    const plan = planDeductions(recipe.ingredients, stock, scaleFor(recipe, meal.servings));
+    const plan = planDeductions(recipe.ingredients, stock, scaleFor(recipe, meal.servings), {
+      family: input.family,
+    });
     fromPantry += new Set(plan.deductions.map((d) => d.itemId)).size;
     toBuy += plan.short.length;
-    stock = useUp(stock, recipe, meal.servings);
+    stock = useUp(stock, recipe, meal.servings, input.family);
   }
 
   let leftoverPortions = 0;
@@ -630,7 +635,9 @@ export function effectOfReplacing(
   const shortOf = (id: string | null) => {
     const recipe = input.recipes.find((r) => r.id === id);
     if (!recipe) return new Map<string, string>();
-    const plan = planDeductions(recipe.ingredients, input.pantry, scaleFor(recipe, meal.servings));
+    const plan = planDeductions(recipe.ingredients, input.pantry, scaleFor(recipe, meal.servings), {
+      family: input.family,
+    });
     const names = new Map<string, string>();
     for (const short of plan.short) {
       const food =

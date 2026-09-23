@@ -6422,3 +6422,24 @@ button.meals-alt-btn:hover {
 .meals-review-naming[hidden] {
   display: none;
 }
+
+/* A pantry food's name opens what it counts as. */
+.meals-prow-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.meals-prow-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.meals-cook-choices[hidden] {
+  display: none;
+}

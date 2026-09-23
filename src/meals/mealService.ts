@@ -18,7 +18,8 @@
 import { randomUUID } from "crypto";
 import { logger } from "../logging/logger";
 import { buildDemoData } from "./demoData";
-import { isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
+import { familyChoices, familyOf, isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
+import type { Family } from "./pantry";
 import { pricePerBaseUnit, recipeCost, scaleFor } from "./recipes";
 import { effectOfReplacing, generatePlan, proposalFigures, replaceOptions } from "./generator";
 import type { PlannerInput, ReplaceOption } from "./generator";
@@ -164,6 +165,7 @@ export function parseIngredient(raw: unknown): Ingredient | null {
         : null,
     fridgeDays: positive(r.fridgeDays),
     lastPackaging: text(r.lastPackaging, 120),
+    countsAs: typeof r.countsAs === "string" && r.countsAs && r.countsAs !== r.id ? r.countsAs : null,
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -632,6 +634,13 @@ export interface CookInput {
 
 /** What cooking would take out of the pantry, package by package — shown before anything moves. */
 export interface CookPreview {
+  choices: Array<{
+    /** The food the recipe line names. */
+    ingredientId: string;
+    text: string;
+    /** The foods at home that will do, the named one first. */
+    foods: Array<{ ingredientId: string; name: string }>;
+  }>;
   deductions: Array<{
     itemId: string;
     name: string;
@@ -721,6 +730,7 @@ export class MealService {
       lastPrice: null,
       fridgeDays: null,
       lastPackaging: null,
+      countsAs: null,
       addedAt: this.now(),
       updatedAt: this.now(),
     };
@@ -745,9 +755,44 @@ export class MealService {
           ? c.lastPrice
           : null;
     if (c.fridgeDays !== undefined) ingredient.fridgeDays = positive(c.fridgeDays);
+    if (c.countsAs !== undefined) this.setCountsAs(ingredient, c.countsAs);
     ingredient.updatedAt = this.now();
     this.save();
     return ingredient;
+  }
+
+  /**
+   * "Soy milk counts as Milk". One level only: pointing at a food that
+   * itself counts as another points at that one, and foods that counted as
+   * this one follow it to its new general food.
+   */
+  private setCountsAs(ingredient: Ingredient, value: unknown): void {
+    if (value === null || value === "") {
+      ingredient.countsAs = null;
+      return;
+    }
+    let target = this.state.ingredients.find((i) => i.id === value);
+    if (!target) throw new Error("That food isn't known.");
+    if (target.countsAs) target = this.state.ingredients.find((i) => i.id === target!.countsAs) ?? target;
+    if (target.id === ingredient.id) throw new Error("A food can't count as itself.");
+    ingredient.countsAs = target.id;
+    for (const other of this.state.ingredients)
+      if (other.countsAs === ingredient.id) other.countsAs = target.id;
+  }
+
+  /** The cook dialog's picks — { line's food: food to use } — keeping only known foods. */
+  private choices(raw: unknown): Map<string, string> {
+    const picks = new Map<string, string>();
+    if (!raw || typeof raw !== "object") return picks;
+    const known = new Set(this.state.ingredients.map((i) => i.id));
+    for (const [line, food] of Object.entries(raw as Record<string, unknown>))
+      if (known.has(line) && typeof food === "string" && known.has(food)) picks.set(line, food);
+    return picks;
+  }
+
+  /** Food families as the pantry functions take them. */
+  private family(): Family {
+    return familyOf(this.state.ingredients);
   }
 
   /** Only an ingredient nothing points at can go — otherwise recipes would lose their lines. */
@@ -757,6 +802,7 @@ export class MealService {
       this.state.pantry.some((item) => item.ingredientId === id);
     if (used) throw new Error("That ingredient is used by a recipe or is in the pantry.");
     this.state.ingredients = this.state.ingredients.filter((i) => i.id !== id);
+    for (const other of this.state.ingredients) if (other.countsAs === id) other.countsAs = null;
     this.save();
   }
 
@@ -1143,15 +1189,24 @@ export class MealService {
    * the bag. What the pantry couldn't cover is reported, not invented.
    */
   /** What cooking `servings` of a recipe would take, package by package. Changes nothing. */
-  previewCook(recipeId: unknown, servings: unknown): CookPreview {
+  previewCook(recipeId: unknown, servings: unknown, choose: unknown = {}): CookPreview {
     const recipe = this.getRecipe(recipeId);
     if (!recipe) throw new Error("That recipe is gone.");
+    const family = this.family();
     const plan = planDeductions(
       recipe.ingredients,
       this.state.pantry,
-      scaleFor(recipe, positive(servings, recipe.servings)!)
+      scaleFor(recipe, positive(servings, recipe.servings)!),
+      { family, choose: this.choices(choose) }
     );
+    const name = (id: string) => this.state.ingredients.find((i) => i.id === id)?.name ?? "?";
     return {
+      // Lines more than one food at home can fill — the dialog asks which.
+      choices: familyChoices(recipe.ingredients, this.state.pantry, family).map((choice) => ({
+        ingredientId: choice.ingredient.ingredientId,
+        text: choice.ingredient.text || name(choice.ingredient.ingredientId),
+        foods: choice.foods.map((id) => ({ ingredientId: id, name: name(id) })),
+      })),
       deductions: plan.deductions.map((deduction) => {
         const item = this.state.pantry.find((entry) => entry.id === deduction.itemId)!;
         return {
@@ -1188,7 +1243,10 @@ export class MealService {
     if (planned?.cookedAt) throw new Error("That meal is already cooked.");
 
     if (r.skipPantry !== true) {
-      const plan = planDeductions(recipe.ingredients, this.state.pantry, scaleFor(recipe, cookServings));
+      const plan = planDeductions(recipe.ingredients, this.state.pantry, scaleFor(recipe, cookServings), {
+        family: this.family(),
+        choose: this.choices(r.choose),
+      });
       for (const deduction of plan.deductions) {
         const item = this.state.pantry.find((entry) => entry.id === deduction.itemId);
         if (!item) continue;
@@ -1317,7 +1375,8 @@ export class MealService {
     const plan = planDeductions(
       recipe.ingredients,
       this.state.pantry,
-      scaleFor(recipe, positive(servings, recipe.servings)!)
+      scaleFor(recipe, positive(servings, recipe.servings)!),
+      { family: this.family() }
     );
     let added = 0;
     for (const entry of plan.short) {
@@ -1502,8 +1561,12 @@ export class MealService {
       else throw new Error("That food isn't known.");
     }
     const before = line.ingredientId;
-    if (typeof c.newFood === "string" && text(c.newFood, 120))
-      line.ingredientId = this.ensureIngredient(c.newFood, normaliseUnit(c.unit) ?? line.unit ?? "g").id;
+    if (typeof c.newFood === "string" && text(c.newFood, 120)) {
+      const food = this.ensureIngredient(c.newFood, normaliseUnit(c.unit) ?? line.unit ?? "g");
+      line.ingredientId = food.id;
+      if (typeof c.countsAs === "string" && c.countsAs && food.id !== c.countsAs)
+        this.setCountsAs(food, c.countsAs);
+    }
     // A place you chose stays; a different food brings its own guess.
     if (STORAGE_PLACES.includes(c.place as StoragePlace)) line.place = c.place as StoragePlace;
     else if (line.ingredientId !== before)
@@ -1704,6 +1767,7 @@ export class MealService {
       ])
     );
     return {
+      family: this.family(),
       recipes: this.state.recipes,
       ingredients: this.state.ingredients,
       lookup: (id: string) => priced.get(id),

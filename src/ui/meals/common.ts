@@ -65,7 +65,16 @@ export interface MealsSnapshot {
     autoLeftovers: boolean;
     maxRepeats: number;
   };
-  ingredients: Array<{ id: string; name: string; aliases: string[]; unit: string; lastPrice: number | null }>;
+  ingredients: Array<{
+    id: string;
+    name: string;
+    aliases: string[];
+    unit: string;
+    lastPrice: number | null;
+    category: string | null;
+    /** A more general food this one stands in for (Soy milk → Milk). */
+    countsAs: string | null;
+  }>;
   recipes: Array<{
     recipe: RecipeUI;
     minutes: number | null;
@@ -252,6 +261,12 @@ export interface PurchaseUI {
 
 /** What cooking would take, package by package (MealService.previewCook). */
 export interface CookPreviewUI {
+  /** Recipe lines more than one food at home can fill — asked in the dialog. */
+  choices: Array<{
+    ingredientId: string;
+    text: string;
+    foods: Array<{ ingredientId: string; name: string }>;
+  }>;
   deductions: Array<{
     itemId: string;
     name: string;
@@ -307,7 +322,7 @@ export interface MealsBridge {
     leftover: { portions: number } | null;
     scheduled: PlannedMeal | null;
   }>;
-  previewCook(recipeId: string, servings: number): Promise<CookPreviewUI>;
+  previewCook(recipeId: string, servings: number, choose?: Record<string, string>): Promise<CookPreviewUI>;
   addMissingToShopping(recipeId: string, servings: number): Promise<number>;
   createPurchase(input: Record<string, unknown>): Promise<PurchaseUI>;
   importReceipt(): Promise<PurchaseUI | null>;
@@ -328,6 +343,7 @@ export interface MealsBridge {
   updatePurchaseLine(id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown>;
   confirmPurchase(id: string, apply: Record<string, boolean>): Promise<unknown>;
   removePurchase(id: string, options?: { takeBack?: boolean }): Promise<number>;
+  updateIngredient(id: string, changes: Record<string, unknown>): Promise<unknown>;
   markShopping(ingredientId: string, kind: string | null, extra?: Record<string, unknown>): Promise<void>;
   eatLeftover(mealId: string, leftoverId: string, portions: number): Promise<unknown>;
   updateMealPreferences(changes: Record<string, unknown>): Promise<unknown>;

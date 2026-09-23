@@ -1,3 +1,4 @@
+import { generalFoods } from "./purchases";
 import { parseAmountText } from "../../meals/recipeImport";
 import {
   CORRECTION_LABELS,
@@ -109,8 +110,17 @@ export function pantryView(data: MealsSnapshot): HTMLElement {
     for (const { summary, item } of rows) {
       const row = make("div", "meals-prow");
       const what = make("div", "meals-prow-what");
-      what.append(make("strong", undefined, summary.name));
-      const meta = [summary.category, item.packaging, item.openedAt ? "opened" : null]
+      const food = data.ingredients.find((i) => i.id === summary.ingredientId);
+      const general = food?.countsAs ? data.ingredients.find((i) => i.id === food.countsAs) : undefined;
+      const title = button(summary.name, "meals-prow-name", () => food && openFood(data, food.id));
+      title.title = "What this food counts as";
+      what.appendChild(title);
+      const meta = [
+        general ? `counts as ${general.name}` : null,
+        summary.category,
+        item.packaging,
+        item.openedAt ? "opened" : null,
+      ]
         .filter(Boolean)
         .join(" · ");
       if (meta) what.appendChild(make("span", "meals-line-meta", meta));
@@ -363,4 +373,58 @@ export function startStockCheck(skipped: Set<string> = new Set()): void {
   openCorrect(first.item, `${first.summary.name} (${pending.length} to check)`, () =>
     startStockCheck(skipped)
   );
+}
+
+/**
+ * A food and its family: its name, and the more general food it counts as
+ * — Soy milk as Milk — so a recipe asking for milk can use it, while the
+ * pantry keeps the two apart.
+ */
+function openFood(data: MealsSnapshot, id: string): void {
+  const food = data.ingredients.find((i) => i.id === id);
+  if (!food) return;
+  const { box, body } = panel("Food");
+  box.classList.add("meals-dialog");
+  const name = input("text");
+  name.maxLength = 120;
+  name.value = food.name;
+  const members = data.ingredients.filter((other) => other.countsAs === food.id);
+  const countsAs = select(
+    [
+      ["", "Nothing else — it's its own food"],
+      ...generalFoods(data)
+        .filter((other) => other.id !== food.id)
+        .map((other) => [other.id, other.name] as [string, string]),
+    ],
+    food.countsAs ?? ""
+  );
+  const form = make("div", "meals-form");
+  form.append(field("Name", name), field("Counts as", countsAs));
+  body.appendChild(form);
+  body.appendChild(
+    make(
+      "p",
+      "meals-note",
+      members.length
+        ? `Counting as ${food.name}: ${members.map((m) => m.name).join(", ")}. A recipe asking for ${food.name} can use any of them; one asking for a particular one uses only that.`
+        : "A recipe asking for the general food can use this one; the pantry keeps them apart, and cooking asks which to use when both are at home."
+    )
+  );
+  if (food.aliases.length)
+    body.appendChild(make("p", "meals-line-meta", `Also matches: ${food.aliases.join(" · ")}`));
+  const actions = make("div", "meals-row");
+  actions.append(
+    button(
+      "Save",
+      "btn btn-primary",
+      () =>
+        void act(
+          () => bridge().updateIngredient(food.id, { name: name.value, countsAs: countsAs.value || null }),
+          "Saved."
+        )
+    ),
+    button("Cancel", "btn btn-ghost", () => rerender())
+  );
+  body.appendChild(actions);
+  showModal(box);
 }

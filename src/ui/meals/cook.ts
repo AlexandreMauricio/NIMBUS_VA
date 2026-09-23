@@ -18,6 +18,7 @@ import {
   rerender,
   snapshot,
   state,
+  select,
   stepper,
   showModal,
 } from "./common";
@@ -83,6 +84,26 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
   );
   body.appendChild(counts);
 
+  // Milk or soy milk: when more than one food at home will do, you say which.
+  const choose: Record<string, string> = {};
+  const choicesBox = make("div", "meals-form meals-cook-choices");
+  body.appendChild(choicesBox);
+  const drawChoices = (preview: CookPreviewUI) => {
+    choicesBox.replaceChildren();
+    for (const choice of preview.choices) {
+      const pick = select(
+        choice.foods.map((food) => [food.ingredientId, food.name] as [string, string]),
+        choose[choice.ingredientId] ?? choice.foods[0].ingredientId
+      );
+      pick.addEventListener("change", () => {
+        choose[choice.ingredientId] = pick.value;
+        void refreshPreview();
+      });
+      choicesBox.appendChild(field(`${choice.text} · use which?`, pick));
+    }
+    choicesBox.hidden = !preview.choices.length;
+  };
+
   // What comes out of the pantry, package by package.
   body.appendChild(make("p", "card-kicker", "Pantry deductions"));
   const deductions = make("div", "meals-kv-list");
@@ -120,8 +141,11 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
   const refreshPreview = async () => {
     const token = ++previewToken;
     try {
-      const preview = await bridge().previewCook(recipeId, cooking);
-      if (token === previewToken) drawPreview(preview);
+      const preview = await bridge().previewCook(recipeId, cooking, choose);
+      if (token === previewToken) {
+        drawChoices(preview);
+        drawPreview(preview);
+      }
     } catch (err) {
       deductions.replaceChildren(make("p", "form-error", errorText(err)));
     }
@@ -213,6 +237,7 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
             leftoverPlace: place,
             skipPantry: skip.checked,
             scheduleLeftoverFor: schedule,
+            choose,
           });
           const parts = [
             result.deducted.length ? `${result.deducted.length} item(s) taken out of the pantry` : null,

@@ -64,6 +64,22 @@ leaves "0.6 kg", so the pantry still reads the way the package does.
 Scaling a recipe is linear, and a line counted in pieces rounds **up** —
 three eggs for two people is five eggs for three, not 4.5.
 
+## Food families
+
+Some foods stand in for others: soy milk for milk, a brand of passata for
+passata. A food can **count as** a more general one (click its name in the
+pantry, or choose it when a receipt line becomes a new food). Then:
+
+- a recipe line asking for **Milk** is covered by milk, soy milk, or both
+  together — for "at home", the shopping list and cooking;
+- a line asking for **Soy milk** takes only soy milk;
+- in the pantry they stay separate items, each with its own amount.
+
+When more than one food of the family is at home, the cook dialog asks
+which to use (the one the recipe names is offered first). Families are one
+level deep: pointing Soy milk at Plant milk, which counts as Milk, points
+it at Milk.
+
 ## Cooking
 
 **Cook** is the one action that changes several things at once:

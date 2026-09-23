@@ -18,7 +18,7 @@
  * Pure.
  */
 
-import { stockOf } from "./pantry";
+import { familyOf, stockOf } from "./pantry";
 import { scaleFor } from "./recipes";
 import type { Amount } from "./units";
 import { toBase } from "./units";
@@ -72,6 +72,8 @@ export function buildShoppingList(
   manual: ManualShoppingItem[]
 ): ShoppingList {
   const needs = new Map<string, { name: string; unit: string; quantity: number; meals: Set<string> }>();
+  // Soy milk at home covers a recipe's milk.
+  const family = familyOf(ingredients.values());
   const unmeasurable = new Map<string, { name: string; meals: Set<string> }>();
 
   for (const meal of meals) {
@@ -117,7 +119,7 @@ export function buildShoppingList(
   let unpriced = 0;
 
   for (const [ingredientId, need] of needs) {
-    const have = stockOf(pantry, ingredientId, need.unit) ?? 0;
+    const have = stockOf(pantry, ingredientId, need.unit, family) ?? 0;
     const price = ingredients.get(ingredientId)?.lastPrice ?? null;
     const short = Math.round((need.quantity - have) * 1000) / 1000;
     if (short <= 0) {

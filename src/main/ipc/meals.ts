@@ -3,6 +3,7 @@ import {
   coverRecipe,
   coverageCount,
   expiryState,
+  familyOf,
   isoDate,
   summariseStock,
   usableLeftovers,
@@ -40,6 +41,8 @@ export function registerMealsIpc(ctx: IpcContext): void {
     const state = ctx.mealService.getState();
     const ingredients = new Map(state.ingredients.map((ingredient) => [ingredient.id, ingredient]));
     const recipes = new Map(state.recipes.map((recipe) => [recipe.id, recipe]));
+    // Soy milk at home counts for a recipe's milk.
+    const family = familyOf(state.ingredients);
     // What a food costs now: the cheapest recent price at any shop, else the last one typed.
     const priced = new Map(
       state.ingredients.map((ingredient) => [
@@ -64,7 +67,7 @@ export function registerMealsIpc(ctx: IpcContext): void {
           meal,
           leftoverMap,
           recipe
-            ? coverageCount(coverRecipe(recipe.ingredients, state.pantry, scaleFor(recipe, servings)))
+            ? coverageCount(coverRecipe(recipe.ingredients, state.pantry, scaleFor(recipe, servings), family))
             : null,
           picks
         ),
@@ -92,7 +95,12 @@ export function registerMealsIpc(ctx: IpcContext): void {
       preferences: state.preferences,
       ingredients: state.ingredients,
       recipes: state.recipes.map((recipe) => {
-        const coverage = coverRecipe(recipe.ingredients, state.pantry, scaleFor(recipe, recipe.servings));
+        const coverage = coverRecipe(
+          recipe.ingredients,
+          state.pantry,
+          scaleFor(recipe, recipe.servings),
+          family
+        );
         return {
           recipe,
           minutes: totalMinutes(recipe),
@@ -258,8 +266,8 @@ export function registerMealsIpc(ctx: IpcContext): void {
     ctx.mealService.removePlannedMeal(String(id ?? ""))
   );
   handle("nimbus:cook-meal", (_event, input: unknown) => ctx.mealService.cook(input));
-  handle("nimbus:preview-cook", (_event, recipeId: unknown, servings: unknown) =>
-    ctx.mealService.previewCook(String(recipeId ?? ""), servings)
+  handle("nimbus:preview-cook", (_event, recipeId: unknown, servings: unknown, choose: unknown) =>
+    ctx.mealService.previewCook(String(recipeId ?? ""), servings, choose)
   );
   handle("nimbus:add-missing-to-shopping", (_event, recipeId: unknown, servings: unknown) =>
     ctx.mealService.addMissingToShopping(String(recipeId ?? ""), servings)
