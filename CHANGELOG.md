@@ -20,6 +20,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.14 — 2026-09-23
+
+- **The IPC handlers have their own home.** `lifecycle.ts` held every one
+  of them — 2,580 lines of window wiring, services and handlers together.
+  They now live in `src/main/ipc/`, one module per area (app, home,
+  integrations, stocks, network, memory, collections, meals, books,
+  actions, routines, popups), and `lifecycle.ts` is down to about 1,000
+  lines of wiring. The move is mechanical — the same channels, the same
+  code — checked by comparing the channel list and the code before and
+  after.
+- **Every handler takes its arguments as `unknown`** and narrows them
+  first. The few that trusted the page's types now check them: task
+  writes keep only known fields, account and routine lists must be lists,
+  and on/off settings must be true or false.
+
+---
+
 ## 0.6.13 — 2026-09-23
 
 - **Fixed: cooking a planned meal twice took its ingredients out of the

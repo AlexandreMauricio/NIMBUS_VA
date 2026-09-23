@@ -216,7 +216,8 @@ marks anything.
 ```
 src/
   main/            Electron entry point + lifecycle (windows, tray, autostart,
-                   IPC handlers), the desktop activity monitor, the Windows
+                   service wiring), the IPC handlers by area (main/ipc/),
+                   the desktop activity monitor, the Windows
                    side of the desktop actions, the suggestion and timer
                    popups, credential and state stores, Spotify auth
   preload/         The only bridges into the UI (main, suggestion and timer

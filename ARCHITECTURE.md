@@ -247,8 +247,17 @@ src/
     publicFetch.ts                Fetches a page the renderer named: public
                                    Internet only, checked at connection time
                                    and per redirect, size-capped
-    lifecycle.ts                  Windows/tray lifecycle, every main-window
-                                   IPC handler, wiring of all services
+    lifecycle.ts                  Windows/tray lifecycle and the wiring of
+                                   all services; hands the IPC modules a
+                                   context of live getters
+    ipc/                          Every IPC handler, one module per area:
+                                   app, home, integrations, stocks, network,
+                                   memory, collections, meals, books,
+                                   actions, routines, popups. handle.ts
+                                   registers each channel (own pages only);
+                                   input.ts narrows what a renderer sent;
+                                   context.ts is what they need from
+                                   lifecycle
     tray.ts, autostart.ts         Tray icon/menu; login-item registration
     assistantBridge.ts            Pushes AssistantEvents to open windows
     suggestionWindow.ts           The suggestion popup window
@@ -328,7 +337,7 @@ away from NIMBUS's pages or open another window (`navigationGuard.ts` —
 dropping a file or link on a window does nothing), and every handler
 answers only a sender whose page is under the app's own `ui/` folder.
 
-**Main window** (`preload.ts` → `window.nimbus`), handled in `lifecycle.ts`:
+**Main window** (`preload.ts` → `window.nimbus`), handled in `src/main/ipc/` (one module per area below):
 
 | Area                   | Channels                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -368,6 +377,9 @@ answers only a sender whose page is under the app's own `ui/` folder.
 
 Rules the handlers follow:
 
+- **Every argument arrives as `unknown`** and is narrowed before use
+  (`ipc/input.ts`, or the service's own validation) — the preload's types
+  describe what NIMBUS's page sends, not what a handler can rely on.
 - **Credentials are write-only.** Email passwords and Todoist tokens never
   reach a renderer — the API returns `hasPassword`/`hasApiToken` and
   accepts `newPassword`/`newApiToken`. Spotify tokens never leave the main

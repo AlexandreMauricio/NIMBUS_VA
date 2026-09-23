@@ -1,35 +1,21 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain, powerMonitor, shell } from "electron";
-import type { OpenDialogOptions } from "electron";
+import { BrowserWindow, Menu, app, powerMonitor, shell } from "electron";
 import { randomUUID } from "crypto";
 import * as path from "path";
+
 import { logger } from "../logging/logger";
 import { loadSettings, hydrateCredentials, saveSettings, NimbusSettings } from "../settings/settingsManager";
 import { DEFAULT_ZOOM_PERCENT, normalizeZoomPercent, steppedZoom } from "../settings/settingsSchema";
-import { APP_NAME, APP_FULL_NAME, APP_VERSION } from "../common/appInfo";
+import { APP_NAME, APP_VERSION } from "../common/appInfo";
 import { config } from "../config/config";
 import { createTray, destroyTray } from "./tray";
-import { isTrustedSender } from "./navigationGuard";
 import { applyAutostart } from "./autostart";
 import { contextService } from "../context";
-import { WeatherProvider, LocationResolver, GeocodingClient } from "../context/providers/weather";
+import { WeatherProvider, LocationResolver } from "../context/providers/weather";
 import { CalendarProvider } from "../context/providers/calendar";
 import { EmailProvider } from "../context/providers/email";
-import { TaskProvider, TaskWriteRequest } from "../context/providers/tasks";
-import {
-  StockProvider,
-  StockPosition,
-  ClosedPosition,
-  MAX_CLOSED_POSITIONS,
-  closeLot,
-  normalizeCurrencyCode,
-  normalizeDividendTax,
-  normalizeIrsSettings,
-  normalizeSymbol,
-  rebuildClosedPosition,
-  validateClosedPositions,
-  validateStockPositions,
-} from "../context/providers/stocks";
-import { SpotifyContextProvider, SpotifyApiClient, mapPlaylists } from "../context/providers/spotify";
+import { TaskProvider } from "../context/providers/tasks";
+import { StockProvider } from "../context/providers/stocks";
+import { SpotifyContextProvider, SpotifyApiClient } from "../context/providers/spotify";
 import { actionService } from "../actions";
 import {
   SpotifyActionProvider,
@@ -44,9 +30,8 @@ import { ActionResult } from "../actions/types";
 import { SpotifyAuthManager } from "./spotify";
 import { BriefingService } from "../briefing";
 import { ContextEventBus } from "../events";
-import { RoutineService, validateRoutine, Routine } from "../routines";
+import { RoutineService } from "../routines";
 import { AttentionService, explainItem } from "../attention";
-import { normalizeReminderMinutes } from "../attention/signals";
 import { DesktopActivityMonitor } from "./activity";
 import { FileRoutineStateStore } from "./routineStateStore";
 import { FileActivityStateStore } from "./activityStateStore";
@@ -68,75 +53,45 @@ import {
   ScryfallCatalog,
   TcgdexCatalog,
   YgoprodeckCatalog,
-  isTcgGame,
 } from "../collections";
 import { FileCollectionStore } from "./collectionStore";
 import {
-  BOOK_FORMATS,
   BookService,
-  DECK_FORMATS,
   DeckService,
-  DeckZone,
   GcdCatalog,
-  chosenCoverUrl,
-  isChosenCover,
   WikipediaCollections,
   coverUrlForIsbn,
   isCoverUrl,
-  TCG_GAMES,
-  creditsFromGcd,
-  CreditsQueue,
-  GcdPausedError,
-  commanderReferences,
-  averageDeck,
-  similarCommanders,
-  blendDecks,
-  compareWithReferences,
-  nameKey,
-  workOutRunYears,
-  checkDeck,
-  deckStats,
-  balanceColours,
   browsers,
   cardSources,
   synergyFinders,
-  ygoArchetypes,
-  MTG_BASIC_LANDS,
-  POKEMON_BASIC_ENERGY,
-  compareWithCollection,
   detailFetchers,
   scryfallCardsByName,
-  formatDecklist,
-  parseDecklist,
-  zoneLabel,
-  zonesFor,
 } from "../collections";
-import type { AmbiguousRun } from "../collections";
 import { FileDeckStore } from "./deckStore";
-import { chooseCoverFile, registerCoverProtocol, removeCoverFile } from "./coverStore";
-import { checkForUpdates, getUpdateState, installUpdate, startUpdater } from "./updater";
-import { buildWeeklySummary } from "../summary/weeklySummary";
-import type { CalendarEvent } from "../context/providers/calendar/types";
+import { registerCoverProtocol } from "./coverStore";
+import { startUpdater } from "./updater";
 import { FileBookStore } from "./bookStore";
 import { FileMealStore } from "./mealStore";
 import { MealService } from "../meals/mealService";
-import { coverRecipe, coverageCount, isoDate, summariseStock, usableLeftovers } from "../meals/pantry";
-import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../meals/recipes";
-import { dayRange, mealName, planCost, servingsNeeded } from "../meals/plan";
-import { parseRecipePage } from "../meals/recipeImport";
-import { fetchPublicPage, PublicFetchError } from "./publicFetch";
-import type { PublicPage } from "./publicFetch";
-import {
-  ActivityService,
-  ActivityMapping,
-  AppUsageTracker,
-  validateActivityMapping,
-  knownActivityNames,
-} from "../activity";
+import { ActivityService, AppUsageTracker } from "../activity";
 import { assistantBridge } from "./assistantBridge";
 import { TimerService } from "../timers";
-import { showSuggestionPopup, getCurrentPopupSuggestion, closeSuggestionPopup } from "./suggestionWindow";
-import { showTimerWindow, closeTimerWindow } from "./timerWindow";
+import { showSuggestionPopup, getCurrentPopupSuggestion } from "./suggestionWindow";
+import { showTimerWindow } from "./timerWindow";
+import { registerAppIpc } from "./ipc/app";
+import { registerHomeIpc } from "./ipc/home";
+import { registerIntegrationsIpc } from "./ipc/integrations";
+import { registerStocksIpc } from "./ipc/stocks";
+import { registerNetworkIpc } from "./ipc/network";
+import { registerMemoryIpc } from "./ipc/memory";
+import { registerCollectionsIpc } from "./ipc/collections";
+import { registerMealsIpc } from "./ipc/meals";
+import { registerBooksIpc, kickReadingCredits } from "./ipc/books";
+import { registerActionsIpc } from "./ipc/actions";
+import { registerRoutinesIpc } from "./ipc/routines";
+import { registerPopupsIpc } from "./ipc/popups";
+import type { IpcContext } from "./ipc/context";
 
 const BRIEFING_UPDATED_CHANNEL = "nimbus:briefing-updated";
 
@@ -167,8 +122,6 @@ let presenceService: PresenceService | null = null;
 let collectionService: CollectionService;
 let catalogService: CatalogService;
 let bookService: BookService;
-/** Background GCD lookups of read issues' characters and creators — set up with the IPC handlers. */
-let creditsQueue: CreditsQueue | undefined;
 let deckService: DeckService;
 let mealService: MealService;
 let gcdCatalog: GcdCatalog;
@@ -303,1584 +256,105 @@ function quitApp(): void {
 }
 
 /**
- * Applies a renderer-supplied partial update to a settings group, keeping
- * only fields the group already has and only values of the same kind.
- *
- * The routine and activity handlers validate everything they save; the
- * simpler groups used to spread whatever arrived straight into
- * settings.json. The renderer is NIMBUS's own code, but a bug there (or a
- * stray field) shouldn't be able to write an unknown key or a string
- * where a boolean belongs. null is accepted, since several fields are
- * nullable by design (a manual location, a preferred device).
+ * Registers every main-window and popup IPC channel (src/main/ipc/). The
+ * handlers reach this module's services through `ctx`, whose getters read
+ * the live values — the services are built after this runs, and some are
+ * replaced while NIMBUS runs.
  */
-function mergeKnown<T extends object>(current: T, partial: unknown): T {
-  if (!partial || typeof partial !== "object" || Array.isArray(partial)) return current;
-  const out: Record<string, unknown> = { ...(current as Record<string, unknown>) };
-  for (const [key, value] of Object.entries(partial)) {
-    if (!(key in current)) continue;
-    const existing = (current as Record<string, unknown>)[key];
-    const sameKind =
-      value === null ||
-      existing === null ||
-      (typeof value === typeof existing && Array.isArray(value) === Array.isArray(existing));
-    if (sameKind) out[key] = value;
-  }
-  return out as T;
-}
-
-/**
- * `ipcMain.handle`, answering only NIMBUS's own pages (see
- * navigationGuard.ts). Every channel is registered through this.
- */
-function handle(channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void {
-  ipcMain.handle(channel, (event, ...args) => {
-    if (!isTrustedSender(event)) {
-      logger.warn("Refused an IPC call from outside NIMBUS", {
-        channel,
-        url: String(event.senderFrame?.url ?? "").slice(0, 200),
-      });
-      throw new Error("Not allowed.");
-    }
-    return listener(event, ...args);
-  });
-}
-
 function registerIpcHandlers(): void {
-  handle("nimbus:get-app-info", () => ({
-    name: APP_NAME,
-    fullName: APP_FULL_NAME,
-    version: APP_VERSION,
-    environment: config.appEnv,
-  }));
-
-  handle("nimbus:get-settings", () => settings.windowsClient.startup);
-
-  // How large the UI is drawn on this PC. Clamped in Core, and the
-  // keyboard shortcuts go through the same one place.
-  handle("nimbus:get-zoom", () => settings.windowsClient.zoomPercent);
-  handle("nimbus:set-zoom", (_event, percent: unknown) => applyZoom(percent));
-
-  handle("nimbus:update-settings", (_event, partial: unknown) => {
-    settings.windowsClient.startup = mergeKnown(settings.windowsClient.startup, partial);
-    saveSettings(settings);
-    // Re-applied whenever it is sent, even unchanged: that is how a moved
-    // app folder re-registers its login item.
-    if (partial && typeof partial === "object" && "launchWithWindows" in partial) {
-      applyAutostart(settings.windowsClient.startup.launchWithWindows);
-    }
-    logger.info("Settings updated", settings.windowsClient.startup);
-    return settings.windowsClient.startup;
-  });
-
-  handle("nimbus:hide-window", () => {
-    mainWindow?.hide();
-  });
-
-  handle("nimbus:get-context", () => contextService.getSnapshot());
-
-  handle("nimbus:get-weather-settings", () => settings.userPreferences.weather);
-  // City search for the manual location; only the typed name leaves the PC.
-  const geocoding = new GeocodingClient();
-  handle("nimbus:search-places", (_event, query: unknown) => geocoding.searchPlaces(query));
-
-  handle(
-    "nimbus:update-weather-settings",
-    (_event, partial: Partial<typeof settings.userPreferences.weather>) => {
-      const next = mergeKnown(settings.userPreferences.weather, partial);
-      if (next.locationMode !== "auto" && next.locationMode !== "manual") {
-        throw new Error('Weather locationMode must be "auto" or "manual".');
-      }
-      settings.userPreferences.weather = next;
-      saveSettings(settings);
-      logger.info("Weather settings updated", settings.userPreferences.weather);
-      return settings.userPreferences.weather;
-    }
-  );
-
-  handle("nimbus:get-calendar-settings", () => settings.userPreferences.calendar);
-
-  handle(
-    "nimbus:update-calendar-settings",
-    (_event, partial: Partial<typeof settings.userPreferences.calendar>) => {
-      const next = mergeKnown(settings.userPreferences.calendar, partial);
-      for (const feed of next.feeds) {
-        if (
-          !feed ||
-          typeof feed.id !== "string" ||
-          typeof feed.label !== "string" ||
-          typeof feed.address !== "string" ||
-          typeof feed.enabled !== "boolean"
-        ) {
-          throw new Error("Each calendar feed needs an id, label, address and enabled flag.");
-        }
-      }
-      settings.userPreferences.calendar = next;
-      saveSettings(settings);
-      // Feed addresses are credentials (private ICS URLs) — log only
-      // shape/counts, never the addresses themselves.
-      logger.info("Calendar settings updated", {
-        enabled: settings.userPreferences.calendar.enabled,
-        feedCount: settings.userPreferences.calendar.feeds.length,
-      });
-      return settings.userPreferences.calendar;
-    }
-  );
-
-  // Unlike calendar's feed address, an email account's password is never
-  // sent to the renderer at all — not even masked. The Settings form is
-  // write-only for it: `hasPassword` tells the UI whether one is already
-  // saved (to decide what placeholder to show), and saving a new value
-  // goes through nimbus:update-email-settings, which is never read back.
-  handle("nimbus:get-email-settings", () => ({
-    enabled: settings.userPreferences.email.enabled,
-    defaultSinceDays: settings.userPreferences.email.defaultSinceDays,
-    accounts: settings.userPreferences.email.accounts.map(({ password, ...rest }) => ({
-      ...rest,
-      hasPassword: password.length > 0,
-    })),
-  }));
-
-  handle(
-    "nimbus:update-email-settings",
-    (
-      _event,
-      partial: {
-        enabled?: boolean;
-        defaultSinceDays?: number;
-        // Accounts come back without a `password` field (see get-email-settings
-        // above) — `newPassword` is only present when the user actually typed
-        // a new one. Anything else must keep its existing stored password;
-        // otherwise every non-password edit (toggling enabled, renaming...)
-        // would silently wipe it.
-        accounts?: Array<
-          Omit<(typeof settings)["userPreferences"]["email"]["accounts"][number], "password"> & {
-            newPassword?: string;
-          }
-        >;
-      }
-    ) => {
-      const current = settings.userPreferences.email;
-
-      const accounts = partial.accounts
-        ? partial.accounts.map(({ newPassword, ...rest }) => {
-            const existing = current.accounts.find((a) => a.id === rest.id);
-            return { ...rest, password: newPassword ?? existing?.password ?? "" };
-          })
-        : current.accounts;
-
-      settings.userPreferences.email = {
-        enabled: partial.enabled ?? current.enabled,
-        defaultSinceDays: partial.defaultSinceDays ?? current.defaultSinceDays,
-        accounts,
-      };
-      saveSettings(settings);
-      // Never log account credentials — shape/counts only.
-      logger.info("Email settings updated", {
-        enabled: settings.userPreferences.email.enabled,
-        accountCount: settings.userPreferences.email.accounts.length,
-      });
-      return {
-        enabled: settings.userPreferences.email.enabled,
-        defaultSinceDays: settings.userPreferences.email.defaultSinceDays,
-        accounts: settings.userPreferences.email.accounts.map(({ password, ...rest }) => ({
-          ...rest,
-          hasPassword: password.length > 0,
-        })),
-      };
-    }
-  );
-
-  // Unlike calendar's feed address, a task account's API token is never
-  // sent to the renderer at all — same write-only pattern as email's
-  // password. `hasApiToken` tells the UI whether one is already saved;
-  // saving a new value goes through nimbus:update-task-settings, which is
-  // never read back.
-  handle("nimbus:get-task-settings", () => ({
-    enabled: settings.userPreferences.tasks.enabled,
-    accounts: settings.userPreferences.tasks.accounts.map(({ apiToken, ...rest }) => ({
-      ...rest,
-      hasApiToken: apiToken.length > 0,
-    })),
-  }));
-
-  handle(
-    "nimbus:update-task-settings",
-    (
-      _event,
-      partial: {
-        enabled?: boolean;
-        // Accounts come back without an `apiToken` field (see
-        // get-task-settings above) — `newApiToken` is only present when
-        // the user actually typed a new one. Anything else must keep its
-        // existing stored token; otherwise every non-token edit (toggling
-        // enabled, renaming...) would silently wipe it.
-        accounts?: Array<
-          Omit<(typeof settings)["userPreferences"]["tasks"]["accounts"][number], "apiToken"> & {
-            newApiToken?: string;
-          }
-        >;
-      }
-    ) => {
-      const current = settings.userPreferences.tasks;
-
-      const accounts = partial.accounts
-        ? partial.accounts.map(({ newApiToken, ...rest }) => {
-            const existing = current.accounts.find((a) => a.id === rest.id);
-            return { ...rest, apiToken: newApiToken ?? existing?.apiToken ?? "" };
-          })
-        : current.accounts;
-
-      settings.userPreferences.tasks = {
-        enabled: partial.enabled ?? current.enabled,
-        accounts,
-      };
-      saveSettings(settings);
-      // Never log account credentials — shape/counts only.
-      logger.info("Task settings updated", {
-        enabled: settings.userPreferences.tasks.enabled,
-        accountCount: settings.userPreferences.tasks.accounts.length,
-      });
-      return {
-        enabled: settings.userPreferences.tasks.enabled,
-        accounts: settings.userPreferences.tasks.accounts.map(({ apiToken, ...rest }) => ({
-          ...rest,
-          hasApiToken: apiToken.length > 0,
-        })),
-      };
-    }
-  );
-
-  // The Tasks tab's management surface — list/create/edit/complete/
-  // delete, all delegating straight to TaskProvider (which resolves the
-  // right Todoist account per call; see TaskProvider.resolveAccount).
-  // Distinct from nimbus:get-context's task snapshot, which is the
-  // briefing-focused bucketed/capped view — this is the full list a
-  // management UI actually needs. Every handler lets a rejection
-  // propagate to the renderer's own try/catch rather than swallowing it
-  // into a generic "false" — the renderer needs the real error message
-  // (e.g. "status 403" for a revoked token) to show the user anything
-  // useful.
-  handle("nimbus:list-tasks", () => taskProvider.listAllTasks());
-  handle("nimbus:list-task-projects", () => taskProvider.listProjects());
-  handle("nimbus:create-task", (_event, request: TaskWriteRequest) => taskProvider.createTask(request));
-  handle("nimbus:update-task", (_event, taskId: string, request: Partial<TaskWriteRequest>) =>
-    taskProvider.updateTask(taskId, request)
-  );
-  handle("nimbus:complete-task", (_event, taskId: string) => taskProvider.completeTask(taskId));
-  handle("nimbus:reopen-task", (_event, taskId: string) => taskProvider.reopenTask(taskId));
-  handle("nimbus:delete-task", (_event, taskId: string) => taskProvider.deleteTask(taskId));
-
-  // Stocks (src/context/providers/stocks/) — read-only tracking of
-  // positions the user entered by hand. Nothing here trades or talks to a
-  // brokerage: these handlers save the user's own position notes and read
-  // market data, and that is all.
-  handle("nimbus:get-stock-settings", () => settings.userPreferences.stocks);
-  handle(
-    "nimbus:update-stock-settings",
-    (
-      _event,
-      partial: {
-        enabled?: unknown;
-        newsEnabled?: unknown;
-        baseCurrency?: unknown;
-        dividendsEnabled?: unknown;
-        dividendTax?: unknown;
-        closedPositions?: unknown;
-        irs?: unknown;
-        positions?: unknown;
-      }
-    ) => {
-      const current = settings.userPreferences.stocks;
-      let positions = current.positions;
-      if (partial?.positions !== undefined) {
-        const result = validateStockPositions(partial.positions);
-        if (!result.valid) throw new Error(`Invalid stock position: ${result.error}`);
-        // Rebuilt field by field, so nothing beyond the known shape is saved.
-        positions = (partial.positions as StockPosition[]).map((p) => ({
-          id: p.id,
-          symbol: normalizeSymbol(p.symbol)!,
-          alternativeSymbol: p.alternativeSymbol ? normalizeSymbol(p.alternativeSymbol)! : undefined,
-          leverage: typeof p.leverage === "number" && p.leverage > 1 ? p.leverage : undefined,
-          companyName: p.companyName?.trim() || undefined,
-          shares: p.shares,
-          averageCost: p.averageCost,
-          purchaseDate: p.purchaseDate || undefined,
-          notes: p.notes?.trim() || undefined,
-        }));
-      }
-      let baseCurrency = current.baseCurrency;
-      if (partial?.baseCurrency !== undefined) {
-        const code = normalizeCurrencyCode(partial.baseCurrency);
-        if (!code) throw new Error("Base currency must be a three-letter code such as EUR.");
-        baseCurrency = code;
-      }
-      let closedPositions = current.closedPositions;
-      if (partial?.closedPositions !== undefined) {
-        const result = validateClosedPositions(partial.closedPositions);
-        if (!result.valid) throw new Error(`Invalid closed position: ${result.error}`);
-        closedPositions = (partial.closedPositions as ClosedPosition[]).map(rebuildClosedPosition);
-      }
-      let irs = current.irs;
-      if (partial?.irs !== undefined) {
-        const checked = normalizeIrsSettings(partial.irs);
-        if (checked.error) throw new Error(checked.error);
-        irs = checked.settings!;
-      }
-      let dividendTax = current.dividendTax;
-      if (partial?.dividendTax !== undefined) {
-        const checked = normalizeDividendTax(partial.dividendTax);
-        if (checked.error) throw new Error(`Invalid dividend tax setting: ${checked.error}`);
-        dividendTax = checked.settings!;
-      }
-      settings.userPreferences.stocks = {
-        enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
-        newsEnabled: typeof partial?.newsEnabled === "boolean" ? partial.newsEnabled : current.newsEnabled,
-        baseCurrency,
-        dividendsEnabled:
-          typeof partial?.dividendsEnabled === "boolean"
-            ? partial.dividendsEnabled
-            : current.dividendsEnabled,
-        dividendTax,
-        closedPositions,
-        irs,
-        positions,
-      };
-      saveSettings(settings);
-      logger.info("Stock settings updated", {
-        enabled: settings.userPreferences.stocks.enabled,
-        newsEnabled: settings.userPreferences.stocks.newsEnabled,
-        baseCurrency,
-        positionCount: positions.length,
-      });
-      return settings.userPreferences.stocks;
-    }
-  );
-  // Asks for fresh prices on the next read (at most every 30 s); the tab
-  // then re-reads the context snapshot as usual.
-  handle("nimbus:refresh-stocks", () => stockProvider.refresh());
-  // Headlines for a symbol the user actually tracks — never an arbitrary one.
-  handle("nimbus:get-stock-news", (_event, symbol: unknown) => {
-    const normalized = normalizeSymbol(symbol);
-    const tracked = settings.userPreferences.stocks.positions.some(
-      (p) => normalizeSymbol(p.symbol) === normalized
-    );
-    if (!normalized || !tracked) {
-      return { symbol: String(symbol), status: "unavailable", items: [], retrievedAt: null };
-    }
-    return stockProvider.getNews(normalized);
-  });
-  // Live listings of the same company, for a tracked symbol whose price is
-  // outdated. A suggestion only — switching is an ordinary position edit.
-  handle("nimbus:find-stock-listings", (_event, symbol: unknown) => {
-    const normalized = normalizeSymbol(symbol);
-    const tracked = settings.userPreferences.stocks.positions.some(
-      (p) => normalizeSymbol(p.symbol) === normalized
-    );
-    if (!normalized || !tracked) return { symbol: String(symbol), status: "unavailable", candidates: [] };
-    return stockProvider.findListings(normalized);
-  });
-  // Dividend history per holding, with tax estimated for a Portugal resident.
-  handle("nimbus:get-stock-dividends", () => stockProvider.getDividends());
-
-  // Network (src/network/) — observation only. Each channel does one fixed
-  // thing: read the neighbor cache, run the bounded local scan, or edit
-  // NIMBUS's own label for a device. None takes an address from the UI.
-  handle("nimbus:get-network-state", () => networkService.getState());
-  handle("nimbus:refresh-network", () => networkService.refresh());
-  handle("nimbus:scan-network", () => networkService.scan());
-  handle("nimbus:cancel-network-scan", () => networkService.cancel());
-  handle("nimbus:update-network-device", (_event, id: unknown, changes: unknown) =>
-    networkService.updateDevice(String(id ?? ""), changes)
-  );
-  handle("nimbus:forget-network-device", (_event, id: unknown) => networkService.forget(String(id ?? "")));
-  // "Ask the device" — by device id only; the address comes from NIMBUS's
-  // own list, and must be private and on this PC's subnet.
-  handle("nimbus:identify-network-device", (_event, id: unknown) =>
-    networkService.identifyDevice(String(id ?? ""))
-  );
-  // Memory (src/memory/). The renderer can list, save its own memories,
-  // switch any off, keep (promote) or forget — never write a learned or
-  // observed item itself; those come only from the wiring below.
-  // Collections (src/collections/). A search sends only a game id and the
-  // text typed. Adding takes a game and a catalog id: the card's data comes
-  // from a result the main process fetched itself, never from the renderer.
-  handle("nimbus:get-collection", (_event, filter: unknown) => {
-    const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
-    return {
-      games: catalogService.games(),
-      cards: collectionService.list({
-        game: isTcgGame(f.game) ? f.game : undefined,
-        status: f.status === "owned" || f.status === "wishlist" ? f.status : undefined,
-        text: typeof f.text === "string" ? f.text.slice(0, 100) : undefined,
-      }),
-      stats: collectionService.stats(),
-    };
-  });
-  handle("nimbus:search-card-catalog", (_event, game: unknown, query: unknown) =>
-    catalogService.search(game, query)
-  );
-  handle("nimbus:add-to-collection", (_event, game: unknown, sourceId: unknown, options: unknown) => {
-    const card = catalogService.resolve(game, sourceId);
-    if (!card) throw new Error("Search for the card again, then add it.");
-    const o = options && typeof options === "object" ? (options as Record<string, unknown>) : {};
-    return collectionService.add(card, {
-      status: o.status === "wishlist" ? "wishlist" : "owned",
-      foil: o.foil === true,
-    });
-  });
-  handle("nimbus:update-collection-card", (_event, id: unknown, changes: unknown) =>
-    collectionService.update(String(id ?? ""), changes)
-  );
-  handle("nimbus:remove-collection-card", (_event, id: unknown) =>
-    collectionService.remove(String(id ?? ""))
-  );
-
-  // Card pages and decks (src/collections/). Cards are named by game and
-  // catalog id only; their data comes from the main process's own lookup.
-  const zoneOf = (value: unknown): DeckZone | null =>
-    value === "main" || value === "side" || value === "extra" || value === "leader" ? value : null;
-  const ownedCopies = (game: string, name: string, number: string | null): number =>
-    collectionService
-      .list({ status: "owned" })
-      .filter((card) => card.game === game)
-      .filter((card) =>
-        game === "onepiece" ? card.number === number : card.name.toLowerCase() === name.toLowerCase()
-      )
-      .reduce((sum, card) => sum + card.quantity, 0);
-
-  handle("nimbus:get-card-detail", async (_event, game: unknown, sourceId: unknown) => {
-    const detail = await catalogService.getDetail(game, sourceId);
-    const decks = deckService.list().filter((deck) => deck.game === detail.game);
-    return {
-      detail,
-      owned: ownedCopies(detail.game, detail.name, detail.number),
-      inDecks: decks
-        .map((deck) => ({
-          deckId: deck.id,
-          name: deck.name,
-          quantity: deck.cards
-            .filter((card) => card.rules.copyKey === detail.rules.copyKey)
-            .reduce((sum, card) => sum + card.quantity, 0),
-        }))
-        .filter((entry) => entry.quantity > 0),
-      decks: decks.map((deck) => ({ id: deck.id, name: deck.name })),
-    };
-  });
-  handle("nimbus:get-decks", () => ({
-    decks: deckService.list().map((deck) => {
-      const check = checkDeck(deck);
-      return {
-        id: deck.id,
-        name: deck.name,
-        game: deck.game,
-        format: deck.format,
-        total: check.total,
-        legal: check.legal,
-      };
-    }),
-    formats: DECK_FORMATS,
-    games: TCG_GAMES.map((game) => ({ id: game.id, name: game.name })),
-  }));
-  // Cards saved before a version kept what the deck page now shows: kinds and
-  // costs (0.5.16), and for Magic the mana symbols and land colours (0.5.18).
-  const needsCardData =
-    (game: string) =>
-    (card: { rules: { kind: string | null; pips?: unknown } }): boolean =>
-      card.rules.kind === null || (game === "mtg" && card.rules.pips === undefined);
-  // A Magic deck's colour balance: the colours its spells' symbols ask for,
-  // with every land in it (basics included) counted as a source.
-  const deckColours = (deck: ReturnType<typeof deckService.get>) => {
-    const inPlay = deck.cards.filter((card) => card.zone === "main" || card.zone === "leader");
-    const order = ["W", "U", "B", "R", "G"];
-    const identity = order.filter((colour) => inPlay.some((card) => (card.rules.pips?.[colour] ?? 0) > 0));
-    if (!identity.length) return null;
-    const size = deck.format === "commander" ? 100 : 60;
-    return balanceColours(
-      identity,
-      inPlay.map((card) => ({
-        name: card.name,
-        quantity: card.quantity,
-        kind: card.rules.kind,
-        cost: card.rules.cost,
-        pips: card.rules.pips,
-        produces: card.rules.produces,
-      })),
-      0,
-      size
-    ).lines;
-  };
-  handle("nimbus:get-deck", (_event, id: unknown) => {
-    const deck = deckService.get(String(id ?? ""));
-    return {
-      deck,
-      check: checkDeck(deck),
-      zones: zonesFor(deck.game, deck.format).map((zone) => ({ zone, label: zoneLabel(deck.game, zone) })),
-      collection: compareWithCollection(deck, collectionService.list()),
-      decklist: formatDecklist(deck, deck.game),
-      stats: deckStats(deck.game, deck.cards, ["main", "leader"]),
-      colours: deck.game === "mtg" ? deckColours(deck) : null,
-      staleCards: deck.cards.filter(needsCardData(deck.game)).reduce((sum, card) => sum + card.quantity, 0),
-    };
-  });
-  // The deck builder (src/collections/decks/builder.ts runs in the page).
-  // Browsing makes each shown card resolvable; creating the deck names cards
-  // by id only, and their data comes from what this process fetched.
-  handle("nimbus:builder-browse", async (_event, game: unknown, filter: unknown) => {
-    const page = await catalogService.browse(game, filter);
-    return {
-      ...page,
-      cards: page.cards.map((card) => ({
-        sourceId: card.sourceId,
-        name: card.name,
-        imageUrl: card.imageUrl,
-        setName: card.setName,
-        typeLine: card.typeLine,
-        text: card.text ? card.text.slice(0, 400) : null,
-        rules: card.rules,
-        owned: ownedCopies(card.game, card.name, card.number),
-      })),
-    };
-  });
-  handle("nimbus:card-synergy", async (_event, game: unknown, sourceId: unknown, context: unknown) => {
-    const result = await catalogService.synergy(game, sourceId, context);
-    return {
-      source: result.source,
-      cards: result.cards.map(({ detail, reason }) => ({
-        sourceId: detail.sourceId,
-        name: detail.name,
-        imageUrl: detail.imageUrl,
-        setName: detail.setName,
-        typeLine: detail.typeLine,
-        text: detail.text ? detail.text.slice(0, 400) : null,
-        rules: detail.rules,
-        owned: ownedCopies(detail.game, detail.name, detail.number),
-        reason,
-      })),
-    };
-  });
-  // Comparing a Commander deck with EDHREC's average decks for its commander
-  // (src/collections/catalogs/edhrec.ts, decks/compare.ts). Pages are kept
-  // six hours; only the commander's name goes to EDHREC.
-  const edhrecCache = new Map<string, { at: number; value: Promise<unknown> }>();
-  const edhrec = <T>(key: string, load: () => Promise<T>): Promise<T> => {
-    const hit = edhrecCache.get(key);
-    if (hit && Date.now() - hit.at < 6 * 60 * 60_000) return hit.value as Promise<T>;
-    const value = load().catch((err) => {
-      edhrecCache.delete(key);
-      throw err;
-    });
-    edhrecCache.set(key, { at: Date.now(), value });
-    return value;
-  };
-  const commanderOf = (id: unknown) => {
-    const deck = deckService.get(String(id ?? ""));
-    if (deck.game !== "mtg" || deck.format !== "commander") {
-      throw new Error("Comparing with average decks works for Magic Commander decks.");
-    }
-    const commander = deck.cards.find((card) => card.zone === "leader");
-    if (!commander) throw new Error("Put the deck's commander in the Commander zone first.");
-    return { deck, commander };
-  };
-  handle("nimbus:deck-compare-options", async (_event, id: unknown) => {
-    const { commander } = commanderOf(id);
-    const name = commander.name.split(" // ")[0];
-    return edhrec(`refs|${name}`, () => commanderReferences(name));
-  });
-  handle("nimbus:deck-compare", async (_event, id: unknown, variantIds: unknown) => {
-    const { deck, commander } = commanderOf(id);
-    const name = commander.name.split(" // ")[0];
-    const refs = await edhrec(`refs|${name}`, () => commanderReferences(name));
-    const wanted = Array.isArray(variantIds)
-      ? variantIds.filter((v): v is string => typeof v === "string")
-      : [];
-    const chosen = refs.variants.filter((v) => wanted.includes(v.id)).slice(0, 5);
-    if (!chosen.length) chosen.push(refs.variants[0]);
-    const references = [];
-    const similarNames: Record<string, string[]> = {};
-    for (const variant of chosen) {
-      if (!variant.id.startsWith("similar") || !refs.colours) {
-        references.push(
-          await edhrec(`deck|${refs.slug}|${variant.id}`, () => averageDeck(refs.slug, variant))
-        );
-        continue;
-      }
-      // Similar commanders: the top ones of this colour identity (with the
-      // theme, when one is chosen), each one's average deck (its theme
-      // build), blended into one.
-      const theme = variant.id.startsWith("similar:") ? variant.id.slice("similar:".length) : null;
-      const colours = refs.colours;
-      const others = await edhrec(`similar|${colours.slug}|${theme ?? ""}|${refs.slug}`, () =>
-        similarCommanders(colours.slug, theme, refs.slug)
-      );
-      const decks = [];
-      for (const other of others) {
-        try {
-          decks.push(
-            await edhrec(`deck|${other.slug}|${theme ?? ""}`, () =>
-              averageDeck(other.slug, { id: theme ?? "", label: other.name, decks: other.decks })
-            )
-          );
-        } catch (err) {
-          // That commander has no average for the theme: leave it out.
-          logger.info("No EDHREC average deck for a similar commander", { commander: other.slug, theme });
-        }
-      }
-      if (!decks.length)
-        throw new Error(`EDHREC has no decks for ${variant.label.replace(/^Similar: /, "")}.`);
-      similarNames[variant.id] = decks.map((d) => d.label);
-      references.push(blendDecks(variant.id, variant.label, decks));
-    }
-    const mine = deck.cards
-      .filter((card) => card.zone === "main")
-      .map((card) => ({ name: card.name, quantity: card.quantity }));
-    // Every card's text and type, through the catalog service (Scryfall, 75 names a request).
-    const names = [...new Set([...mine, ...references.flatMap((r) => r.cards)].map((c) => c.name))];
-    const info = new Map<
-      string,
-      {
-        sourceId: string;
-        name: string;
-        kind: string | null;
-        cost: number | null;
-        text: string | null;
-        imageUrl: string | null;
-      }
-    >();
-    for (let start = 0; start < names.length; start += 250) {
-      const lookup = await catalogService.lookupByNames("mtg", names.slice(start, start + 250));
-      for (const detail of lookup.found.values()) {
-        info.set(nameKey(detail.name), {
-          sourceId: detail.sourceId,
-          name: detail.name,
-          kind: detail.rules.kind,
-          cost: detail.rules.cost,
-          text: detail.text,
-          imageUrl: detail.imageUrl,
-        });
-      }
-    }
-    return {
-      commander: refs.commander,
-      totalDecks: refs.decks,
-      references: references.map((r) => ({
-        id: r.id,
-        label: r.label,
-        decks: r.decks,
-        builtFrom: similarNames[r.id] ?? null,
-      })),
-      comparison: compareWithReferences(mine, references, info),
-    };
-  });
-  let archetypes: { at: number; names: Promise<string[]> } | null = null;
-  handle("nimbus:builder-archetypes", () => {
-    if (!archetypes || Date.now() - archetypes.at > 24 * 60 * 60_000) {
-      const names = ygoArchetypes().catch((err) => {
-        archetypes = null;
-        logger.warn("Could not load Yu-Gi-Oh! archetypes", { error: String(err) });
-        return [] as string[];
-      });
-      archetypes = { at: Date.now(), names };
-    }
-    return archetypes.names;
-  });
-  handle("nimbus:builder-create-deck", async (_event, input: unknown) => {
-    const i = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-    const deck = deckService.create({ name: i.name, game: i.game, format: i.format });
-    const failed: string[] = [];
-    for (const raw of Array.isArray(i.cards) ? i.cards.slice(0, 250) : []) {
-      const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-      const quantity = Number(c.quantity);
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) continue;
-      try {
-        const detail = await catalogService.getDetail(deck.game, c.sourceId);
-        deckService.addCard(deck.id, detail, zoneOf(c.zone) ?? undefined, quantity);
-      } catch {
-        failed.push(typeof c.name === "string" ? c.name.slice(0, 100) : "a card");
-      }
-    }
-    // Basic lands and energy by name — only real basics, in the counts asked.
-    const allowed = new Set<string>(
-      Object.values(
-        deck.game === "mtg" ? MTG_BASIC_LANDS : deck.game === "pokemon" ? POKEMON_BASIC_ENERGY : {}
-      )
-    );
-    const basics = Object.entries(i.basics && typeof i.basics === "object" ? i.basics : {}).filter(
-      ([name, n]) => allowed.has(name) && Number.isInteger(n) && (n as number) > 0 && (n as number) <= 60
-    ) as Array<[string, number]>;
-    if (basics.length) {
-      const lookup = await catalogService.lookupByNames(
-        deck.game,
-        basics.map(([name]) => name)
-      );
-      for (const [name, n] of basics) {
-        const detail = lookup.found.get(name.toLowerCase());
-        if (detail) deckService.addCard(deck.id, detail, "main", n);
-        else failed.push(name);
-      }
-    }
-    return { id: deck.id, failed };
-  });
-  // Cards saved before costs and kinds were kept get fresh card data, one
-  // paced lookup per card — only for cards already in the deck.
-  handle("nimbus:refresh-deck-cards", async (_event, id: unknown) => {
-    const deck = deckService.get(String(id ?? ""));
-    const stale = [...new Set(deck.cards.filter(needsCardData(deck.game)).map((card) => card.sourceId))];
-    const details = [];
-    let failed = 0;
-    for (const sourceId of stale) {
-      try {
-        details.push(await catalogService.getDetail(deck.game, sourceId));
-      } catch {
-        failed++;
-      }
-    }
-    deckService.refreshCards(deck.id, details);
-    return { updated: details.length, failed };
-  });
-  handle("nimbus:create-deck", (_event, input: unknown) => deckService.create(input));
-  handle("nimbus:update-deck", (_event, id: unknown, changes: unknown) =>
-    deckService.update(String(id ?? ""), changes)
-  );
-  handle("nimbus:remove-deck", (_event, id: unknown) => deckService.remove(String(id ?? "")));
-  handle("nimbus:add-deck-card", async (_event, id: unknown, sourceId: unknown, zone: unknown) => {
-    const deck = deckService.get(String(id ?? ""));
-    const detail = await catalogService.getDetail(deck.game, sourceId);
-    return deckService.addCard(deck.id, detail, zoneOf(zone) ?? undefined);
-  });
-  handle(
-    "nimbus:set-deck-card-quantity",
-    (_event, id: unknown, sourceId: unknown, zone: unknown, quantity: unknown) => {
-      const z = zoneOf(zone);
-      if (!z) throw new Error("That isn't a deck zone.");
-      return deckService.setQuantity(String(id ?? ""), String(sourceId ?? ""), z, Number(quantity));
-    }
-  );
-  handle("nimbus:move-deck-card", (_event, id: unknown, sourceId: unknown, from: unknown, to: unknown) => {
-    const f = zoneOf(from);
-    const t = zoneOf(to);
-    if (!f || !t) throw new Error("That isn't a deck zone.");
-    return deckService.moveCard(String(id ?? ""), String(sourceId ?? ""), f, t);
-  });
-  // A pasted decklist: each name is searched in the deck's game and the first
-  // printing with exactly that name is added. Capped, and paced by the
-  // catalog service like any search.
-  handle("nimbus:import-decklist", async (_event, id: unknown, text: unknown) => {
-    const deck = deckService.get(String(id ?? ""));
-    const { lines, unread } = parseDecklist(typeof text === "string" ? text.slice(0, 20_000) : "");
-    const kept = lines.slice(0, 250);
-    const lookup = await catalogService.lookupByNames(
-      deck.game,
-      kept.map((line) => line.name)
-    );
-    const zones = zonesFor(deck.game, deck.format);
-    let added = 0;
-    // Lines that didn't make it, as decklist text — put back in the import
-    // box so "Import" again retries just those.
-    const retry: string[] = [];
-    for (const line of kept) {
-      const detail = lookup.found.get(line.name.toLowerCase());
-      if (!detail) {
-        if (lookup.failed.some((name) => name.toLowerCase() === line.name.toLowerCase())) {
-          retry.push(`${line.quantity} ${line.name}`);
-        }
-        continue;
-      }
-      try {
-        deckService.addCard(
-          deck.id,
-          detail,
-          zones.includes(line.zone) ? line.zone : undefined,
-          Math.min(line.quantity, 99)
-        );
-        added += line.quantity;
-      } catch (err) {
-        retry.push(`${line.quantity} ${line.name}`);
-        logger.warn("Could not add an imported card", { error: String(err) });
-      }
-    }
-    return { added, notFound: lookup.notFound, failed: lookup.failed, retry: retry.join("\n"), unread };
-  });
-
-  /**
-   * Everything the Meals tab draws, worked out here rather than in the
-   * page: the pantry grouped by food with its expiry state, usable
-   * leftovers, each recipe with what it costs and how much of it is at
-   * home, and the plan for the days around today with its cost against
-   * the budget. The renderer gets numbers, not the arithmetic.
-   */
-  const mealsSnapshot = () => {
-    const now = new Date();
-    const today = isoDate(now);
-    const state = mealService.getState();
-    const ingredients = new Map(state.ingredients.map((ingredient) => [ingredient.id, ingredient]));
-    const recipes = new Map(state.recipes.map((recipe) => [recipe.id, recipe]));
-    const lookup = (id: string) => ingredients.get(id);
-    const needed = servingsNeeded(state.preferences.eaters);
-    const days = dayRange(new Date(now.getFullYear(), now.getMonth(), now.getDate()), 7);
-    const cost = planCost(
-      state.plan.filter((meal) => days.includes(meal.date)),
-      recipes,
-      lookup,
-      state.preferences
-    );
-    return {
-      today,
-      servingsNeeded: needed,
-      preferences: state.preferences,
-      ingredients: state.ingredients,
-      recipes: state.recipes.map((recipe) => {
-        const coverage = coverRecipe(recipe.ingredients, state.pantry, scaleFor(recipe, recipe.servings));
-        return {
-          recipe,
-          minutes: totalMinutes(recipe),
-          cost: recipeCost(recipe, recipe.servings, lookup),
-          nutrition: perServing(recipeNutrition(recipe, recipe.servings, lookup), recipe.servings),
-          coverage: coverageCount(coverage),
-          lines: coverage.map((line) => ({
-            text: line.ingredient.text,
-            ingredientId: line.ingredient.ingredientId,
-            optional: line.ingredient.optional,
-            needed: line.needed,
-            status: line.status,
-            short: line.short,
-          })),
-        };
-      }),
-      stock: summariseStock(state.pantry, now).map((entry) => ({
-        ...entry,
-        category: ingredients.get(entry.ingredientId)?.category ?? null,
-      })),
-      leftovers: usableLeftovers(state.leftovers, now),
-      plan: state.plan.map((meal) => ({
-        meal,
-        name: mealName(meal, recipes, new Map(state.leftovers.map((l) => [l.id, l]))),
-        cost:
-          meal.cost ??
-          (meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
-            ? recipeCost(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup).value
-            : null),
-        nutrition:
-          meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
-            ? perServing(
-                recipeNutrition(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup),
-                meal.cookServings ?? meal.servings
-              )
-            : null,
-      })),
-      // Per day, for the week's spend bars: what's typed is a fact, what
-      // comes from ingredient prices is drawn as an estimate.
-      spend: days.map((date) => {
-        const meals = state.plan.filter((meal) => meal.date === date);
-        const dayCost = planCost(meals, recipes, lookup, state.preferences);
-        const confirmed = meals.reduce((sum, meal) => sum + (meal.cost ?? 0), 0);
-        return {
-          date,
-          total: dayCost.value,
-          confirmed: Math.round(confirmed * 100) / 100,
-          estimated: Math.round(((dayCost.value ?? 0) - confirmed) * 100) / 100,
-          over:
-            state.preferences.dailyBudget !== null && (dayCost.value ?? 0) > state.preferences.dailyBudget,
-        };
-      }),
-      days,
-      weekCost: cost,
-      shopping: mealService.shoppingList(days),
-      hasDemoData: mealService.hasDemoData(),
-    };
-  };
-
-  /**
-   * Fetches a recipe page for the importer. The renderer names the
-   * address, so this is the one place in Meals where it can: publicFetch
-   * allows only http(s) on the public Internet — never this machine or
-   * the local network, checked at connection time and on every redirect —
-   * with one deadline and only the first megabyte downloaded. The page
-   * itself is never rendered, only parsed.
-   */
-  const fetchRecipePage = async (raw: unknown) => {
-    let page: PublicPage;
-    try {
-      page = await fetchPublicPage(String(raw ?? "").trim(), {
-        maxBytes: 1_000_000,
-        headers: { Accept: "text/html,application/xhtml+xml" },
-      });
-    } catch (err) {
-      if (!(err instanceof PublicFetchError)) throw err;
-      if (err.kind === "address")
-        throw new Error("That address is on this machine or network, not a recipe site.");
-      if (err.kind === "protocol")
-        throw new Error(
-          err.message.startsWith("That doesn't")
-            ? err.message
-            : "Only http and https addresses can be imported."
-        );
-      throw new Error(err.message);
-    }
-    const recipe = parseRecipePage(page.body, page.url);
-    if (!recipe)
-      throw new Error("No recipe data on that page — some sites don't publish it. Add it by hand instead.");
-    logger.info("Imported a recipe page", {
-      host: new URL(page.url).hostname,
-      ingredients: recipe.ingredients.length,
-    });
-    return recipe;
-  };
-
-  // Meals (src/meals/): recipes, the pantry, leftovers and the plan. All of
-  // it is local — no service is called — so the handlers are thin wrappers
-  // over the service, which validates every field it is given.
-  handle("nimbus:get-meals", () => mealsSnapshot());
-  handle("nimbus:save-recipe", (_event, input: unknown, id: unknown) =>
-    mealService.saveRecipe(input, typeof id === "string" && id ? id : undefined)
-  );
-  handle("nimbus:remove-recipe", (_event, id: unknown) => mealService.removeRecipe(String(id ?? "")));
-  handle("nimbus:add-stock", (_event, input: unknown) => mealService.addStock(input));
-  handle("nimbus:update-stock", (_event, id: unknown, changes: unknown) =>
-    mealService.updateStock(String(id ?? ""), changes)
-  );
-  handle("nimbus:correct-stock", (_event, id: unknown, quantity: unknown, unit: unknown) =>
-    mealService.correctStock(String(id ?? ""), quantity, unit)
-  );
-  handle("nimbus:remove-stock", (_event, id: unknown) => mealService.removeStock(String(id ?? "")));
-  handle("nimbus:add-leftover", (_event, input: unknown) => mealService.addLeftover(input));
-  handle("nimbus:update-leftover", (_event, id: unknown, changes: unknown) =>
-    mealService.updateLeftover(String(id ?? ""), changes)
-  );
-  handle("nimbus:remove-leftover", (_event, id: unknown) => mealService.removeLeftover(String(id ?? "")));
-  handle("nimbus:plan-meal", (_event, input: unknown, id: unknown) =>
-    mealService.planMeal(input, typeof id === "string" && id ? id : undefined)
-  );
-  handle("nimbus:remove-planned-meal", (_event, id: unknown) =>
-    mealService.removePlannedMeal(String(id ?? ""))
-  );
-  handle("nimbus:cook-meal", (_event, input: unknown) => mealService.cook(input));
-  handle("nimbus:eat-leftover", (_event, mealId: unknown, leftoverId: unknown, portions: unknown) =>
-    mealService.eatLeftover(String(mealId ?? ""), String(leftoverId ?? ""), portions)
-  );
-  handle("nimbus:update-ingredient", (_event, id: unknown, changes: unknown) =>
-    mealService.updateIngredient(String(id ?? ""), changes)
-  );
-  handle("nimbus:update-meal-preferences", (_event, changes: unknown) =>
-    mealService.updatePreferences(changes)
-  );
-  handle("nimbus:add-shopping-item", (_event, input: unknown) => mealService.addShoppingItem(input));
-  handle("nimbus:remove-shopping-item", (_event, id: unknown) =>
-    mealService.removeShoppingItem(String(id ?? ""))
-  );
-  handle("nimbus:buy-item", (_event, input: unknown) => mealService.buy(input));
-  handle("nimbus:import-recipe-url", (_event, url: unknown) => fetchRecipePage(url));
-  handle("nimbus:load-demo-meals", () => mealService.loadDemoData());
-  handle("nimbus:remove-demo-meals", () => mealService.removeDemoData());
-
-  // Books (src/collections/books/): comics collected editions and manga.
-  // GCD lookups take a series name or a numeric volume id only; the URL is
-  // built in the main process.
-  handle("nimbus:get-books", (_event, filter: unknown) => {
-    const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
-    return {
-      books: bookService.list({
-        kind: f.kind === "comic" || f.kind === "manga" || f.kind === "novel" ? f.kind : undefined,
-        status: f.status === "owned" || f.status === "wishlist" ? f.status : undefined,
-        text: typeof f.text === "string" ? f.text.slice(0, 100) : undefined,
-      }),
-      coverage: bookService.coverage(),
-      formats: BOOK_FORMATS,
-      readIssues: bookService.readIssueKeys(),
-      readingLog: bookService.readingLog(),
-    };
-  });
-  // The reading log: readings of issues on a day, with estimated minutes.
-  handle(
-    "nimbus:log-issue-readings",
-    (_event, issues: unknown, readOn: unknown, minutes: unknown, bookId: unknown) =>
-      bookService.logReadings(issues, readOn, minutes, bookId)
-  );
-  handle("nimbus:remove-issue-reading", (_event, id: unknown) => bookService.removeReading(id));
-  // Your own characters, writers and artists for an issue, and whether stats use them.
-  handle("nimbus:set-my-issue-credits", (_event, issue: unknown, changes: unknown) =>
-    bookService.setCustomCredits(issue, changes)
-  );
-  handle("nimbus:use-my-issue-credits", (_event, issue: unknown, on: unknown) =>
-    bookService.setUseCustomCredits(issue, on)
-  );
-  handle("nimbus:set-minutes-per-issue", (_event, minutes: unknown) =>
-    bookService.setMinutesPerIssue(minutes)
-  );
-  // Characters and creators for logged issues not looked up yet — a few at a
-  // time, each through GCD's own pacing (a second apart, kept a day).
-  // Characters and creators of read issues, looked up by themselves in the
-  // background (collections/books/creditsQueue.ts), gently and waiting out
-  // GCD's pauses.
-  creditsQueue = new CreditsQueue({
-    pending: (limit) => {
-      const all = bookService.issuesWithoutCredits(100_000);
-      return { issues: all.slice(0, limit), total: all.length };
+  const ctx: IpcContext = {
+    get settings() {
+      return settings;
     },
-    lookup: async (issue) => {
-      const detail = await gcdCatalog.findIssue(issue.series, issue.year, issue.number);
-      return detail ? creditsFromGcd(detail) : null;
+    get mainWindow() {
+      return mainWindow;
     },
-    save: (issue, credits) => bookService.setIssueCredits(issue.series, issue.year, issue.number, credits),
-    pauseSeconds: (err) => (err instanceof GcdPausedError ? (err.retryAfterSeconds ?? 0) : null),
-    onState: (state) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) window.webContents.send("nimbus:reading-credits-state", state);
-      }
+    get briefingService() {
+      return briefingService;
     },
-  });
-  setTimeout(() => creditsQueue?.kick(), 15_000);
-  handle("nimbus:reading-credits-state", () => creditsQueue?.state() ?? null);
-  // Issues read or unread: [{series, year, number}], checked in the service.
-  handle("nimbus:set-issues-read", (_event, issues: unknown, read: unknown) =>
-    bookService.setIssuesRead(issues, read)
-  );
-  // A cover you choose: the main process opens the file picker, and the
-  // picture is resized and saved in NIMBUS's folder — the renderer never
-  // names a path.
-  handle("nimbus:choose-book-cover", async (_event, id: unknown) => {
-    const book = bookService.get(String(id ?? ""));
-    const saved = await chooseCoverFile(BrowserWindow.getFocusedWindow(), book.id);
-    if (!saved) return false;
-    const url = chosenCoverUrl(book.id, Date.now());
-    if (url) bookService.setCover(book.id, url);
-    return true;
-  });
-  // Back to the cover found by ISBN (looked for again).
-  handle("nimbus:clear-book-cover", (_event, id: unknown) => {
-    const book = bookService.get(String(id ?? ""));
-    if (isChosenCover(book.coverUrl)) removeCoverFile(book.id);
-    bookService.setCover(book.id, null);
-    coverAttempted.delete(book.id);
-    void fillBookCovers();
-    return true;
-  });
-  // A single issue's page, from GCD — the series name, year and number only.
-  // Its characters and creators are kept for reading stats.
-  handle("nimbus:get-comic-issue", async (_event, series: unknown, year: unknown, number: unknown) => {
-    const detail = await gcdCatalog.findIssue(series, year, number);
-    if (detail && typeof series === "string" && Number.isInteger(number)) {
-      const y = Number.isInteger(year) ? (year as number) : null;
-      bookService.setIssueCredits(series, y, number as number, creditsFromGcd(detail));
-    }
-    return detail;
-  });
-  // Links out to the two comic databases. The page names what to look up;
-  // the address is built here, for these two sites only, so the renderer
-  // can never open an address of its choosing.
-  handle("nimbus:open-comic-link", async (_event, site: unknown, lookup: unknown) => {
-    const l = lookup && typeof lookup === "object" ? (lookup as Record<string, unknown>) : {};
-    const words = typeof l.text === "string" ? l.text.replace(/\s+/g, " ").trim().slice(0, 150) : "";
-    const gcdId =
-      typeof l.gcdIssueId === "number" && Number.isInteger(l.gcdIssueId) && l.gcdIssueId > 0
-        ? l.gcdIssueId
-        : null;
-    let url: string | null = null;
-    if (site === "locg" && words) {
-      url = `https://leagueofcomicgeeks.com/search?keyword=${encodeURIComponent(words)}`;
-    } else if (site === "gcd" && gcdId) {
-      url = `https://www.comics.org/issue/${gcdId}/`;
-    } else if (site === "gcd" && words) {
-      url = `https://www.comics.org/searchNew/?q=${encodeURIComponent(words)}&search_object=issue`;
-    }
-    if (!url) throw new Error("Nothing to look up.");
-    await shell.openExternal(url);
-    return true;
-  });
-  handle("nimbus:search-comic-series", (_event, name: unknown) => gcdCatalog.searchSeries(name));
-  // A GCD volume, with its contents from Wikipedia's lists when GCD has none.
-  handle("nimbus:get-comic-volume", async (_event, issueId: unknown) => {
-    const volume = await gcdCatalog.getVolume(issueId);
-    if (volume.runs.length || !volume.isbn)
-      return { ...volume, contentsFrom: volume.runs.length ? "gcd" : null };
-    try {
-      const found = await wikipediaCollections.findByIsbn([volume.isbn]);
-      if (found) return { ...volume, runs: found.runs, unread: found.unread, contentsFrom: found.list };
-    } catch (err) {
-      logger.debug("No contents from Wikipedia", { error: String(err) });
-    }
-    return { ...volume, contentsFrom: null };
-  });
-  // Contents for a book by its ISBN — for books typed in by hand, or found on
-  // GCD before this lookup existed. The ISBN never leaves the PC: the lists
-  // are downloaded whole and matched here.
-  // Editions by title from Wikipedia's lists — searched on the PC; nothing is sent.
-  handle("nimbus:search-book-editions", (_event, query: unknown) => wikipediaCollections.search(query));
-  handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
-    typeof isbn === "string" && isbn.length <= 20 ? wikipediaCollections.findByIsbn([isbn]) : null
-  );
-  // Runs written without a series year ("Amazing Spider-Man #29-31") are
-  // placed in the right volume from GCD, in the background after a comic is
-  // saved (src/collections/books/seriesYears.ts). What can't be settled is
-  // kept here for the book's page to ask about.
-  const notifyBooksChanged = () => {
-    for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
+    get spotifyAuth() {
+      return spotifyAuth;
+    },
+    get spotifyClient() {
+      return spotifyClient;
+    },
+    get routineService() {
+      return routineService;
+    },
+    get attentionService() {
+      return attentionService;
+    },
+    get taskProvider() {
+      return taskProvider;
+    },
+    get stockProvider() {
+      return stockProvider;
+    },
+    get activityMonitor() {
+      return activityMonitor;
+    },
+    get timerService() {
+      return timerService;
+    },
+    get activityService() {
+      return activityService;
+    },
+    get appUsage() {
+      return appUsage;
+    },
+    get siteUsage() {
+      return siteUsage;
+    },
+    get networkService() {
+      return networkService;
+    },
+    get memoryService() {
+      return memoryService;
+    },
+    get presenceService() {
+      return presenceService;
+    },
+    get collectionService() {
+      return collectionService;
+    },
+    get catalogService() {
+      return catalogService;
+    },
+    get bookService() {
+      return bookService;
+    },
+    get deckService() {
+      return deckService;
+    },
+    get mealService() {
+      return mealService;
+    },
+    get gcdCatalog() {
+      return gcdCatalog;
+    },
+    get wikipediaCollections() {
+      return wikipediaCollections;
+    },
+    coverAttempted,
+    rememberRoutineDecision,
+    applyZoom,
+    generateBriefing,
+    onActionExecuted,
+    syncActivityMonitor,
+    fillBookCovers,
   };
-  const bookYears = new Map<
-    string,
-    { working: boolean; settled: number; ambiguous: AmbiguousRun[]; paused: string | null }
-  >();
-  const workOutBookYears = async (id: string) => {
-    const book = bookService.get(id);
-    if (book.kind !== "comic" || !book.runs.some((run) => run.year === null)) {
-      bookYears.delete(id);
-      return null;
-    }
-    const current = bookYears.get(id);
-    if (current?.working) return current;
-    bookYears.set(id, { working: true, settled: 0, ambiguous: [], paused: null });
-    notifyBooksChanged();
-    let publicationYear: number | null = null;
-    if (book.source?.startsWith("gcd:")) {
-      try {
-        const volume = await gcdCatalog.getVolume(Number(book.source.slice(4)));
-        const year = Number(volume.publicationDate?.slice(0, 4));
-        publicationYear = Number.isInteger(year) && year > 1800 ? year : null;
-      } catch {
-        // The era then comes from the book's runs alone.
-      }
-    }
-    const result = await workOutRunYears(book.runs, book.publisher, gcdCatalog, publicationYear);
-    const settled = bookService.setRunYears(
-      id,
-      [...result.years].map(([index, year]) => ({ index, series: book.runs[index].series, year }))
-    );
-    const state = { working: false, settled, ambiguous: result.ambiguous, paused: result.paused };
-    bookYears.set(id, state);
-    notifyBooksChanged();
-    return state;
-  };
-  const afterSave = (saved: { book: { id: string } }) => {
-    void workOutBookYears(saved.book.id).catch((err) =>
-      logger.warn("Could not work out series years", { error: String(err) })
-    );
-    return saved;
-  };
-  handle("nimbus:add-book", (_event, input: unknown) => afterSave(bookService.add(input)));
-  handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
-    afterSave(bookService.update(String(id ?? ""), input))
-  );
-  handle("nimbus:get-book-years", (_event, id: unknown) => bookYears.get(String(id ?? "")) ?? null);
-  handle("nimbus:work-out-book-years", (_event, id: unknown) => workOutBookYears(String(id ?? "")));
-  handle("nimbus:set-run-year", (_event, id: unknown, index: unknown, series: unknown, year: unknown) => {
-    const bookId = String(id ?? "");
-    if (!Number.isInteger(index) || typeof series !== "string" || !Number.isInteger(year)) {
-      throw new Error("Choose the series' year.");
-    }
-    const set = bookService.setRunYears(bookId, [{ index: index as number, series, year: year as number }]);
-    const state = bookYears.get(bookId);
-    if (state) state.ambiguous = state.ambiguous.filter((a) => a.index !== index);
-    return set;
-  });
-  handle("nimbus:remove-book", (_event, id: unknown) => {
-    const removed = bookService.remove(String(id ?? ""));
-    if (removed) removeCoverFile(String(id));
-    return removed;
-  });
-
-  // Presence: the current judgement, and the devices you can choose as your
-  // phone. The choice is a Network tab device id — checked against the list.
-  handle("nimbus:get-presence", () => ({
-    ...(presenceService?.update() ?? null),
-    phoneDeviceId: settings.windowsClient.network.phoneDeviceId,
-    devices: networkService
-      .getState()
-      .devices.filter((device) => !device.isSelf && !device.isGateway)
-      .map((device) => ({ id: device.id, name: device.displayName, randomizedMac: device.randomizedMac })),
-  }));
-  handle("nimbus:set-presence-phone", (_event, deviceId: unknown) => {
-    const known = networkService.getState().devices.some((device) => device.id === deviceId);
-    settings.windowsClient.network.phoneDeviceId = typeof deviceId === "string" && known ? deviceId : null;
-    saveSettings(settings);
-    logger.info("Presence phone chosen", { chosen: settings.windowsClient.network.phoneDeviceId !== null });
-    return presenceService?.update() ?? null;
-  });
-
-  handle("nimbus:list-memories", (_event, filter: unknown) => {
-    const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
-    return memoryService.list({
-      kind: typeof f.kind === "string" ? (f.kind as never) : undefined,
-      origin: typeof f.origin === "string" ? (f.origin as never) : undefined,
-      source: typeof f.source === "string" ? f.source : undefined,
-      text: typeof f.text === "string" ? f.text.slice(0, 200) : undefined,
-      includeDisabled: f.includeDisabled === true,
-    });
-  });
-  handle("nimbus:remember-memory", (_event, input: unknown) => {
-    const i = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-    return memoryService.remember({
-      kind: i.kind as "preference" | "fact",
-      title: String(i.title ?? ""),
-      value:
-        typeof i.value === "string" || typeof i.value === "number" || typeof i.value === "boolean"
-          ? i.value
-          : null,
-      detail: typeof i.detail === "string" ? i.detail : null,
-      expiresAt: typeof i.expiresAt === "string" ? i.expiresAt : null,
-    });
-  });
-  handle("nimbus:update-memory", (_event, id: unknown, changes: unknown) =>
-    memoryService.update(String(id ?? ""), changes)
-  );
-  handle("nimbus:promote-memory", (_event, id: unknown) => memoryService.promote(String(id ?? "")));
-  handle("nimbus:forget-memory", (_event, id: unknown) => memoryService.forget(String(id ?? "")));
-  handle("nimbus:get-memory-settings", () => settings.userPreferences.memory);
-  handle("nimbus:update-memory-settings", (_event, partial: unknown) => {
-    settings.userPreferences.memory = mergeKnown(settings.userPreferences.memory, partial);
-    saveSettings(settings);
-    logger.info("Memory settings updated", { ...settings.userPreferences.memory });
-    return settings.userPreferences.memory;
-  });
-
-  handle("nimbus:update-network-settings", (_event, partial: unknown) => {
-    settings.windowsClient.network = mergeKnown(settings.windowsClient.network, partial);
-    saveSettings(settings);
-    logger.info("Network settings updated", { ...settings.windowsClient.network });
-    if (settings.windowsClient.network.enabled) void networkService.refresh(true);
-    else networkService.cancel();
-    return settings.windowsClient.network;
-  });
-  // Records a sale the user already made at their broker: shares move from
-  // an open lot to the closed list. NIMBUS itself never trades.
-  handle("nimbus:close-stock-position", (_event, request: unknown) => {
-    const current = settings.userPreferences.stocks;
-    if (current.closedPositions.length >= MAX_CLOSED_POSITIONS) {
-      throw new Error(`At most ${MAX_CLOSED_POSITIONS} closed positions can be kept.`);
-    }
-    const r = (request && typeof request === "object" ? request : {}) as Record<string, unknown>;
-    const result = closeLot(
-      current.positions,
-      {
-        positionId: String(r.positionId ?? ""),
-        shares: Number(r.shares),
-        closeDate: String(r.closeDate ?? ""),
-        closePrice: Number(r.closePrice),
-        fees: r.fees === undefined || r.fees === null || r.fees === "" ? undefined : Number(r.fees),
-        currency: String(r.currency ?? ""),
-        companyName: typeof r.companyName === "string" ? r.companyName : undefined,
-        notes: typeof r.notes === "string" ? r.notes : undefined,
-      },
-      `closed-${Date.now()}`
-    );
-    if ("error" in result) throw new Error(result.error);
-    settings.userPreferences.stocks = {
-      ...current,
-      positions: result.positions,
-      closedPositions: [...current.closedPositions, result.closed],
-    };
-    saveSettings(settings);
-    logger.info("Stock position closed", {
-      openCount: result.positions.length,
-      closedCount: settings.userPreferences.stocks.closedPositions.length,
-    });
-    return settings.userPreferences.stocks;
-  });
-  // Anexo J figures for one year — a helper for the user's IRS return.
-  handle("nimbus:get-stock-irs-report", (_event, year: unknown) => {
-    const y = Number(year);
-    if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Error("Choose a year between 2000 and 2100.");
-    return stockProvider.getIrsReport(y);
-  });
-
-  // Spotify's connection state is derived from SpotifyAuthManager (has a
-  // stored refresh token or not) rather than persisted as its own
-  // settings field — the tokens themselves are the source of truth, kept
-  // out of settings.json entirely (see src/main/spotify/spotifyTokenStore.ts).
-  handle("nimbus:get-spotify-settings", () => ({
-    enabled: settings.userPreferences.spotify.enabled,
-    preferredDeviceId: settings.userPreferences.spotify.preferredDeviceId,
-    connected: spotifyAuth.isAuthenticated(),
-  }));
-
-  handle(
-    "nimbus:update-spotify-settings",
-    (_event, partial: Partial<typeof settings.userPreferences.spotify>) => {
-      settings.userPreferences.spotify = mergeKnown(settings.userPreferences.spotify, partial);
-      saveSettings(settings);
-      logger.info("Spotify settings updated", settings.userPreferences.spotify);
-      return {
-        enabled: settings.userPreferences.spotify.enabled,
-        preferredDeviceId: settings.userPreferences.spotify.preferredDeviceId,
-        connected: spotifyAuth.isAuthenticated(),
-      };
-    }
-  );
-
-  // Starts the PKCE auth flow (opens the system browser). The renderer
-  // only ever gets a connected/not-connected boolean back — never a token
-  // of any kind, at any point in this exchange.
-  handle("nimbus:spotify-connect", async () => {
-    try {
-      await spotifyAuth.startAuthFlow();
-      return { connected: spotifyAuth.isAuthenticated(), error: null };
-    } catch (err) {
-      logger.warn("Spotify auth flow failed", { error: String(err) });
-      return { connected: spotifyAuth.isAuthenticated(), error: "Couldn't connect to Spotify." };
-    }
-  });
-
-  handle("nimbus:spotify-disconnect", () => {
-    spotifyAuth.disconnect();
-    return { connected: false };
-  });
-
-  // The generic Action-execution surface (see src/actions/). The renderer
-  // never gets direct access to a provider or its credentials — it can
-  // only ask for a specific, already-registered action id with plain
-  // JSON params, exactly like "execute Spotify pause action" in the
-  // task's own security-boundary example. ActionService validates the id
-  // and params itself; there is no way to reach arbitrary Node/API access
-  // through this handler.
-  handle("nimbus:list-actions", () => actionService.listActions());
-  // A file/folder picker for action parameters that are local paths (see
-  // ActionParameterSchema.format). It only ever returns a path for the
-  // renderer to put in a text field — the action still validates that
-  // path itself when it runs.
-  handle("nimbus:pick-path", async (_event, format: unknown) => {
-    if (format !== "file" && format !== "folder" && format !== "application") return null;
-    const options: OpenDialogOptions =
-      format === "folder"
-        ? { properties: ["openDirectory"] }
-        : format === "application"
-          ? {
-              properties: ["openFile"],
-              defaultPath: path.join(
-                process.env.ProgramData ?? "C:/ProgramData",
-                "Microsoft",
-                "Windows",
-                "Start Menu",
-                "Programs"
-              ),
-              filters: [{ name: "Applications and shortcuts", extensions: ["exe", "lnk"] }],
-            }
-          : { properties: ["openFile"] };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
-      : await dialog.showOpenDialog(options);
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  handle("nimbus:execute-action", async (_event, actionId: string, params?: Record<string, unknown>) => {
-    const result = await actionService.executeAction(actionId, params ?? {});
-    onActionExecuted(actionId, result);
-    return result;
-  });
-
-  // Playlist metadata only (name/id/artwork/owner/track count) — never
-  // downloads a playlist's actual tracks. Lets requests reject naturally
-  // (not authenticated, API down, etc.) rather than pretending success;
-  // the renderer already handles a rejected invoke with its own try/catch.
-  handle("nimbus:spotify-list-playlists", async () => {
-    const raw = await spotifyClient.listPlaylists();
-    return mapPlaylists(raw);
-  });
-
-  // Routines (src/routines/) — a user-configurable Trigger → Suggestion →
-  // Action relationship. Every write is validated the same way action
-  // params are: reject before it's ever saved or executed, never trust
-  // renderer-supplied configuration blindly.
-  handle("nimbus:get-routine-settings", () => settings.userPreferences.routines);
-
-  handle("nimbus:update-routine-settings", (_event, partial: { enabled?: boolean; routines?: Routine[] }) => {
-    if (partial.routines) {
-      const knownActionIds = actionService.listActions().map((a) => a.id);
-      for (const routine of partial.routines) {
-        const result = validateRoutine(routine, knownActionIds);
-        if (!result.valid) {
-          throw new Error(`Invalid routine "${routine?.name ?? "?"}": ${result.error}`);
-        }
-      }
-    }
-
-    settings.userPreferences.routines = {
-      enabled: partial.enabled ?? settings.userPreferences.routines.enabled,
-      routines: partial.routines ?? settings.userPreferences.routines.routines,
-    };
-    saveSettings(settings);
-    syncActivityMonitor();
-    logger.info("Routine settings updated", {
-      enabled: settings.userPreferences.routines.enabled,
-      routineCount: settings.userPreferences.routines.routines.length,
-    });
-    return settings.userPreferences.routines;
-  });
-
-  // "Test" evaluates and explains; it deliberately runs nothing (see
-  // RoutineService.testRoutine). "Run now" is the separate, explicit way
-  // to actually execute a routine's actions — what Test used to do.
-  handle("nimbus:test-routine", (_event, routineId: string) => routineService.testRoutine(routineId));
-  handle("nimbus:run-routine-now", (_event, routineId: string) => routineService.runRoutineNow(routineId));
-  handle("nimbus:get-routine-history", () => routineService.getHistory());
-
-  // Activity is read-only over IPC apart from its configuration: the
-  // renderer can see what NIMBUS concluded and edit the rules, but
-  // cannot assert an activity or end a session by hand.
-  handle("nimbus:get-current-activity", () => activityService.getCurrentActivity());
-  handle("nimbus:get-activity-sessions", () => activityService.getRecentSessions(50));
-  // Every activity name in play, so the editor can offer them as a
-  // choice instead of asking the user to retype one exactly.
-  handle("nimbus:get-known-activities", () => knownActivityNames(settings.userPreferences.activity.mappings));
-  handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
-  handle(
-    "nimbus:update-activity-settings",
-    (
-      _event,
-      partial: {
-        enabled?: boolean;
-        mappings?: ActivityMapping[];
-        graceMinutes?: number;
-        suggestFrequentApps?: boolean;
-      }
-    ) => {
-      // Same discipline as routines: reject before saving, never trust
-      // renderer-supplied configuration blindly.
-      if (partial.mappings) {
-        for (const mapping of partial.mappings) {
-          const result = validateActivityMapping(mapping);
-          if (!result.valid) {
-            throw new Error(`Invalid activity mapping "${mapping?.activity ?? "?"}": ${result.error}`);
-          }
-        }
-      }
-      const current = settings.userPreferences.activity;
-      settings.userPreferences.activity = {
-        enabled: partial.enabled ?? current.enabled,
-        mappings: partial.mappings ?? current.mappings,
-        graceMinutes: partial.graceMinutes ?? current.graceMinutes,
-        suggestFrequentApps:
-          typeof partial.suggestFrequentApps === "boolean"
-            ? partial.suggestFrequentApps
-            : current.suggestFrequentApps,
-      };
-      saveSettings(settings);
-      syncActivityMonitor();
-      logger.info("Activity settings updated", {
-        enabled: settings.userPreferences.activity.enabled,
-        mappingCount: settings.userPreferences.activity.mappings.length,
-      });
-      return settings.userPreferences.activity;
-    }
-  );
-  handle("nimbus:get-routine-last-triggered", () => routineService.getLastTriggeredAt());
-
-  // A debugging aid for "why didn't my trigger fire" — the exact raw
-  // process/window/folder data the desktop activity monitor saw on its
-  // most recent poll, or null if it isn't running. Same information the
-  // monitor already reads for matching; nothing new is exposed.
-  handle("nimbus:get-update-state", () => getUpdateState());
-  handle("nimbus:check-for-updates", () => checkForUpdates());
-  handle("nimbus:install-update", () => installUpdate());
-  handle("nimbus:get-usage", () => ({
-    enabled: settings.userPreferences.activity.suggestFrequentApps === true,
-    trackingOn: settings.userPreferences.activity.enabled || settings.userPreferences.routines.enabled,
-    presence: presenceService?.update().state ?? null,
-    entries: [...(appUsage?.usage() ?? []), ...(siteUsage?.usage() ?? [])].sort(
-      (a, b) => b.daysUsed - a.daysUsed || b.minutesUsed - a.minutesUsed
-    ),
-  }));
-  handle("nimbus:get-weekly-summary", async () => {
-    const calendar = (await contextService.getSnapshot()).providers.calendar;
-    const calendarData =
-      calendar && calendar.status === "ok" && calendar.data
-        ? (calendar.data as { upcomingEvents?: CalendarEvent[]; events?: CalendarEvent[] })
-        : null;
-    return buildWeeklySummary(
-      {
-        sessions: activityService.getRecentSessions(),
-        usage: [...(appUsage?.usage() ?? []), ...(siteUsage?.usage() ?? [])],
-        cardsAdded: collectionService.list(),
-        booksAdded: bookService.list(),
-        decks: deckService.list(),
-        upcoming: calendarData?.upcomingEvents ?? calendarData?.events ?? [],
-      },
-      new Date(),
-      Intl.DateTimeFormat().resolvedOptions().timeZone
-    );
-  });
-  handle("nimbus:get-activity-snapshot", () => activityMonitor?.getLastSnapshot() ?? null);
-
-  handle("nimbus:get-active-suggestions", () => routineService.getActiveSuggestions());
-  // One answer path for every suggestion. Attention's own are informational:
-  // answering them only tells Attention not to show them again — nothing
-  // runs. Every other suggestion is a routine's, answered by
-  // RoutineService exactly as before; Attention is then told it's resolved,
-  // so it leaves the popup queue.
-  handle("nimbus:accept-suggestion", async (_event, suggestionId: string) => {
-    if (attentionService.acknowledgeSuggestion(suggestionId)) return [];
-    const suggestion = routineService.getActiveSuggestions().find((s) => s.id === suggestionId);
-    const results = await routineService.acceptSuggestion(suggestionId);
-    attentionService.suggestionResolved(suggestionId, "accepted");
-    if (suggestion) rememberRoutineDecision(suggestion, "accepted");
-    return results;
-  });
-  handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
-    if (attentionService.dismissSuggestion(suggestionId)) return;
-    const suggestion = routineService.getActiveSuggestions().find((s) => s.id === suggestionId);
-    routineService.dismissSuggestion(suggestionId);
-    attentionService.suggestionResolved(suggestionId, "dismissed");
-    if (suggestion) rememberRoutineDecision(suggestion, "dismissed");
-  });
-  // The Attention debug view (Context tab): every current item, its score,
-  // decision and why. Read-only.
-  handle("nimbus:get-attention", () => attentionService.getDebugState());
-  // Answering a question from the Home feed. Routed through the same
-  // onAnswer path as the popup, so "Make it an activity" opens the editor
-  // and "Not now" is remembered either way.
-  handle("nimbus:answer-attention-item", (_event, itemId: unknown, outcome: unknown) =>
-    attentionService.answerItem(String(itemId ?? ""), outcome === "accepted" ? "accepted" : "dismissed")
-  );
-  handle(
-    "nimbus:update-attention-settings",
-    (_event, partial: { enabled?: unknown; popups?: unknown; reminderMinutes?: unknown }) => {
-      const current = settings.userPreferences.attention;
-      settings.userPreferences.attention = {
-        enabled: typeof partial?.enabled === "boolean" ? partial.enabled : current.enabled,
-        popups: typeof partial?.popups === "boolean" ? partial.popups : current.popups,
-        reminderMinutes: normalizeReminderMinutes(
-          partial?.reminderMinutes !== undefined ? partial.reminderMinutes : current.reminderMinutes
-        ),
-      };
-      saveSettings(settings);
-      logger.info("Attention settings updated", { ...settings.userPreferences.attention });
-      void attentionService.tick();
-      return settings.userPreferences.attention;
-    }
-  );
-
-  // The suggestion popup window's own small surface (src/main/suggestionWindow.ts,
-  // src/preload/suggestionPreload.ts) — reuses the accept/dismiss handlers
-  // above, just adds a way for that window to read what it should show
-  // and to close itself.
-  handle("nimbus:get-popup-suggestion", () => getCurrentPopupSuggestion());
-  handle("nimbus:close-suggestion-popup", () => {
-    closeSuggestionPopup();
-    // Whatever was waiting for the popup may be shown now.
-    attentionService?.popupClosed();
-  });
-
-  // The timer popup window's surface (src/main/timerWindow.ts,
-  // src/timers/). A generic timer engine — nothing here is Spotify- or
-  // Routine-specific.
-  handle("nimbus:get-timer-state", () => timerService.getState());
-  handle("nimbus:pause-timer", (_event, timerId: string) => timerService.pause(timerId));
-  handle("nimbus:resume-timer", (_event, timerId: string) => timerService.resume(timerId));
-  handle("nimbus:cancel-timer", (_event, timerId: string) => timerService.cancel(timerId));
-  // Extends the running Pomodoro through the normal Action path, so it
-  // gets the same validation and result handling as any other action.
-  handle("nimbus:timer-add-study", async () => {
-    const result = await actionService.executeAction("timer.addStudy", {});
-    onActionExecuted("timer.addStudy", result);
-    return { status: result.status, message: result.message ?? result.error?.message };
-  });
-  handle("nimbus:close-timer-window", () => closeTimerWindow());
-
-  // Pull-only: returns whatever briefing was last generated (or null before
-  // the first one completes). Never generates — that's what keeps a UI
-  // reload from producing a new briefing every time it asks.
-  handle("nimbus:get-briefing", () => briefingService.getCurrent());
-
-  // Explicit, user-initiated regeneration (e.g. a "Regenerate" button) —
-  // distinct from the pull above, and from the one automatic generation
-  // that happens at startup.
-  handle("nimbus:regenerate-briefing", () => generateBriefing());
+  registerAppIpc(ctx);
+  registerHomeIpc(ctx);
+  registerIntegrationsIpc(ctx);
+  registerStocksIpc(ctx);
+  registerNetworkIpc(ctx);
+  registerMemoryIpc(ctx);
+  registerCollectionsIpc(ctx);
+  registerMealsIpc(ctx);
+  registerBooksIpc(ctx);
+  registerActionsIpc(ctx);
+  registerRoutinesIpc(ctx);
+  registerPopupsIpc(ctx);
 }
 
 /**
@@ -2155,7 +629,7 @@ export function startApp(): void {
   bookService.onChange(() => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send("nimbus:books-changed");
     void fillBookCovers();
-    creditsQueue?.kick();
+    kickReadingCredits();
   });
   void fillBookCovers();
   collectionService.onChange(() => {
