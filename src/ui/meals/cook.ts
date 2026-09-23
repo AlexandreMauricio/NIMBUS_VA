@@ -83,19 +83,18 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
     field("Don't touch the pantry", skip)
   );
   body.appendChild(counts);
-  body.appendChild(
-    servingsSlider(
-      entry.recipe,
-      cooking,
-      () => eating,
-      (next) => {
-        cooking = next;
-        eating = Math.min(eating, cooking);
-        void refreshPreview();
-        drawLeftovers();
-      }
-    ).box
+  const slider = servingsSlider(
+    entry.recipe,
+    cooking,
+    () => eating,
+    (next) => {
+      cooking = next;
+      eating = Math.min(eating, cooking);
+      void refreshPreview();
+      drawLeftovers();
+    }
   );
+  body.appendChild(slider.box);
 
   // Milk or soy milk: when more than one food at home will do, you say which.
   const choose: Record<string, string> = {};
@@ -146,6 +145,29 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
         )
       );
       deductions.appendChild(row);
+    }
+    for (const bag of preview.bags) {
+      const row = make("div", "meals-kv");
+      row.append(
+        make("span", undefined, `${bag.name} · frozen bag, defrosted whole`),
+        pill(`${formatAmount(bag.extra)} more than the recipe`, "left")
+      );
+      deductions.appendChild(row);
+    }
+    if (preview.bagServings !== null && preview.bagServings > cooking) {
+      const whole = preview.bagServings;
+      deductions.appendChild(
+        button(
+          `Cook ${whole} servings to use the whole bag — the rest become leftovers`,
+          "meals-alt-btn",
+          () => {
+            cooking = whole;
+            slider.set(whole);
+            void refreshPreview();
+            drawLeftovers();
+          }
+        )
+      );
     }
     if (!preview.deductions.length && !preview.short.length)
       deductions.appendChild(make("p", "meals-note", "Nothing to take out of the pantry."));

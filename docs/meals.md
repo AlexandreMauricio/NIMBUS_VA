@@ -95,6 +95,26 @@ for 5 cooks 5 for the 2 of you; the other 3 are leftovers.
   its leftovers cost nothing, and a day's budget counts only the servings
   eaten that day.
 
+## Frozen bags
+
+Meat bought in bulk goes into the freezer in bags, and a bag is defrosted
+**whole** ([freezer.ts](../src/meals/freezer.ts)).
+
+- In the purchase review, a line going to the fridge or freezer offers
+  **how to bag it** — one bag, bags the size your planned meals use, or
+  singles — and says which fits your meals ("2 bags of 3 · fits your
+  meals" when two planned dinners use 3 each). Choosing one sends it to
+  the freezer as that many pantry items, each marked as a bag.
+- Cooking takes a bag **all at once**: a recipe needing 2 chicken breasts,
+  with 6 in one bag, uses all 6. So a meal planned with it **cooks enough
+  for the whole bag** (6 servings instead of 2), and the extra is planned
+  as leftovers like any batch. Meals planned earlier are counted first,
+  so two meals don't both count on the same bag.
+- The cook dialog shows a bag's surplus and offers "Cook 6 servings to use
+  the whole bag".
+- **Needs attention** on Today says what to take out of the freezer: tonight
+  for tomorrow's meals, now for today's.
+
 ## Food families
 
 Some foods stand in for others: soy milk for milk, a brand of passata for

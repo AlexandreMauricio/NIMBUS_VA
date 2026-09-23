@@ -30,7 +30,15 @@
  */
 
 import { ingredientKey } from "./names";
-import { coverRecipe, coverageCount, expiryState, isoDate, planDeductions, usableLeftovers } from "./pantry";
+import {
+  coverRecipe,
+  coverageCount,
+  expiryState,
+  isoDate,
+  planDeductions,
+  usableLeftovers,
+  wholeBagServings,
+} from "./pantry";
 import type { Family } from "./pantry";
 import { LEFTOVER_SLOTS, cookServingsOf, dayRange, spreadLeftovers } from "./plan";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "./recipes";
@@ -454,6 +462,14 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
     counts.set(candidate.recipe.id, (counts.get(candidate.recipe.id) ?? 0) + 1);
     lastPlanned.set(candidate.recipe.id, date);
     const batch = batchOf(candidate.recipe, servings);
+    // A frozen bag is defrosted whole: cook enough to use it all, and plan what's over.
+    const bag = wholeBagServings(candidate.recipe, batch.cooked, pantry, input.family);
+    if (bag !== null) {
+      meal.cookServings = bag;
+      meal.reasons = [`Cooks ${bag} to use the whole frozen bag`, ...meal.reasons].slice(0, 4);
+      batch.cooked = bag;
+      batch.extra = Math.round((bag - servings) * 100) / 100;
+    }
     pantry = useUp(pantry, candidate.recipe, batch.cooked, input.family);
     if (batch.extra > 0 && input.preferences.autoLeftovers)
       spreadInto(

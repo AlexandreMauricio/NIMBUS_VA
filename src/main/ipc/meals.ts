@@ -5,6 +5,7 @@ import {
   expiryState,
   familyOf,
   isoDate,
+  suggestBags,
   summariseStock,
   usableLeftovers,
 } from "../../meals/pantry";
@@ -20,6 +21,7 @@ import { chooseAndReadReceipt } from "../receiptImport";
 import { currentPrice, pricesByStore, splitShopSaving } from "../../meals/purchases";
 import type { StorePrice } from "../../meals/purchases";
 import { reconcile } from "../../meals/receiptText";
+import { bagNeeds, defrostList } from "../../meals/freezer";
 import type { ShoppingList } from "../../meals/shopping";
 import type { MealsState, PlannedMeal, Purchase } from "../../meals/types";
 import { toBase } from "../../meals/units";
@@ -165,6 +167,21 @@ export function registerMealsIpc(ctx: IpcContext): void {
       stores: state.stores,
       purchases: ctx.mealService.listPurchases().map((purchase) => ({
         ...purchase,
+        // Ways to freeze each line in bags, sized by the planned meals that use it — only while reviewing.
+        lines: purchase.lines.map((line) => ({
+          ...line,
+          bagOptions:
+            purchase.status === "review" &&
+            line.ingredientId &&
+            line.quantity !== null &&
+            line.unit &&
+            !line.notFood
+              ? suggestBags(
+                  { quantity: line.quantity, unit: line.unit },
+                  bagNeeds(line.ingredientId, state.plan, recipes, today, family)
+                )
+              : [],
+        })),
         storeName: state.stores.find((store) => store.id === purchase.storeId)?.name ?? null,
         check: reconcile(purchase.lines, purchase.total),
         spent: purchaseTotal(purchase),
@@ -178,6 +195,8 @@ export function registerMealsIpc(ctx: IpcContext): void {
         }))
         .filter((entry) => entry.prices.length > 0)
         .sort((a, b) => b.prices.length - a.prices.length || a.name.localeCompare(b.name)),
+      // What to take out of the freezer: tonight for tomorrow, and anything still frozen for today.
+      defrost: defrostList(state.plan, recipes, state.pantry, today, [today, days[1] ?? today], family),
       hasDemoData: ctx.mealService.hasDemoData(),
     };
   };

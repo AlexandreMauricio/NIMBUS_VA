@@ -405,6 +405,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     openedAt: packaging !== null && packaging.includes("opened") ? now : null,
     expiresAt: expiresIn === null ? null : dayFrom(today, expiresIn),
     lastCorrection: null,
+    wholeBag: false,
     addedAt: now,
     updatedAt: now,
   }));
@@ -501,7 +502,8 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     confidence,
     confirmed,
     place: key === "chicken" || key === "yoghurt" ? ("fridge" as const) : ("cupboard" as const),
-    stocked: null,
+    bags: null,
+    stocked: [],
   });
   const bought: Purchase = {
     id: id(),

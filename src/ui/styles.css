@@ -6116,7 +6116,7 @@ details.context-card > summary .context-card-title {
 
 .meals-review-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.5fr) 10rem 5.5rem 7rem 2.5rem;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) 10rem 5.5rem 10rem 2.5rem;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-2) var(--space-3);
@@ -6506,4 +6506,11 @@ button.meals-alt-btn:hover {
 
 .meals-servings-lines li.is-optional {
   opacity: 0.6;
+}
+
+/* A review line's place, and how to bag it for the freezer. */
+.meals-review-goes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

@@ -382,6 +382,21 @@ export function attentionPanel(data: MealsSnapshot): HTMLElement {
     })
   );
   const list = make("div", "meals-lines");
+  // Out of the freezer: tonight for tomorrow's meals, now for today's.
+  for (const defrost of data.defrost) {
+    const row = make("div", "meals-line");
+    const when = defrost.date === data.today ? "now" : "tonight";
+    row.append(
+      make("strong", undefined, `Take out ${defrost.items.join(", ")}`),
+      make(
+        "span",
+        "meals-line-meta",
+        `for ${defrost.date === data.today ? "today's" : "tomorrow's"} ${MEAL_SLOT_LABELS[defrost.slot].toLowerCase()} · ${defrost.meal}`
+      ),
+      pill(`defrost ${when}`, defrost.date === data.today ? "urgent" : "soon")
+    );
+    list.appendChild(row);
+  }
   for (const item of urgent.slice(0, 5)) {
     const row = make("div", "meals-line");
     row.append(

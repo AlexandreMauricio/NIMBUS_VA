@@ -189,6 +189,11 @@ export interface PantryItem {
   expiresAt: string | null;
   /** The last time you corrected the amount, and why — so "thrown away" isn't lost in the number. */
   lastCorrection: { reason: CorrectionReason; at: string } | null;
+  /**
+   * A frozen bag: defrosted and used whole, never a part of it — six
+   * chicken breasts in one bag are cooked all six. Never merged with others.
+   */
+  wholeBag: boolean;
   addedAt: string;
   updatedAt: string;
 }
@@ -438,8 +443,10 @@ export interface PurchaseLine {
   confirmed: boolean;
   /** Where it goes in the kitchen on confirming — guessed, then yours to change. */
   place: StoragePlace;
+  /** Frozen in bags of these sizes (in the line's unit) — each bag its own pantry item — or not split. */
+  bags: number[] | null;
   /** What confirming put in the pantry, so deleting the purchase can take it back out. */
-  stocked: { itemId: string; quantity: number; unit: string } | null;
+  stocked: Array<{ itemId: string; quantity: number; unit: string }>;
 }
 
 export interface Purchase {

@@ -11,7 +11,7 @@
  * user confirms the real amount (see `correctStock` in mealService).
  */
 
-import { Amount, add, comparable, subtract, toBase } from "./units";
+import { Amount, add, comparable, scaleAmount, subtract, toBase } from "./units";
 import type { Leftover, PantryItem, Recipe, RecipeIngredient, StockConfidence } from "./types";
 
 /** How urgent an expiry date is. "none" = nothing to worry about yet. */
@@ -204,6 +204,8 @@ export interface Deduction {
 
 export interface DeductionPlan {
   deductions: Deduction[];
+  /** Whole frozen bags that give more than the line needs: what's over, cooked anyway. */
+  surplus: Array<{ ingredient: RecipeIngredient; bag: string; extra: Amount }>;
   /** Lines the pantry couldn't cover, for the shopping list or a warning. */
   short: Array<{ ingredient: RecipeIngredient; missing: Amount | null; reason: "short" | "unknown" }>;
 }
@@ -229,7 +231,7 @@ export function planDeductions(
 ): DeductionPlan {
   const family = options.family ?? NO_FAMILY;
   const remaining = new Map<string, Amount>();
-  const plan: DeductionPlan = { deductions: [], short: [] };
+  const plan: DeductionPlan = { deductions: [], short: [], surplus: [] };
   for (const ingredient of ingredients) {
     if (ingredient.optional) continue;
     const needed = scale(ingredient);
@@ -254,11 +256,18 @@ export function planDeductions(
       const current = remaining.get(item.id) ?? { quantity: item.quantity, unit: item.unit };
       const available = toBase(current);
       if (!available || available.quantity <= 0) continue;
-      const used = Math.min(available.quantity, left);
+      // A frozen bag is defrosted whole: all of it is used, even past what the line needs.
+      const used = item.wholeBag ? available.quantity : Math.min(available.quantity, left);
       const use = { quantity: used, unit: available.unit };
       const after = subtract(current, use);
       if (!after) continue;
       remaining.set(item.id, after);
+      if (item.wholeBag && used > left)
+        plan.surplus.push({
+          ingredient,
+          bag: item.name,
+          extra: { quantity: round3(used - left), unit: available.unit },
+        });
       left -= used;
       plan.deductions.push({
         itemId: item.id,
@@ -333,8 +342,11 @@ export function isoDate(date: Date): string {
 
 /** Adding stock: the same food, place and unit merges into one line instead of a second row. */
 export function mergeInto(items: PantryItem[], incoming: PantryItem): PantryItem[] {
+  // A frozen bag stays a bag.
+  if (incoming.wholeBag) return [...items, incoming];
   const match = items.find(
     (item) =>
+      !item.wholeBag &&
       item.ingredientId === incoming.ingredientId &&
       item.place === incoming.place &&
       item.expiresAt === incoming.expiresAt &&
@@ -367,4 +379,70 @@ export function mergeInto(items: PantryItem[], incoming: PantryItem): PantryItem
 /** True when a recipe has at least one line the pantry can't measure. */
 export function hasUnknownUnits(recipe: Recipe): boolean {
   return recipe.ingredients.some((i) => !i.optional && toBase(i) === null);
+}
+
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
+
+/**
+ * How many servings to cook so the frozen bags a recipe would take are
+ * used up: a recipe for 2 needing 2 chicken breasts, with 6 in one bag,
+ * cooks 6. Null when no whole bag is involved or it's already used up.
+ */
+export function wholeBagServings(
+  recipe: Pick<Recipe, "ingredients" | "servings">,
+  servings: number,
+  pantry: PantryItem[],
+  family: Family = NO_FAMILY
+): number | null {
+  const scale = (line: RecipeIngredient) => scaleAmount(line, recipe.servings, servings);
+  const plan = planDeductions(recipe.ingredients, pantry, scale, { family });
+  let best: number | null = null;
+  for (const surplus of plan.surplus) {
+    const needed = toBase(scale(surplus.ingredient));
+    const extra = toBase(surplus.extra);
+    if (!needed || !extra || needed.quantity <= 0 || needed.unit !== extra.unit) continue;
+    // The servings the whole bag makes, at this recipe's ratio — rounded down, so nothing runs short.
+    const cooks = Math.floor((servings * (needed.quantity + extra.quantity)) / needed.quantity + 1e-9);
+    if (cooks > servings) best = Math.max(best ?? 0, cooks);
+  }
+  return best;
+}
+
+/**
+ * Ways to freeze what was bought, for the purchase review: one bag, bags
+ * the size your planned meals use, singles. `needs` are what each planned
+ * meal takes of it (same kind of unit). The option matching most of those
+ * meals is recommended.
+ */
+export function suggestBags(
+  total: Amount,
+  needs: Amount[]
+): Array<{ sizes: number[]; label: string; recommended: boolean }> {
+  const whole = toBase(total);
+  if (!whole || whole.quantity <= 0) return [];
+  const factor = whole.quantity / total.quantity;
+  const sizes = new Map<number, number>();
+  for (const need of needs) {
+    const base = toBase(need);
+    if (!base || base.unit !== whole.unit || base.quantity <= 0 || base.quantity >= whole.quantity) continue;
+    const size = round3(base.quantity);
+    sizes.set(size, (sizes.get(size) ?? 0) + 1);
+  }
+  const common = [...sizes.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
+  const candidates = new Set<number>([whole.quantity, ...sizes.keys()]);
+  if (whole.unit === "piece" && whole.quantity <= 8) candidates.add(1);
+  const inUnit = (base: number) => round3(base / factor);
+  const unitLabel = whole.unit === "piece" ? "" : ` ${total.unit}`;
+  return [...candidates]
+    .sort((a, b) => b - a)
+    .map((size) => {
+      const count = Math.floor(whole.quantity / size + 1e-9);
+      const rest = round3(whole.quantity - count * size);
+      const bags = [...Array(count).fill(inUnit(size)), ...(rest > 0 ? [inUnit(rest)] : [])];
+      const label =
+        count === 1 && rest <= 0
+          ? `1 bag of ${inUnit(size)}${unitLabel}`
+          : `${count} bag${count === 1 ? "" : "s"} of ${inUnit(size)}${unitLabel}${rest > 0 ? ` + 1 of ${inUnit(rest)}${unitLabel}` : ""}`;
+      return { sizes: bags, label, recommended: common !== null ? size === common : size === whole.quantity };
+    });
 }

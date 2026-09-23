@@ -182,6 +182,8 @@ export interface MealsSnapshot {
     unknown: number;
   };
   hasDemoData: boolean;
+  /** What to take out of the freezer for today's and tomorrow's meals. */
+  defrost: Array<{ mealId: string; date: string; slot: MealSlot; meal: string; items: string[] }>;
   stores: Array<{ id: string; name: string }>;
   purchases: PurchaseUI[];
   spent: {
@@ -244,7 +246,10 @@ export interface PurchaseLineUI {
   confidence: number;
   confirmed: boolean;
   place: StoragePlace;
-  stocked: { itemId: string; quantity: number; unit: string } | null;
+  bags: number[] | null;
+  stocked: Array<{ itemId: string; quantity: number; unit: string }>;
+  /** Ways to freeze it in bags, sized by the planned meals that use it (while reviewing). */
+  bagOptions: Array<{ sizes: number[]; label: string; recommended: boolean }>;
 }
 
 export interface PurchaseUI {
@@ -280,6 +285,10 @@ export interface CookPreviewUI {
     empties: boolean;
   }>;
   short: Array<{ name: string; missing: { quantity: number; unit: string } | null; reason: string }>;
+  /** Frozen bags used whole, and how much each gives past the recipe. */
+  bags: Array<{ name: string; extra: { quantity: number; unit: string } }>;
+  /** Servings that would use those bags up. */
+  bagServings: number | null;
 }
 
 /** What the importer hands back: a draft to check, never a saved recipe. */

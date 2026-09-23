@@ -470,7 +470,41 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
     );
     place.disabled = !reviewing || line.notFood;
     place.title = "Where it goes in the pantry when you confirm the import";
-    row.appendChild(place);
+    // Bought in bulk: how to bag it for the freezer, sized by the meals planned with it.
+    const goes = make("div", "meals-review-goes");
+    goes.appendChild(place);
+    if (reviewing && line.bagOptions.length > 1) {
+      const current = line.bags ? line.bags.join(",") : "";
+      const freeze = select(
+        [
+          ["", "Not in bags"],
+          ...line.bagOptions.map(
+            (option) =>
+              [
+                option.sizes.join(","),
+                `${option.label}${option.recommended ? " · fits your meals" : ""}`,
+              ] as [string, string]
+          ),
+        ],
+        current
+      );
+      freeze.title = "Frozen in bags, each is defrosted and cooked whole";
+      freeze.addEventListener(
+        "change",
+        () =>
+          void act(() =>
+            bridge().updatePurchaseLine(purchase.id, line.id, {
+              bags: freeze.value ? freeze.value.split(",").map(Number) : null,
+              place: freeze.value ? "freezer" : place.value,
+            })
+          )
+      );
+      goes.appendChild(freeze);
+      const recommended = line.bagOptions.find((option) => option.recommended && option.sizes.length > 1);
+      if (!line.bags && recommended)
+        goes.appendChild(make("span", "meals-line-meta", `Suggested: ${recommended.label}`));
+    }
+    row.appendChild(goes);
     const save = () => {
       if (food.value === "__new" && !newName.value.trim()) {
         newName.focus();
@@ -561,13 +595,13 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
     );
     body.appendChild(actions);
   } else {
-    const stocked = purchase.lines.filter((line) => line.stocked);
+    const stocked = purchase.lines.filter((line) => line.stocked.length);
     if (stocked.length)
       body.appendChild(
         make(
           "p",
           "meals-note",
-          `Went to the pantry: ${stocked.map((line) => `${line.raw} → ${PLACE_LABELS[line.place]}`).join(" · ")}`
+          `Went to the pantry: ${stocked.map((line) => `${line.raw} → ${PLACE_LABELS[line.place]}${line.bags ? ` in ${line.bags.length} bags` : ""}`).join(" · ")}`
         )
       );
     body.appendChild(button("Delete purchase", "btn btn-ghost", () => confirmDelete(purchase)));
@@ -612,7 +646,7 @@ function confirmDelete(purchase: PurchaseUI): void {
       `${purchase.storeName ?? "A purchase"} · ${dayLabel(purchase.date)} · ${purchase.lines.length} line${purchase.lines.length === 1 ? "" : "s"}. Its prices are forgotten.`
     )
   );
-  const stocked = purchase.lines.filter((line) => line.stocked).length;
+  const stocked = purchase.lines.reduce((sum, line) => sum + line.stocked.length, 0);
   const takeBack = input("checkbox", "");
   takeBack.checked = true;
   if (stocked) {

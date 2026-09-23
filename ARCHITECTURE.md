@@ -204,6 +204,9 @@ src/
                                    reasons, budget swaps and fixes — plus
                                    the replace drawer's options and the
                                    effect of a replacement. Deterministic, pure
+    freezer.ts                   Frozen bags: what planned meals take of a
+                                   food (bag sizes), and what to defrost
+                                   when — pure
     names.ts                     How food names compare — shared by the
                                    service and the recipe editor
     purchases.ts                 Matching receipt lines to foods, prices per

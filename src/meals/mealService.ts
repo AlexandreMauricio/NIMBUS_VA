@@ -18,7 +18,15 @@
 import { randomUUID } from "crypto";
 import { logger } from "../logging/logger";
 import { buildDemoData } from "./demoData";
-import { familyChoices, familyOf, isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
+import {
+  familyChoices,
+  familyOf,
+  isoDate,
+  mergeInto,
+  planDeductions,
+  suggestEatBy,
+  wholeBagServings,
+} from "./pantry";
 import type { Family } from "./pantry";
 import { pricePerBaseUnit, recipeCost, scaleFor } from "./recipes";
 import { effectOfReplacing, generatePlan, proposalFigures, replaceOptions } from "./generator";
@@ -84,7 +92,7 @@ import {
 import { ingredientKey, matchIngredient } from "./names";
 import { cookServingsOf, dayRange, freeMealsAfter, servingsNeeded, spreadLeftovers } from "./plan";
 import { parseAmountText } from "./recipeImport";
-import { normaliseUnit, subtract, toBase } from "./units";
+import { formatAmount, normaliseUnit, subtract, toBase } from "./units";
 
 function text(value: unknown, max: number): string | null {
   return typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ").slice(0, max) : null;
@@ -303,6 +311,7 @@ export function parsePantryItem(raw: unknown): PantryItem | null {
     openedAt: typeof r.openedAt === "string" ? r.openedAt : null,
     expiresAt: isoDay(r.expiresAt),
     lastCorrection: parseCorrection(r.lastCorrection),
+    wholeBag: r.wholeBag === true,
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -548,16 +557,32 @@ function parsePurchaseLine(raw: unknown): PurchaseLine | null {
     confidence: typeof r.confidence === "number" && r.confidence >= 0 && r.confidence <= 1 ? r.confidence : 0,
     confirmed: r.confirmed === true,
     place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "cupboard",
+    bags: parseBags(r.bags),
     stocked: parseStocked(r.stocked),
   };
 }
 
+/** Bag sizes, each positive, at most 12 bags. */
+function parseBags(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  const sizes = raw.map((size) => positive(size)).filter((size): size is number => size !== null);
+  return sizes.length ? sizes.slice(0, 12) : null;
+}
+
+/** What a confirmed line put in the pantry — one entry, or one per frozen bag (older files kept one). */
 function parseStocked(raw: unknown): PurchaseLine["stocked"] {
-  const r = (raw ?? null) as Record<string, unknown> | null;
-  if (!r || typeof r.itemId !== "string" || !r.itemId) return null;
-  const quantity = positive(r.quantity);
-  const unit = normaliseUnit(r.unit);
-  return quantity !== null && unit ? { itemId: r.itemId, quantity, unit } : null;
+  const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return entries
+    .map((entry) => {
+      const r = (entry ?? {}) as Record<string, unknown>;
+      const quantity = positive(r.quantity);
+      const unit = normaliseUnit(r.unit);
+      return typeof r.itemId === "string" && r.itemId && quantity !== null && unit
+        ? { itemId: r.itemId, quantity, unit }
+        : null;
+    })
+    .filter((entry): entry is { itemId: string; quantity: number; unit: string } => entry !== null)
+    .slice(0, 12);
 }
 
 function parsePurchase(raw: unknown): Purchase | null {
@@ -660,6 +685,10 @@ export interface CookPreview {
     missing: { quantity: number; unit: string } | null;
     reason: "short" | "unknown";
   }>;
+  /** Frozen bags this takes whole, and how much of each goes past what the recipe needs. */
+  bags: Array<{ name: string; extra: { quantity: number; unit: string } }>;
+  /** Servings that would use those bags up exactly, when more than asked. */
+  bagServings: number | null;
 }
 
 export interface CookResult {
@@ -993,6 +1022,7 @@ export class MealService {
       openedAt: null,
       expiresAt: isoDay(r.expiresAt),
       lastCorrection: null,
+      wholeBag: false,
       addedAt: this.now(),
       updatedAt: this.now(),
     };
@@ -1179,11 +1209,56 @@ export class MealService {
     this.state.plan = existing
       ? this.state.plan.map((entry) => (entry.id === meal.id ? meal : entry))
       : [...this.state.plan, meal];
+    // A frozen bag is defrosted whole: a meal it feeds cooks enough to use it all.
+    if (kind === "recipe" && meal.cookServings === null && !meal.cookedAt) {
+      const recipe = this.getRecipe(meal.recipeId)!;
+      const bag = wholeBagServings(
+        recipe,
+        cookServingsOf(meal, recipe),
+        this.pantryBefore(meal),
+        this.family()
+      );
+      if (bag !== null) {
+        meal.cookServings = bag;
+        meal.reasons = [`Cooks ${bag} to use the whole frozen bag`];
+      }
+    }
     // A batch: its extra portions go into the next free meals, unless asked not to.
     this.dropLeftoversOf(meal.id);
     if (r.planLeftovers !== false && this.state.preferences.autoLeftovers) this.planLeftoversOf(meal);
     this.save();
     return meal;
+  }
+
+  /**
+   * The pantry as it will be when a meal comes round: what the planned
+   * meals before it (not cooked yet) will have taken — so two meals don't
+   * both count on the same frozen bag.
+   */
+  private pantryBefore(meal: PlannedMeal): PantryItem[] {
+    const family = this.family();
+    let pantry = this.state.pantry.map((item) => ({ ...item }));
+    const order = (m: PlannedMeal) => `${m.date}|${MEAL_SLOTS.indexOf(m.slot)}`;
+    const earlier = this.state.plan
+      .filter((m) => m.id !== meal.id && m.kind === "recipe" && !m.cookedAt && order(m) < order(meal))
+      .sort((a, b) => order(a).localeCompare(order(b)));
+    for (const other of earlier) {
+      const recipe = this.getRecipe(other.recipeId);
+      if (!recipe) continue;
+      const plan = planDeductions(
+        recipe.ingredients,
+        pantry,
+        scaleFor(recipe, cookServingsOf(other, recipe)),
+        {
+          family,
+        }
+      );
+      pantry = pantry.map((item) => {
+        const used = plan.deductions.find((d) => d.itemId === item.id);
+        return used ? { ...item, quantity: used.remaining.quantity, unit: used.remaining.unit } : item;
+      });
+    }
+    return pantry;
   }
 
   /** The planned leftovers of a meal not cooked yet — taken out when it changes or goes. */
@@ -1304,6 +1379,9 @@ export class MealService {
         missing: entry.missing,
         reason: entry.reason,
       })),
+      // Frozen bags used whole: what's cooked past the recipe, and the servings that would use it.
+      bags: plan.surplus.map((entry) => ({ name: entry.bag, extra: entry.extra })),
+      bagServings: wholeBagServings(recipe, positive(servings, recipe.servings)!, this.state.pantry, family),
     };
   }
 
@@ -1634,7 +1712,8 @@ export class MealService {
               this.state.ingredients.find((i) => i.id === match.ingredientId) ?? null,
               this.state.pantry
             ),
-        stocked: null,
+        bags: null,
+        stocked: [],
       });
     }
     if (!lines.length) throw new Error("A purchase needs at least one line.");
@@ -1678,6 +1757,15 @@ export class MealService {
       line.ingredientId = food.id;
       if (typeof c.countsAs === "string" && c.countsAs && food.id !== c.countsAs)
         this.setCountsAs(food, c.countsAs);
+    }
+    // Freezing in bags: to the freezer, each bag its own item; sizes adding up to more than bought are refused.
+    if (c.bags !== undefined) {
+      const bags = parseBags(c.bags);
+      const total = bags?.reduce((sum, size) => sum + size, 0) ?? 0;
+      if (bags && line.quantity !== null && total > line.quantity + 1e-6)
+        throw new Error("Those bags hold more than was bought.");
+      line.bags = bags && bags.length > 1 ? bags : bags && line.quantity !== null ? bags : null;
+      if (line.bags) line.place = "freezer";
     }
     // A place you chose stays; a different food brings its own guess.
     if (STORAGE_PLACES.includes(c.place as StoragePlace)) line.place = c.place as StoragePlace;
@@ -1751,28 +1839,34 @@ export class MealService {
         ingredient.lastPrice = perBase;
       }
       if (toPantry && line.quantity !== null && line.unit) {
-        const place = line.place;
-        const item: PantryItem = {
-          id: randomUUID(),
-          ingredientId: ingredient.id,
-          name: ingredient.name,
-          quantity: line.quantity,
-          unit: line.unit,
-          startQuantity: line.quantity,
-          place,
-          confidence: "confirmed",
-          packaging: null,
-          openedAt: null,
-          // In the fridge, a food with a known keeping time gets an eat-by date.
-          expiresAt:
-            place === "fridge" && ingredient.fridgeDays
-              ? isoDate(new Date(Date.parse(this.now()) + ingredient.fridgeDays * 86_400_000))
-              : null,
-          lastCorrection: null,
-          addedAt: this.now(),
-          updatedAt: this.now(),
-        };
-        if (this.state.pantry.length < MAX_PANTRY_ITEMS) {
+        const place = line.bags ? "freezer" : line.place;
+        const unit = line.unit;
+        // Frozen in bags: one pantry item per bag, each used whole. Else one item.
+        const portions = line.bags ?? [line.quantity];
+        line.stocked = [];
+        for (const quantity of portions) {
+          if (this.state.pantry.length >= MAX_PANTRY_ITEMS) break;
+          const item: PantryItem = {
+            id: randomUUID(),
+            ingredientId: ingredient.id,
+            name: ingredient.name,
+            quantity,
+            unit,
+            startQuantity: quantity,
+            place,
+            confidence: "confirmed",
+            packaging: line.bags ? `frozen bag of ${formatAmount({ quantity, unit })}` : null,
+            openedAt: null,
+            // In the fridge, a food with a known keeping time gets an eat-by date.
+            expiresAt:
+              place === "fridge" && ingredient.fridgeDays
+                ? isoDate(new Date(Date.parse(this.now()) + ingredient.fridgeDays * 86_400_000))
+                : null,
+            lastCorrection: null,
+            wholeBag: Boolean(line.bags),
+            addedAt: this.now(),
+            updatedAt: this.now(),
+          };
           this.state.pantry = mergeInto(this.state.pantry, item);
           // Remember where it went — a new item, or topped up into one already there.
           const into =
@@ -1783,7 +1877,7 @@ export class MealService {
                 entry.place === place &&
                 entry.updatedAt === item.updatedAt
             );
-          line.stocked = into ? { itemId: into.id, quantity: line.quantity, unit: line.unit } : null;
+          if (into) line.stocked.push({ itemId: into.id, quantity, unit });
         }
       }
       if (toShopping) {
@@ -1813,10 +1907,9 @@ export class MealService {
     if (!purchase) return 0;
     let changed = 0;
     if (((options ?? {}) as Record<string, unknown>).takeBack === true)
-      for (const line of purchase.lines) {
-        const stocked = line.stocked;
-        const item = stocked && this.state.pantry.find((entry) => entry.id === stocked.itemId);
-        if (!stocked || !item) continue;
+      for (const stocked of purchase.lines.flatMap((line) => line.stocked)) {
+        const item = this.state.pantry.find((entry) => entry.id === stocked.itemId);
+        if (!item) continue;
         const left = subtract(item, stocked);
         if (!left) continue;
         changed += 1;

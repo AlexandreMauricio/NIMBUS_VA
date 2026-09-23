@@ -20,6 +20,20 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.25 — 2026-09-23
+
+- **Frozen bags.** The purchase review offers how to bag a line for the
+  freezer — one bag, bags the size your planned meals use (recommended),
+  or singles — and each bag becomes its own pantry item.
+- **A bag is used whole.** Cooking takes the entire bag; a meal planned
+  with it cooks enough for all of it (6 chicken breasts in one bag → 6
+  servings, not 2), and the extra is planned as leftovers. Earlier meals
+  are counted first so two don't count on one bag. The cook dialog shows
+  the surplus and offers to cook for the whole bag.
+- **Defrost reminders.** Today's "Needs attention" says what to take out
+  of the freezer: tonight for tomorrow's meals, now for today's.
+- Deleting a purchase takes back each bag it added.
+
 ## 0.6.24 — 2026-09-23
 
 - **Meals cook the recipe as written.** Eating (from Household, or 12 when

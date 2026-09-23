@@ -9,8 +9,11 @@ import {
   familyOf,
   planDeductions,
   suggestEatBy,
+  suggestBags,
   summariseStock,
+  wholeBagServings,
 } from "./pantry";
+import { defrostList } from "./freezer";
 import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCookingAt } from "./recipes";
 import {
   cookServingsOf,
@@ -85,6 +88,7 @@ test("pantry: expiry states, and the summary puts what expires first at the top"
     openedAt: null,
     expiresAt: over.expiresAt ?? null,
     lastCorrection: null,
+    wholeBag: false,
     addedAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
   });
@@ -177,6 +181,7 @@ const pantryItem = (
   openedAt: null,
   expiresAt,
   lastCorrection: null,
+  wholeBag: false,
   addedAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
@@ -1146,4 +1151,107 @@ test("batches: planning a batch plans its leftovers; cooking makes them real; re
   assert.ok(meals.listPlan().some((m) => m.fromMealId === other.id));
   meals.removePlannedMeal(other.id);
   assert.ok(!meals.listPlan().some((m) => m.fromMealId === other.id));
+});
+
+test("frozen bags: bagged the way the planned meals use it, and each bag is used whole", () => {
+  // 6 breasts; meals planned use 3 and 3 → two bags of 3 fits them.
+  const options = suggestBags({ quantity: 6, unit: "piece" }, [
+    { quantity: 3, unit: "piece" },
+    { quantity: 3, unit: "piece" },
+    { quantity: 2, unit: "piece" },
+  ]);
+  const labels = options.map((o) => o.label);
+  assert.ok(labels.includes("1 bag of 6"));
+  assert.ok(labels.includes("2 bags of 3"));
+  assert.ok(labels.includes("3 bags of 2"));
+  assert.equal(options.find((o) => o.recommended)!.label, "2 bags of 3");
+  assert.deepEqual(options.find((o) => o.label === "2 bags of 3")!.sizes, [3, 3]);
+  const mince = suggestBags({ quantity: 1, unit: "kg" }, [{ quantity: 400, unit: "g" }]);
+  assert.equal(mince.find((o) => o.recommended)!.label, "2 bags of 0.4 kg + 1 of 0.2 kg");
+
+  // A recipe for 2 needing 2 breasts, the 6 in one bag: all 6 come out, and it should cook 6.
+  const recipe = {
+    servings: 2,
+    ingredients: [
+      {
+        ingredientId: "breast",
+        text: "Chicken breasts",
+        quantity: 2,
+        unit: "piece",
+        optional: false,
+        componentId: null,
+      },
+    ],
+  };
+  const bag = { ...pantryItem("bag", "breast", 6, "piece"), place: "freezer" as const, wholeBag: true };
+  const plan = planDeductions(recipe.ingredients, [bag], (line) => ({
+    quantity: line.quantity,
+    unit: line.unit,
+  }));
+  assert.equal(plan.deductions[0].use.quantity, 6);
+  assert.equal(plan.surplus[0].extra.quantity, 4);
+  assert.equal(wholeBagServings(recipe, 2, [bag]), 6);
+  assert.equal(
+    wholeBagServings(recipe, 2, [{ ...bag, wholeBag: false }]),
+    null,
+    "a loose pack is used as needed"
+  );
+});
+
+test("frozen bags: bought in bags, planned to use a whole one, defrosted the night before, taken back on delete", () => {
+  const { service: meals } = service();
+  meals.updatePreferences({
+    eaters: [
+      { name: "A", portionFactor: 1 },
+      { name: "B", portionFactor: 1 },
+    ],
+  });
+  const recipe = meals.saveRecipe({
+    name: "Grilled chicken",
+    servings: 2,
+    slots: ["dinner"],
+    ingredients: [{ name: "Chicken breasts", quantity: 2, unit: "piece" }],
+  });
+  const purchase = meals.createPurchase({
+    store: "Continente",
+    lines: [
+      {
+        name: "PEITO FRANGO",
+        ingredientId: recipe.ingredients[0].ingredientId,
+        quantity: 6,
+        unit: "piece",
+        price: 7.2,
+      },
+    ],
+  });
+  const line = purchase.lines[0];
+  meals.updatePurchaseLine(purchase.id, line.id, { bags: [6] });
+  meals.confirmPurchase(purchase.id, { prices: true, pantry: true, shopping: false });
+  const bagItem = meals.listPantry()[0];
+  assert.equal(bagItem.place, "freezer");
+  assert.equal(bagItem.wholeBag, true);
+
+  const dinner = meals.planMeal({
+    date: "2026-10-05",
+    slot: "dinner",
+    kind: "recipe",
+    recipeId: recipe.id,
+    servings: 2,
+  });
+  assert.equal(dinner.cookServings, 6, "the whole bag is cooked");
+  assert.equal(
+    meals.listPlan().filter((m) => m.fromMealId === dinner.id).length,
+    2,
+    "4 extra: two meals of 2"
+  );
+
+  const state = meals.getState();
+  const recipes = new Map(state.recipes.map((r) => [r.id, r]));
+  const list = defrostList(state.plan, recipes, state.pantry, "2026-10-04", ["2026-10-04", "2026-10-05"]);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].mealId, dinner.id);
+  assert.ok(list[0].items[0].startsWith("Chicken breasts"));
+
+  assert.equal(meals.removePurchase(purchase.id, { takeBack: true }), 1);
+  assert.equal(meals.listPantry().length, 0);
 });
