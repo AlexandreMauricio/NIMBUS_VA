@@ -23,6 +23,8 @@ import { pricePerBaseUnit, scaleFor } from "./recipes";
 import { buildShoppingList } from "./shopping";
 import type { ShoppingList } from "./shopping";
 import {
+  CORRECTION_REASONS,
+  CorrectionReason,
   DEFAULT_MEAL_PREFERENCES,
   Eater,
   Ingredient,
@@ -52,6 +54,8 @@ import {
   STORAGE_PLACES,
   StoragePlace,
 } from "./types";
+import { matchIngredient } from "./names";
+import { servingsNeeded } from "./plan";
 import { normaliseUnit, toBase } from "./units";
 
 function text(value: unknown, max: number): string | null {
@@ -87,16 +91,17 @@ function list(value: unknown, max: number, length: number): string[] {
   return out;
 }
 
-/** Names match loosely — case, accents and a trailing plural "s" don't make a new food. */
-export function ingredientKey(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9 ]/g, "")
-    .replace(/\s+/g, " ")
-    .replace(/s$/, "");
+export { ingredientKey } from "./names";
+
+/** `amount` (in a base unit) expressed in `unit`, when they measure the same thing. */
+function inUnitOf(
+  amount: { quantity: number; unit: string },
+  unit: string
+): { quantity: number; unit: string } {
+  const one = toBase({ quantity: 1, unit });
+  const base = toBase(amount);
+  if (!one || !base || one.unit !== base.unit || one.quantity <= 0) return amount;
+  return { quantity: Math.round((base.quantity / one.quantity) * 1000) / 1000, unit };
 }
 
 function parseNutrition(raw: unknown): NutritionPer100 | null {
@@ -130,6 +135,7 @@ export function parseIngredient(raw: unknown): Ingredient | null {
         ? r.lastPrice
         : null,
     fridgeDays: positive(r.fridgeDays),
+    lastPackaging: text(r.lastPackaging, 120),
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -197,6 +203,13 @@ export function parseRecipe(raw: unknown): Recipe | null {
   };
 }
 
+function parseCorrection(raw: unknown): PantryItem["lastCorrection"] {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (!CORRECTION_REASONS.includes(r.reason as CorrectionReason) || typeof r.at !== "string") return null;
+  return { reason: r.reason as CorrectionReason, at: r.at };
+}
+
 export function parsePantryItem(raw: unknown): PantryItem | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
@@ -225,6 +238,7 @@ export function parsePantryItem(raw: unknown): PantryItem | null {
     packaging: text(r.packaging, 120),
     openedAt: typeof r.openedAt === "string" ? r.openedAt : null,
     expiresAt: isoDay(r.expiresAt),
+    lastCorrection: parseCorrection(r.lastCorrection),
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -376,12 +390,35 @@ export interface CookInput {
   leftoverPlace?: StoragePlace;
   /** Skip the pantry deduction (you cooked from something you hadn't recorded). */
   skipPantry?: boolean;
+  /** Put the leftovers straight into this slot of the plan. */
+  scheduleLeftoverFor?: { date: string; slot: MealSlot } | null;
+}
+
+/** What cooking would take out of the pantry, package by package — shown before anything moves. */
+export interface CookPreview {
+  deductions: Array<{
+    itemId: string;
+    name: string;
+    packaging: string | null;
+    place: StoragePlace;
+    confidence: PantryItem["confidence"];
+    use: { quantity: number; unit: string };
+    remaining: { quantity: number; unit: string };
+    empties: boolean;
+  }>;
+  short: Array<{
+    name: string;
+    missing: { quantity: number; unit: string } | null;
+    reason: "short" | "unknown";
+  }>;
 }
 
 export interface CookResult {
   deducted: Array<{ name: string; used: string }>;
   short: Array<{ name: string; reason: "short" | "unknown" }>;
   leftover: Leftover | null;
+  /** The planned meal the leftovers were put into, when asked to. */
+  scheduled: PlannedMeal | null;
 }
 
 /**
@@ -427,13 +464,7 @@ export class MealService {
   }
 
   findIngredient(name: string): Ingredient | undefined {
-    const key = ingredientKey(name);
-    if (!key) return undefined;
-    return this.state.ingredients.find(
-      (ingredient) =>
-        ingredientKey(ingredient.name) === key ||
-        ingredient.aliases.some((alias) => ingredientKey(alias) === key)
-    );
+    return matchIngredient(name, this.state.ingredients);
   }
 
   /** The one way a food comes into being: found by name or alias, or created. */
@@ -453,6 +484,7 @@ export class MealService {
       nutritionSource: null,
       lastPrice: null,
       fridgeDays: null,
+      lastPackaging: null,
       addedAt: this.now(),
       updatedAt: this.now(),
     };
@@ -559,7 +591,7 @@ export class MealService {
       steps,
       tags: list(r.tags, 20, 40),
       source: text(r.source, 500) ?? existing?.source ?? null,
-      notes: text(r.notes, 2000),
+      notes: r.notes === undefined ? (existing?.notes ?? null) : text(r.notes, 2000),
       favourite: r.favourite === undefined ? (existing?.favourite ?? false) : r.favourite === true,
       lastCookedAt: existing?.lastCookedAt ?? null,
       timesCooked: existing?.timesCooked ?? 0,
@@ -632,10 +664,15 @@ export class MealService {
       packaging: text(r.packaging, 120),
       openedAt: null,
       expiresAt: isoDay(r.expiresAt),
+      lastCorrection: null,
       addedAt: this.now(),
       updatedAt: this.now(),
     };
     this.state.pantry = mergeInto(this.state.pantry, item);
+    if (item.packaging) {
+      ingredient.lastPackaging = item.packaging;
+      ingredient.updatedAt = this.now();
+    }
     this.save();
     return this.state.pantry.find((entry) => entry.id === item.id) ?? item;
   }
@@ -673,7 +710,7 @@ export class MealService {
    * number, the item becomes **confirmed** — that's the whole point of the
    * screen, and the only way an estimate stops being one.
    */
-  correctStock(id: unknown, quantity: unknown, unit?: unknown): PantryItem | null {
+  correctStock(id: unknown, quantity: unknown, unit?: unknown, reason?: unknown): PantryItem | null {
     const item = this.state.pantry.find((entry) => entry.id === id);
     if (!item) throw new Error("That pantry item is gone.");
     const amount =
@@ -685,6 +722,8 @@ export class MealService {
     // amount is now the full one, so the bar starts from what's really there.
     item.startQuantity = item.quantity;
     item.confidence = "confirmed";
+    if (CORRECTION_REASONS.includes(reason as CorrectionReason))
+      item.lastCorrection = { reason: reason as CorrectionReason, at: this.now() };
     item.updatedAt = this.now();
     if (item.quantity === 0) {
       this.state.pantry = this.state.pantry.filter((entry) => entry.id !== item.id);
@@ -820,13 +859,45 @@ export class MealService {
    * "the recipe said 300 g" is not the same as knowing what came out of
    * the bag. What the pantry couldn't cover is reported, not invented.
    */
+  /** What cooking `servings` of a recipe would take, package by package. Changes nothing. */
+  previewCook(recipeId: unknown, servings: unknown): CookPreview {
+    const recipe = this.getRecipe(recipeId);
+    if (!recipe) throw new Error("That recipe is gone.");
+    const plan = planDeductions(
+      recipe.ingredients,
+      this.state.pantry,
+      scaleFor(recipe, positive(servings, recipe.servings)!)
+    );
+    return {
+      deductions: plan.deductions.map((deduction) => {
+        const item = this.state.pantry.find((entry) => entry.id === deduction.itemId)!;
+        return {
+          itemId: item.id,
+          name: item.name,
+          packaging: item.packaging,
+          place: item.place,
+          confidence: item.confidence,
+          // In the package's own unit: "use 1 tin", not "use 1" of a base unit.
+          use: inUnitOf(deduction.use, item.unit),
+          remaining: deduction.remaining,
+          empties: deduction.empties,
+        };
+      }),
+      short: plan.short.map((entry) => ({
+        name: entry.ingredient.text || "ingredient",
+        missing: entry.missing,
+        reason: entry.reason,
+      })),
+    };
+  }
+
   cook(input: unknown): CookResult {
     const r = (input ?? {}) as CookInput & Record<string, unknown>;
     const recipe = this.getRecipe(r.recipeId);
     if (!recipe) throw new Error("That recipe is gone.");
     const cookServings = positive(r.cookServings, recipe.servings)!;
     const eatServings = Math.min(cookServings, positive(r.eatServings, cookServings)!);
-    const result: CookResult = { deducted: [], short: [], leftover: null };
+    const result: CookResult = { deducted: [], short: [], leftover: null, scheduled: null };
     // Checked before anything moves: cooking a planned meal twice would
     // take its ingredients out of the pantry twice.
     const planned =
@@ -868,6 +939,16 @@ export class MealService {
         portions: extra,
         place,
       });
+      const target = r.scheduleLeftoverFor;
+      if (target && isoDay(target.date) && MEAL_SLOTS.includes(target.slot)) {
+        result.scheduled = this.planMeal({
+          date: target.date,
+          slot: target.slot,
+          kind: "leftover",
+          leftoverId: result.leftover.id,
+          servings: servingsNeeded(this.state.preferences.eaters),
+        });
+      }
     }
 
     recipe.timesCooked += 1;
@@ -940,6 +1021,40 @@ export class MealService {
     this.state.shopping.push(item);
     this.save();
     return item;
+  }
+
+  /**
+   * Puts what a recipe is short of on the shopping list, as lines of their
+   * own — for cooking something that isn't in the plan. A food already on
+   * the list by hand isn't added twice. Returns how many were added.
+   */
+  addMissingToShopping(recipeId: unknown, servings: unknown): number {
+    const recipe = this.getRecipe(recipeId);
+    if (!recipe) throw new Error("That recipe is gone.");
+    const plan = planDeductions(
+      recipe.ingredients,
+      this.state.pantry,
+      scaleFor(recipe, positive(servings, recipe.servings)!)
+    );
+    let added = 0;
+    for (const entry of plan.short) {
+      const ingredientId = entry.ingredient.ingredientId;
+      if (this.state.shopping.some((item) => item.ingredientId === ingredientId)) continue;
+      if (this.state.shopping.length >= MAX_SHOPPING_ITEMS) break;
+      const food = this.state.ingredients.find((i) => i.id === ingredientId);
+      this.state.shopping.push({
+        id: randomUUID(),
+        name: food?.name ?? entry.ingredient.text,
+        ingredientId,
+        quantity: entry.missing ? Math.round(entry.missing.quantity * 1000) / 1000 : null,
+        unit: entry.missing?.unit ?? null,
+        note: `for ${recipe.name}`,
+        addedAt: this.now(),
+      });
+      added += 1;
+    }
+    if (added) this.save();
+    return added;
   }
 
   removeShoppingItem(id: unknown): void {

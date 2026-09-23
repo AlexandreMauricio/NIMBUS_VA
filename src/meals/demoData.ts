@@ -296,6 +296,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       nutritionSource: entry.nutrition ? "demo" : null,
       lastPrice: entry.price,
       fridgeDays: entry.fridgeDays,
+      lastPackaging: null,
       addedAt: now,
       updatedAt: now,
     });
@@ -359,6 +360,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     packaging,
     openedAt: packaging !== null && packaging.includes("opened") ? now : null,
     expiresAt: expiresIn === null ? null : dayFrom(today, expiresIn),
+    lastCorrection: null,
     addedAt: now,
     updatedAt: now,
   }));

@@ -1,7 +1,14 @@
 import { logger } from "../../logging/logger";
-import { coverRecipe, coverageCount, isoDate, summariseStock, usableLeftovers } from "../../meals/pantry";
+import {
+  coverRecipe,
+  coverageCount,
+  expiryState,
+  isoDate,
+  summariseStock,
+  usableLeftovers,
+} from "../../meals/pantry";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../../meals/recipes";
-import { dayRange, mealName, planCost, servingsNeeded } from "../../meals/plan";
+import { dayRange, mealBadge, mealName, planCost, servingsNeeded } from "../../meals/plan";
 import { parseRecipePage } from "../../meals/recipeImport";
 import { PublicFetchError, fetchPublicPage } from "../publicFetch";
 import type { PublicPage } from "../publicFetch";
@@ -25,6 +32,12 @@ export function registerMealsIpc(ctx: IpcContext): void {
     const recipes = new Map(state.recipes.map((recipe) => [recipe.id, recipe]));
     const lookup = (id: string) => ingredients.get(id);
     const needed = servingsNeeded(state.preferences.eaters);
+    const leftoverMap = new Map(state.leftovers.map((leftover) => [leftover.id, leftover]));
+    // The package of a food that would be used first — what "Home · exp. tomorrow" describes.
+    const firstPackage = (ingredientId: string) =>
+      state.pantry
+        .filter((item) => item.ingredientId === ingredientId)
+        .sort((a, b) => (a.expiresAt ?? "9999").localeCompare(b.expiresAt ?? "9999"))[0];
     const days = dayRange(new Date(now.getFullYear(), now.getMonth(), now.getDate()), 7);
     const cost = planCost(
       state.plan.filter((meal) => days.includes(meal.date)),
@@ -45,14 +58,26 @@ export function registerMealsIpc(ctx: IpcContext): void {
           cost: recipeCost(recipe, recipe.servings, lookup),
           nutrition: perServing(recipeNutrition(recipe, recipe.servings, lookup), recipe.servings),
           coverage: coverageCount(coverage),
-          lines: coverage.map((line) => ({
-            text: line.ingredient.text,
-            ingredientId: line.ingredient.ingredientId,
-            optional: line.ingredient.optional,
-            needed: line.needed,
-            status: line.status,
-            short: line.short,
-          })),
+          lines: coverage.map((line) => {
+            const stock = firstPackage(line.ingredient.ingredientId);
+            return {
+              text: line.ingredient.text,
+              ingredientId: line.ingredient.ingredientId,
+              optional: line.ingredient.optional,
+              needed: line.needed,
+              status: line.status,
+              short: line.short,
+              packaging: ingredients.get(line.ingredient.ingredientId)?.lastPackaging ?? null,
+              stock: stock
+                ? {
+                    expiry: expiryState(stock.expiresAt, now),
+                    expiresAt: stock.expiresAt,
+                    opened: stock.openedAt !== null,
+                    confidence: stock.confidence,
+                  }
+                : null,
+            };
+          }),
         };
       }),
       stock: summariseStock(state.pantry, now).map((entry) => ({
@@ -62,7 +87,21 @@ export function registerMealsIpc(ctx: IpcContext): void {
       leftovers: usableLeftovers(state.leftovers, now),
       plan: state.plan.map((meal) => ({
         meal,
-        name: mealName(meal, recipes, new Map(state.leftovers.map((l) => [l.id, l]))),
+        name: mealName(meal, recipes, leftoverMap),
+        // "Nothing to buy" is judged at the servings this meal is cooked for.
+        badge: mealBadge(
+          meal,
+          leftoverMap,
+          meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
+            ? coverageCount(
+                coverRecipe(
+                  recipes.get(meal.recipeId)!.ingredients,
+                  state.pantry,
+                  scaleFor(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings)
+                )
+              )
+            : null
+        ),
         cost:
           meal.cost ??
           (meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
@@ -147,8 +186,8 @@ export function registerMealsIpc(ctx: IpcContext): void {
   handle("nimbus:update-stock", (_event, id: unknown, changes: unknown) =>
     ctx.mealService.updateStock(String(id ?? ""), changes)
   );
-  handle("nimbus:correct-stock", (_event, id: unknown, quantity: unknown, unit: unknown) =>
-    ctx.mealService.correctStock(String(id ?? ""), quantity, unit)
+  handle("nimbus:correct-stock", (_event, id: unknown, quantity: unknown, unit: unknown, reason: unknown) =>
+    ctx.mealService.correctStock(String(id ?? ""), quantity, unit ?? undefined, reason)
   );
   handle("nimbus:remove-stock", (_event, id: unknown) => ctx.mealService.removeStock(String(id ?? "")));
   handle("nimbus:add-leftover", (_event, input: unknown) => ctx.mealService.addLeftover(input));
@@ -163,6 +202,12 @@ export function registerMealsIpc(ctx: IpcContext): void {
     ctx.mealService.removePlannedMeal(String(id ?? ""))
   );
   handle("nimbus:cook-meal", (_event, input: unknown) => ctx.mealService.cook(input));
+  handle("nimbus:preview-cook", (_event, recipeId: unknown, servings: unknown) =>
+    ctx.mealService.previewCook(String(recipeId ?? ""), servings)
+  );
+  handle("nimbus:add-missing-to-shopping", (_event, recipeId: unknown, servings: unknown) =>
+    ctx.mealService.addMissingToShopping(String(recipeId ?? ""), servings)
+  );
   handle("nimbus:eat-leftover", (_event, mealId: unknown, leftoverId: unknown, portions: unknown) =>
     ctx.mealService.eatLeftover(String(mealId ?? ""), String(leftoverId ?? ""), portions)
   );

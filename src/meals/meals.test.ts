@@ -10,10 +10,19 @@ import {
   summariseStock,
 } from "./pantry";
 import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCookingAt } from "./recipes";
-import { dayRange, mealName, mealsOn, nextMeal, planCost, servingsNeeded } from "./plan";
+import {
+  dayRange,
+  leftoverCoverage,
+  mealBadge,
+  mealName,
+  mealsOn,
+  nextMeal,
+  planCost,
+  servingsNeeded,
+} from "./plan";
 import { MealService, ingredientKey, parseState } from "./mealService";
-import { durationMinutes, parseIngredientLine, parseRecipePage } from "./recipeImport";
-import type { Ingredient, MealsState, MealsStore, PantryItem, Recipe } from "./types";
+import { durationMinutes, parseAmountText, parseIngredientLine, parseRecipePage } from "./recipeImport";
+import type { Ingredient, MealsState, MealsStore, PantryItem, PlannedMeal, Recipe } from "./types";
 
 test("units: aliases, base amounts, and weight is never turned into volume", () => {
   assert.equal(normaliseUnit(" Kilos "), "kg");
@@ -69,6 +78,7 @@ test("pantry: expiry states, and the summary puts what expires first at the top"
     packaging: null,
     openedAt: null,
     expiresAt: over.expiresAt ?? null,
+    lastCorrection: null,
     addedAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
   });
@@ -142,6 +152,7 @@ const pantryItem = (
   packaging: null,
   openedAt: null,
   expiresAt,
+  lastCorrection: null,
   addedAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
 });
@@ -200,6 +211,7 @@ const ingredient = (id: string, over: Partial<Ingredient> = {}): Ingredient => (
   nutritionSource: null,
   lastPrice: null,
   fridgeDays: null,
+  lastPackaging: null,
   addedAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
   ...over,
@@ -666,4 +678,151 @@ test("a planned meal reads as what it is: the recipe, the leftovers, or where yo
     [named(breakfast), named(lunch), named(dinner)],
     ["Porridge", "Chilli con carne (leftovers)", "Canteen"]
   );
+});
+
+test("step 1: the cook preview says what comes out of which package, and changes nothing", () => {
+  const { service: meals } = service();
+  const potato = meals.ensureIngredient("Potatoes", "g");
+  meals.addStock({
+    ingredientId: potato.id,
+    quantity: 2,
+    unit: "kg",
+    place: "cupboard",
+    packaging: "2 kg bag",
+  });
+  const saved = meals.saveRecipe({
+    name: "Roast potatoes",
+    servings: 3,
+    ingredients: [
+      { name: "Potatoes", quantity: 900, unit: "g" },
+      { name: "Rosemary", quantity: 2, unit: "piece" },
+    ],
+  });
+  const preview = meals.previewCook(saved.id, 3);
+  assert.equal(preview.deductions.length, 1);
+  assert.equal(preview.deductions[0].packaging, "2 kg bag");
+  assert.deepEqual(preview.deductions[0].remaining, { quantity: 1.1, unit: "kg" });
+  assert.equal(preview.deductions[0].empties, false);
+  assert.deepEqual(
+    preview.short.map((s) => s.name),
+    ["Rosemary"]
+  );
+  // Nothing moved.
+  assert.equal(meals.listPantry()[0].quantity, 2);
+  // And the ingredient remembers the package it came in.
+  assert.equal(meals.findIngredient("potatoes")!.lastPackaging, "2 kg bag");
+});
+
+test("step 1: cooking can put the extra portions straight into a slot of the plan", () => {
+  const { service: meals } = service();
+  meals.updatePreferences({
+    eaters: [
+      { name: "A", portionFactor: 1 },
+      { name: "B", portionFactor: 1 },
+    ],
+  });
+  const saved = meals.saveRecipe({
+    name: "Chilli",
+    servings: 4,
+    ingredients: [{ name: "Beans", quantity: 400, unit: "g" }],
+  });
+  const result = meals.cook({
+    recipeId: saved.id,
+    cookServings: 4,
+    eatServings: 2,
+    skipPantry: true,
+    scheduleLeftoverFor: { date: "2026-09-25", slot: "lunch" },
+  });
+  assert.equal(result.leftover?.portions, 2);
+  assert.ok(result.scheduled);
+  assert.equal(result.scheduled!.kind, "leftover");
+  assert.equal(result.scheduled!.leftoverId, result.leftover!.id);
+  assert.equal(result.scheduled!.servings, 2);
+  assert.equal(meals.listPlan().length, 1);
+});
+
+test("step 1: correcting stock records why, and a bad reason is simply not recorded", () => {
+  const { service: meals } = service();
+  const item = meals.addStock({ name: "Eggs", quantity: 12, unit: "piece", place: "fridge" });
+  meals.correctStock(item.id, 2, undefined, "thrown");
+  const after = meals.listPantry()[0];
+  assert.equal(after.quantity, 2);
+  assert.equal(after.lastCorrection?.reason, "thrown");
+  meals.correctStock(item.id, 3, undefined, "because I said so");
+  assert.equal(meals.listPantry()[0].lastCorrection?.reason, "thrown");
+  // And it survives a reload, checked like everything else.
+  const reloaded = parseState(JSON.parse(JSON.stringify(meals.getState())));
+  assert.equal(reloaded.pantry[0].lastCorrection?.reason, "thrown");
+  assert.equal(
+    parseState({ pantry: [{ ...after, lastCorrection: { reason: "nope", at: "x" } }] }).pantry[0]
+      .lastCorrection,
+    null
+  );
+});
+
+test("step 1: amounts typed as text", () => {
+  assert.deepEqual(parseAmountText("250 g"), { quantity: 250, unit: "g" });
+  assert.deepEqual(parseAmountText("1,5 kg"), { quantity: 1.5, unit: "kg" });
+  assert.deepEqual(parseAmountText("3"), { quantity: 3, unit: "piece" });
+  assert.equal(parseAmountText("some"), null);
+});
+
+test("step 1: plan badges — leftovers covering 2 of 3, and a recipe that's all at home", () => {
+  const leftovers = new Map([["l1", { portions: 2 }]]);
+  const meal = (over: Partial<PlannedMeal>): PlannedMeal => ({
+    id: "m",
+    date: "2026-09-22",
+    slot: "lunch",
+    kind: "recipe",
+    recipeId: "r1",
+    leftoverId: null,
+    name: null,
+    servings: 3,
+    cookServings: null,
+    time: null,
+    cost: null,
+    notes: null,
+    cookedAt: null,
+    addedAt: "",
+    updatedAt: "",
+    ...over,
+  });
+  const left = meal({ kind: "leftover", recipeId: null, leftoverId: "l1" });
+  assert.deepEqual(leftoverCoverage(left, leftovers), { portions: 2, needed: 3, short: 1 });
+  assert.deepEqual(mealBadge(left, leftovers, null), { kind: "leftover", label: "↺ 2/3" });
+  assert.deepEqual(mealBadge(meal({}), leftovers, { have: 4, total: 4 }), {
+    kind: "pantry",
+    label: "◦ Pantry",
+  });
+  assert.equal(mealBadge(meal({}), leftovers, { have: 3, total: 4 }), null);
+});
+
+test("step 1: a recipe's missing lines go on the shopping list once", () => {
+  const { service: meals } = service();
+  meals.addStock({ name: "Rice", quantity: 100, unit: "g", place: "cupboard" });
+  const saved = meals.saveRecipe({
+    name: "Rice and beans",
+    servings: 2,
+    ingredients: [
+      { name: "Rice", quantity: 300, unit: "g" },
+      { name: "Beans", quantity: 1, unit: "tin" },
+    ],
+  });
+  assert.equal(meals.addMissingToShopping(saved.id, 2), 2);
+  assert.equal(meals.addMissingToShopping(saved.id, 2), 0);
+  const rice = meals.getState().shopping.find((item) => item.name === "Rice")!;
+  assert.equal(rice.quantity, 200);
+  assert.equal(rice.note, "for Rice and beans");
+});
+
+test("step 1: editing a recipe keeps its notes and the minutes of steps kept word for word", () => {
+  const { service: meals } = service();
+  const saved = meals.saveRecipe({
+    name: "Soup",
+    notes: "Freezes well",
+    steps: [{ text: "Simmer.", minutes: 20 }],
+  });
+  const edited = meals.saveRecipe({ name: "Soup", steps: [{ text: "Simmer.", minutes: 20 }] }, saved.id);
+  assert.equal(edited.notes, "Freezes well");
+  assert.equal(edited.steps[0].minutes, 20);
 });

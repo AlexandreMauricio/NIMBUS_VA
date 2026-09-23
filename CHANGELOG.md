@@ -20,6 +20,38 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.15 — 2026-09-23
+
+Meals, step 1 of 4 towards the "Meals v3" design: the smaller gaps in the
+tabs that already exist.
+
+- **The plan is drawn as the design has it** — a row per meal, a column
+  per day. Each row shows its usual time and what it costs this week; a
+  day's cost turns amber over budget; cells carry badges: **↺ 2/3** when
+  leftovers feed two of three people, **◦ Pantry** when nothing needs
+  buying.
+- **The cook dialog shows what will happen before it happens**: planned
+  servings against what you're actually cooking, what comes out of which
+  package ("use 900 g · 1.1 kg remains"), fridge (with its eat-by date) or
+  freezer for the extra portions — and it can put them straight into a
+  free lunch or dinner.
+- **Correcting stock** takes the amount as you'd say it ("250 g", "3
+  pcs"), has None left / Half / **Full package**, and keeps why it changed.
+  **Stock check** walks through every estimated item in turn.
+- **Recipe pages** say more about each ingredient — "Home · exp. tmrw",
+  "Home · opened", "Buy · 1 kg pack" — and **Add missing to shopping**
+  puts what's short on the list. Method steps show their minutes; the
+  recipe list can be sorted by **recently cooked**; the editor shows which
+  known food each line will be.
+- Leftovers say which meal they're scheduled for, on Today and in the
+  pantry.
+- Dialogs open over the tab instead of at the bottom of a long page.
+- **Fixed:** editing a recipe dropped its notes and its steps' minutes.
+- Under the hood: the Meals tab's 2,500-line file is split into a module
+  per view (`src/ui/meals/`), moved code unchanged.
+
+---
+
 ## 0.6.14 — 2026-09-23
 
 - **The IPC handlers have their own home.** `lifecycle.ts` held every one

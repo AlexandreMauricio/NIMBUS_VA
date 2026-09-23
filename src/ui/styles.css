@@ -5412,95 +5412,161 @@ details.context-card > summary .context-card-title {
   font-variant-numeric: tabular-nums;
 }
 
-/* The week: a column a day, a cell a slot. */
-.meals-week {
+/* The week: a row per meal slot, a column per day - as the design draws it. */
+.meals-plan-scroll {
+  overflow-x: auto;
+}
+
+.meals-plan-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: var(--space-2);
+  gap: 8px;
+  min-width: 760px;
 }
 
-.meals-day {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.meals-day.is-today {
-  border: 1px solid var(--color-accent-600);
-  box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
-.meals-day-head {
+.meals-plan-day {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: 6px;
+  padding: 0 4px 4px;
+  border-bottom: 2px solid var(--color-divider);
 }
 
-.meals-day-name {
-  font-size: 0.78rem;
-  color: var(--color-neutral-300);
+.meals-plan-day.is-today {
+  border-bottom-color: var(--color-accent);
 }
 
-.meals-day-cost {
+.meals-plan-daynum {
+  font-size: 1.1rem;
+  color: var(--color-text);
+}
+
+.meals-plan-daycost {
+  margin-left: auto;
   font-size: 0.68rem;
   color: var(--color-neutral-500);
   font-variant-numeric: tabular-nums;
 }
 
-.meals-cell {
+.meals-plan-daycost.is-over {
+  color: var(--color-warning);
+}
+
+.meals-plan-slot {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
-  min-height: 3.4rem;
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-neutral-900);
-  font-size: 0.78rem;
+  padding-right: var(--space-2);
 }
 
-.meals-cell.is-empty {
-  background: none;
-  border: 1px dashed var(--color-neutral-700);
+.meals-plan-slotname {
+  font-size: 0.82rem;
+  color: var(--color-text);
 }
 
-.meals-cell.is-leftover {
-  border: 1px dashed var(--color-accent-600);
+.meals-plan-slotmeta {
+  font-size: 0.68rem;
+  color: var(--color-neutral-500);
+  font-variant-numeric: tabular-nums;
 }
 
-.meals-cell.is-done .meals-cell-name {
-  color: var(--color-neutral-400);
-  text-decoration: line-through;
-}
-
-.meals-cell-name,
-.meals-cell-add {
-  padding: 0;
-  border: none;
-  background: none;
+.meals-pcell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 86px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
   color: inherit;
   font-family: var(--font-body);
   font-size: 0.8rem;
+  line-height: 1.3;
   text-align: left;
   cursor: pointer;
 }
 
-.meals-cell-add {
-  color: var(--color-neutral-500);
+.meals-pcell:hover {
+  border-color: var(--color-accent-600);
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
 }
 
-.meals-cell-name:hover,
-.meals-cell-add:hover {
-  color: var(--color-accent-200);
+.meals-pcell.is-today {
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+}
+
+.meals-pcell.is-empty {
+  background: none;
+  border: 1px dashed var(--color-neutral-700);
+}
+
+.meals-pcell.is-leftover {
+  border: 1px dashed var(--color-accent-600);
+}
+
+.meals-pcell.is-swap {
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+
+.meals-pcell.is-pick {
+  border: 1px solid var(--color-accent-700);
+}
+
+.meals-pcell.is-done .meals-pcell-name {
+  color: var(--color-neutral-400);
+  text-decoration: line-through;
+}
+
+.meals-pcell-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.meals-pcell-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+}
+
+.meals-pcell .meals-pill {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.meals-cell-add {
+  color: var(--color-neutral-500);
 }
 
 .meals-cell-meta {
   font-size: 0.68rem;
   color: var(--color-neutral-500);
   font-variant-numeric: tabular-nums;
+}
+
+.meals-plan-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-4);
+  font-size: 0.75rem;
+  color: var(--color-neutral-500);
+}
+
+.meals-plan-key-hint {
+  margin-left: auto;
+}
+
+/* Leftovers are dashed: food already cooked, not a new dish. */
+.meals-pill-left {
+  color: var(--color-accent-200);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border: 1px dashed var(--color-accent-500);
 }
 
 /* The week's dinners, as a strip. */
@@ -5794,4 +5860,70 @@ details.context-card > summary .context-card-title {
   .meals-prow {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* A toolbar whose last control sits on the right. */
+.meals-toolbar-split {
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+/* The extra portions in the cook dialog: food already cooked, so dashed. */
+.meals-leftover-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--color-accent-600);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-900);
+}
+
+.meals-leftover-box .meals-note,
+.meals-leftover-box .card-kicker {
+  margin: 0;
+}
+
+/* Which food an editor line will be. */
+.meals-match {
+  min-width: 9rem;
+}
+
+.meals-match.is-new {
+  color: var(--color-accent-300);
+}
+
+.meals-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Dialogs sit over the tab, as the design's modals do. */
+.meals-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh var(--space-4);
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
+}
+
+.meals-modal-box {
+  width: 100%;
+  max-width: 600px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Pills in a plan cell hug their text rather than filling the column. */
+.meals-pcell-foot .meals-pill {
+  align-self: flex-start;
+}
+
+/* A recipe line's status sits at the end of the row. */
+.meals-recipe-columns .meals-line > .meals-pill:last-child {
+  margin-left: auto;
 }

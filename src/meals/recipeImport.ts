@@ -281,3 +281,13 @@ export function parseRecipePage(html: string, url: string): ImportedRecipe | nul
     needsChecking: ingredients.filter((line) => line.warning !== null).length,
   };
 }
+
+/**
+ * An amount typed as text — "250 g", "1,5 kg", "3 pcs", "½" — or null when
+ * there's no number in it. A number with no unit is counted in pieces.
+ */
+export function parseAmountText(value: string): { quantity: number; unit: string } | null {
+  const parsed = parseIngredientLine(value.replace(/(\d),(\d)/g, "$1.$2"));
+  if (parsed.quantity === null) return null;
+  return { quantity: parsed.quantity, unit: parsed.unit ?? "piece" };
+}

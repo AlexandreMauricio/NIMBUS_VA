@@ -135,3 +135,39 @@ export function mealName(
   if (meal.name) return meal.name;
   return meal.kind === "out" ? "Eating out" : "Meal";
 }
+
+/** How far a planned leftover meal goes: portions there against servings wanted. */
+export function leftoverCoverage(
+  meal: PlannedMeal,
+  leftovers: Map<string, { portions: number }>
+): { portions: number; needed: number; short: number } | null {
+  if (meal.kind !== "leftover" || !meal.leftoverId) return null;
+  const portions = leftovers.get(meal.leftoverId)?.portions ?? 0;
+  const needed = meal.servings;
+  return { portions: Math.min(portions, needed), needed, short: Math.max(0, needed - portions) };
+}
+
+export type MealBadgeKind = "leftover" | "pantry" | "pick" | "swap";
+
+/** The small tag a plan cell carries: leftovers covering 2 of 3, all from the pantry, your pick. */
+export interface MealBadge {
+  kind: MealBadgeKind;
+  label: string;
+}
+
+/**
+ * The badge for a planned meal, or null. `atHome` is the recipe's
+ * coverage when it's cooked from a recipe — all of it at home means there
+ * is nothing to buy for it.
+ */
+export function mealBadge(
+  meal: PlannedMeal,
+  leftovers: Map<string, { portions: number }>,
+  atHome: { have: number; total: number } | null
+): MealBadge | null {
+  const coverage = leftoverCoverage(meal, leftovers);
+  if (coverage) return { kind: "leftover", label: `↺ ${coverage.portions}/${coverage.needed}` };
+  if (meal.kind === "recipe" && !meal.cookedAt && atHome && atHome.total > 0 && atHome.have === atHome.total)
+    return { kind: "pantry", label: "◦ Pantry" };
+  return null;
+}

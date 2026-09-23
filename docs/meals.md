@@ -81,6 +81,12 @@ three eggs for two people is five eggs for three, not 4.5.
 **Don't touch the pantry** skips step 1, for when you cooked from
 something you had never recorded.
 
+The cook dialog shows all of this **before** anything moves: planned
+servings against what you're actually cooking, what comes out of which
+package ("use 900 g · 1.1 kg remains"), and where the extra portions go —
+the fridge with its eat-by date or the freezer — optionally straight into
+a free lunch or dinner before they have to be eaten.
+
 ## Cost and nutrition
 
 Both are estimates, and both say what they were worked out from.
@@ -109,22 +115,35 @@ for the shopping list and the pantry:
   daily target, **spend** as a column a day with the budget as a dashed
   line, **what needs eating**, **leftovers**, the shopping total, and the
   week's dinners as a strip.
-- **Plan** — a column per day for the next week, a cell per meal slot.
-  A cell takes a recipe, leftovers, something you'll make, or a night out
-  with its own price. Nothing is generated: you put meals in slots.
+- **Plan** — a row per meal slot and a column per day for the next week,
+  each row with its usual time and what it costs, each day's cost turning
+  amber over budget. A cell takes a recipe, leftovers, something you'll
+  make, or a night out with its own price, and carries a badge: **↺ 2/3**
+  when leftovers feed two of three people, **◦ Pantry** when everything
+  it needs is at home (judged at the servings it's cooked for). Nothing
+  is generated: you put meals in slots.
 - **Recipes** — chips for the meal and for filters (all at home, ≤ 30 min,
-  ≤ 2 €/serving, favourites, imported), each with a count; cards showing
+  ≤ 2 €/serving, favourites, imported), each with a count, sorted by what's
+  at home, time, cost, name or **recently cooked**; cards showing
   time, calories, protein, cost per serving and how much is at home; and a
   recipe page with a **servings stepper** that rescales every amount, the
-  ingredients against the pantry, numbered method steps, nutrition, where
-  it appears in your plan, and how often you've cooked it.
+  ingredients against the pantry — "Home · exp. tmrw", "Home · opened",
+  "Home · ≈ est.", or "Buy · 1 kg pack" with the package it last came in —
+  **Add missing to shopping**, numbered method steps with their minutes,
+  nutrition, where it appears in your plan, and how often you've cooked
+  it. The editor shows which known food each line will be ("→ Chicken
+  thighs"), or that saving creates a new one.
 - **Shopping** — what the week needs that the kitchen hasn't got, why
   each line is there, and **Bought** to put it in the pantry at the price
   you paid.
 - **Pantry** — four counters (expiring within 48 h, this week, needing a
-  check, confirmed), chips to filter, then a group per place with a bar
-  per item showing how much of the package is left, **Correct**, and the
-  prepared food and leftovers below.
+  check, confirmed), chips to filter, **Stock check** to walk through every
+  estimated item in turn, then a group per place with a bar per item
+  showing how much of the package is left, **Correct**, and the prepared
+  food and leftovers below, each saying which meal it's scheduled for.
+  Correcting takes the amount as you'd say it ("250 g", "3 pcs"), offers
+  None left / Half / Full package, and keeps why (estimate was off, used
+  outside a recipe, thrown away, found more).
 - **Settings** — who eats and how much (a label, a multiplier and a note —
   no profiles), restrictions, dislikes, the meal slots, and a daily budget.
 
@@ -202,7 +221,10 @@ src/meals/            [1] Core — no Electron, no filesystem
   demoData.ts            A removable demo kitchen
   mealService.ts         Validation, identity, CRUD and cooking, over a store
 src/main/mealStore.ts [2] meals.json (atomic write, set aside if unreadable)
-src/ui/mealsTab.ts    [5] The tab
+src/meals/names.ts    [1] How food names are compared (shared with the editor)
+src/ui/mealsTab.ts    [5] The tab: header, view switch, render
+src/ui/meals/         [5] One module per view (today, plan, cook, recipes,
+                          shopping, pantry, settings) and common.ts
 ```
 
 Servings for the household come from the people in Settings: each one's
@@ -230,5 +252,5 @@ Deliberately absent, and the order they're planned in:
 4. **The briefing and Attention** — `meals` already exists as a briefing
    category, unused. "Take the chicken out of the freezer" is the obvious
    first signal.
-5. **Shopping by store and category**, and leftovers scheduled into the
-   plan automatically within their safe window.
+5. **Shopping by store**, and leftovers scheduled into the plan
+   automatically (by hand, from the cook dialog, already works).

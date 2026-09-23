@@ -393,8 +393,8 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:add-stock", input),
   updateStock: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:update-stock", id, changes),
-  correctStock: (id: string, quantity: number, unit?: string): Promise<unknown> =>
-    ipcRenderer.invoke("nimbus:correct-stock", id, quantity, unit ?? null),
+  correctStock: (id: string, quantity: number, unit?: string, reason?: string): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:correct-stock", id, quantity, unit ?? null, reason ?? null),
   removeStock: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-stock", id),
   addLeftover: (input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:add-leftover", input),
@@ -406,6 +406,10 @@ contextBridge.exposeInMainWorld("nimbus", {
   removePlannedMeal: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-planned-meal", id),
   cookMeal: (input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:cook-meal", input),
+  previewCook: (recipeId: string, servings: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:preview-cook", recipeId, servings),
+  addMissingToShopping: (recipeId: string, servings: number): Promise<number> =>
+    ipcRenderer.invoke("nimbus:add-missing-to-shopping", recipeId, servings),
   eatLeftover: (mealId: string, leftoverId: string, portions: number): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:eat-leftover", mealId, leftoverId, portions),
   updateIngredient: (id: string, changes: Record<string, unknown>): Promise<unknown> =>

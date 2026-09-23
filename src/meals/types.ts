@@ -72,6 +72,8 @@ export interface Ingredient {
   lastPrice: number | null;
   /** How long it keeps once in the fridge, in days — used to suggest an eat-by date. */
   fridgeDays: number | null;
+  /** The package it last came in ("1 kg pack"), so the shopping side can say what to buy. */
+  lastPackaging: string | null;
   addedAt: string;
   updatedAt: string;
 }
@@ -141,9 +143,23 @@ export interface PantryItem {
   openedAt: string | null;
   /** Eat-by date, as an ISO date (YYYY-MM-DD), or null if it doesn't really expire. */
   expiresAt: string | null;
+  /** The last time you corrected the amount, and why — so "thrown away" isn't lost in the number. */
+  lastCorrection: { reason: CorrectionReason; at: string } | null;
   addedAt: string;
   updatedAt: string;
 }
+
+/** Why an amount was corrected by hand. */
+export type CorrectionReason = "estimate" | "outside" | "thrown" | "found";
+
+export const CORRECTION_REASONS: CorrectionReason[] = ["estimate", "outside", "thrown", "found"];
+
+export const CORRECTION_LABELS: Record<CorrectionReason, string> = {
+  estimate: "Estimate was off",
+  outside: "Used outside a recipe",
+  thrown: "Thrown away",
+  found: "Found more",
+};
 
 /**
  * Food already cooked: portions, not grams. Its own thing rather than a
