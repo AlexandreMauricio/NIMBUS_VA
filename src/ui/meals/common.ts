@@ -212,7 +212,7 @@ export interface PlanEntryUI {
   cooks: number | null;
   cost: number | null;
   nutrition: NutritionUI | null;
-  badge: { kind: "leftover" | "pantry" | "pick" | "swap"; label: string } | null;
+  badge: { kind: "leftover" | "pantry" | "pick" | "swap" | "kind"; label: string } | null;
 }
 
 /** A recipe the replace drawer offers (generator.replaceOptions). */

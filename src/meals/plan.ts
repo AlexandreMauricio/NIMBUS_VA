@@ -13,7 +13,7 @@
 import { isoDate } from "./pantry";
 import { recipeCost } from "./recipes";
 import type { IngredientLookup } from "./recipes";
-import { MEAL_SLOTS, MealSlot, PlannedMeal, Recipe } from "./types";
+import { MEAL_KIND_LABELS, MEAL_SLOTS, MealSlot, PlannedMeal, Recipe } from "./types";
 import type { Eater, MealPreferences } from "./types";
 
 /**
@@ -133,13 +133,7 @@ export function mealName(
     if (leftover) return `${leftover.name} (leftovers)`;
   }
   if (meal.name) return meal.name;
-  const byKind: Partial<Record<PlannedMeal["kind"], string>> = {
-    out: "Eating out",
-    takeaway: "Takeaway",
-    friends: "At friends'",
-    skip: "Skipped",
-  };
-  return byKind[meal.kind] ?? "Meal";
+  return MEAL_KIND_LABELS[meal.kind] ?? "Meal";
 }
 
 /** How far a planned leftover meal goes: portions there against servings wanted. */
@@ -155,7 +149,7 @@ export function leftoverCoverage(
   return { portions: Math.min(portions, needed), needed, short: Math.max(0, needed - portions) };
 }
 
-export type MealBadgeKind = "leftover" | "pantry" | "pick" | "swap";
+export type MealBadgeKind = "leftover" | "pantry" | "pick" | "swap" | "kind";
 
 /** The small tag a plan cell carries: leftovers covering 2 of 3, all from the pantry, your pick. */
 export interface MealBadge {
@@ -177,6 +171,15 @@ export function mealBadge(
 ): MealBadge | null {
   const coverage = leftoverCoverage(meal, leftovers);
   if (coverage) return { kind: "leftover", label: `↺ ${coverage.portions}/${coverage.needed}` };
+  // Not cooked at home: say what it was — "Divinos" reads as a meal out.
+  const away: Partial<Record<PlannedMeal["kind"], string>> = {
+    out: "Out",
+    takeaway: "Takeaway",
+    friends: "At friends'",
+    work: "At work",
+    skip: "Skipped",
+  };
+  if (away[meal.kind]) return { kind: "kind", label: away[meal.kind]! };
   if (meal.swapSaving !== null && meal.swapSaving > 0)
     return { kind: "swap", label: `€ −${meal.swapSaving.toFixed(2).replace(".", ",")}` };
   if (picks && meal.origin === "user" && !meal.cookedAt) return { kind: "pick", label: "✎ Your pick" };

@@ -110,8 +110,9 @@ export function purchasesView(data: MealsSnapshot): HTMLElement {
         status.appendChild(make("span", "meals-line-meta", ` ${unchecked} to check · pantry not updated`));
       row.appendChild(status);
       const action = make("td", "is-number meals-row-actions");
-      action.appendChild(button("✕", "meals-link", () => confirmDelete(purchase)));
-      action.lastElementChild!.setAttribute("title", "Delete this purchase");
+      const remove = button("Delete", "meals-link meals-row-delete", () => confirmDelete(purchase));
+      remove.title = "Delete this purchase";
+      action.appendChild(remove);
       action.appendChild(
         button(
           purchase.status === "review" ? `Review ${unchecked || ""} →`.replace("  ", " ") : "View",
@@ -637,9 +638,9 @@ const PLACE_LABELS: Record<string, string> = { cupboard: "Cupboard", fridge: "Fr
  * out with it — for a purchase typed by mistake, or one made to try things.
  */
 function confirmDelete(purchase: PurchaseUI): void {
-  const box = make("div");
-  box.appendChild(make("h3", "meals-drawer-title", "Delete this purchase?"));
-  box.appendChild(
+  const { box, body } = panel("Delete this purchase?");
+  box.classList.add("meals-dialog");
+  body.appendChild(
     make(
       "p",
       "meals-note",
@@ -657,9 +658,9 @@ function confirmDelete(purchase: PurchaseUI): void {
         ` Also take out what it added to the pantry (${stocked} item${stocked === 1 ? "" : "s"}, as much as it added)`
       )
     );
-    box.appendChild(label);
+    body.appendChild(label);
   } else if (purchase.status !== "review")
-    box.appendChild(make("p", "meals-note", "It didn't add anything to the pantry."));
+    body.appendChild(make("p", "meals-note", "It didn't add anything to the pantry."));
   const actions = make("div", "meals-row");
   actions.append(
     button(
@@ -678,7 +679,7 @@ function confirmDelete(purchase: PurchaseUI): void {
     ),
     button("Cancel", "btn btn-ghost", () => rerender())
   );
-  box.appendChild(actions);
+  body.appendChild(actions);
   showModal(box);
 }
 

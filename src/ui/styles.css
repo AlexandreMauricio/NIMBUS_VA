@@ -6514,3 +6514,18 @@ button.meals-alt-btn:hover {
   flex-direction: column;
   gap: 4px;
 }
+
+/* A purchase row's actions: Delete, then Review or View, with room between. */
+.meals-row-actions {
+  white-space: nowrap;
+}
+
+.meals-row-delete {
+  margin-right: var(--space-4);
+  color: var(--color-neutral-400, var(--color-neutral-300));
+  font-size: 0.8rem;
+}
+
+.meals-row-delete:hover {
+  color: var(--color-error);
+}

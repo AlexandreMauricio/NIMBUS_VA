@@ -32,6 +32,7 @@ const CUSTOM_KINDS: Array<[string, string]> = [
   ["out", "Eating out"],
   ["takeaway", "Takeaway"],
   ["friends", "At friends'"],
+  ["work", "At work"],
   ["skip", "Skip meal"],
   ["custom", "Something I'll make"],
 ];
@@ -163,6 +164,16 @@ export function replaceDrawer(data: MealsSnapshot): HTMLElement | null {
   }
 
   const actions = make("div", "meals-row");
+  // Two things in one meal: a takeaway for one, leftovers for another.
+  if (!proposed)
+    actions.appendChild(
+      button("+ Another meal here", "btn btn-ghost", () => {
+        state.replacing = null;
+        state.view = "plan";
+        state.planning = { date: meal.date, slot: meal.slot, mealId: null };
+        rerender();
+      })
+    );
   if (!meal.cookedAt) {
     actions.append(
       button(

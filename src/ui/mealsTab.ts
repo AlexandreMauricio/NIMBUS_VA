@@ -47,7 +47,29 @@ export function initMealsTab(): void {
   void refresh();
 }
 
+/**
+ * Drawing again after a change keeps each open drawer and dialog scrolled
+ * where it was — checking the 20th line of a receipt doesn't jump back to
+ * the first.
+ */
 function render(): void {
+  const scrolled = root
+    ? Array.from(root.querySelectorAll<HTMLElement>(".meals-drawer, .meals-modal-box")).map((element) => ({
+        key: element.className,
+        top: element.scrollTop,
+      }))
+    : [];
+  draw();
+  if (!root) return;
+  for (const { key, top } of scrolled) {
+    const again = Array.from(root.querySelectorAll<HTMLElement>(".meals-drawer, .meals-modal-box")).find(
+      (element) => element.className === key
+    );
+    if (again) again.scrollTop = top;
+  }
+}
+
+function draw(): void {
   if (!root) return;
   root.replaceChildren();
   if (!snapshot) {

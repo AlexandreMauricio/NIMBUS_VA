@@ -20,6 +20,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.27 — 2026-09-23
+
+- **A meal not cooked at home says so.** Out, takeaway, at friends', at
+  work and skipped meals carry a tag in the plan ("Divinos" · Out ·
+  14,50 €), after the plan is accepted too.
+- **"At work"** is back as a kind of meal — in the plan editor, with the
+  other kinds (takeaway, at friends', skipped), and in the replace drawer.
+- **More than one meal in a slot**: "+ Another meal here" in a meal's
+  drawer — a takeaway for one, leftovers for another.
+- The purchase review keeps its place: checking a line no longer jumps
+  back to the top. Deleting a purchase is a proper dialog, and the
+  history's Delete sits apart from Review.
+
 ## 0.6.26 — 2026-09-23
 
 - Freezing in bags is offered for meat and fish (or anything you send to

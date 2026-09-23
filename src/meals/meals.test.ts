@@ -1258,3 +1258,21 @@ test("frozen bags: bought in bags, planned to use a whole one, defrosted the nig
   assert.equal(meals.removePurchase(purchase.id, { takeBack: true }), 1);
   assert.equal(meals.listPantry().length, 0);
 });
+
+test("kinds: a meal out says it was out, at work reads as at work, and a slot can hold two meals", () => {
+  const { service: meals } = service();
+  const out = meals.planMeal({
+    date: "2026-10-05",
+    slot: "lunch",
+    kind: "out",
+    name: "Divinos",
+    cost: 14.5,
+    servings: 1,
+  });
+  assert.deepEqual(mealBadge(out, new Map(), null, true), { kind: "kind", label: "Out" });
+  assert.equal(mealName(out, new Map()), "Divinos");
+  const work = meals.planMeal({ date: "2026-10-06", slot: "lunch", kind: "work", servings: 1 });
+  assert.equal(mealName(work, new Map()), "At work");
+  meals.planMeal({ date: "2026-10-05", slot: "lunch", kind: "takeaway", name: "Sushi", servings: 1 });
+  assert.equal(meals.listPlan().filter((m) => m.date === "2026-10-05" && m.slot === "lunch").length, 2);
+});

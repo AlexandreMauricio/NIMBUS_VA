@@ -76,6 +76,7 @@ import {
   Recipe,
   MAX_COMPONENTS,
   PLAN_OBJECTIVES,
+  MEAL_KIND_LABELS,
   PLANNED_MEAL_KINDS,
   PlanObjective,
   PlanProposal,
@@ -2109,12 +2110,7 @@ export class MealService {
     } else if (kind === "leftover") {
       throw new Error("Leftovers are placed from the pantry or the cook dialog.");
     } else {
-      const labels: Partial<Record<PlannedMealKind, string>> = {
-        out: "Eating out",
-        takeaway: "Takeaway",
-        friends: "At friends'",
-        skip: "Skipped",
-      };
+      const labels = MEAL_KIND_LABELS;
       Object.assign(meal, {
         kind,
         recipeId: null,

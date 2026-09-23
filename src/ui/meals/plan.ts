@@ -352,12 +352,14 @@ export function planView(data: MealsSnapshot): HTMLElement {
   if (shown.has("swap")) keyItem("€ −3,10", "soon", "budget swap");
   if (shown.has("pantry")) keyItem("◦ Pantry", "calm", "nothing to buy");
   if (shown.has("pick")) keyItem("✎ Your pick", "accent", "kept when regenerating");
+  if (shown.has("kind")) keyItem("Out", "est", "not cooked at home");
   key.appendChild(make("span", "meals-plan-key-hint", "Click any meal to change it"));
   wrap.appendChild(key);
   return wrap;
 }
 
 const BADGE_PILL: Record<string, Parameters<typeof pill>[1]> = {
+  kind: "est",
   leftover: "left",
   pantry: "calm",
   pick: "accent",
@@ -379,6 +381,10 @@ export function planEditor(
       ["leftover", "Leftovers"],
       ["custom", "Something I'll make"],
       ["out", "Eating out"],
+      ["takeaway", "Takeaway"],
+      ["work", "At work"],
+      ["friends", "At friends'"],
+      ["skip", "Skipped"],
     ],
     existing?.kind ?? "recipe"
   );
@@ -395,7 +401,7 @@ export function planEditor(
   );
   const name = input("text");
   name.maxLength = 200;
-  name.placeholder = "Name";
+  name.placeholder = "Where, or what — e.g. Divinos";
   name.value = existing?.name ?? "";
   const servings = input("number");
   servings.min = "1";

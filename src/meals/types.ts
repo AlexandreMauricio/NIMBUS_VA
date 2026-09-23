@@ -230,7 +230,8 @@ export interface Leftover {
 }
 
 /** What a planned meal actually is. */
-export type PlannedMealKind = "recipe" | "leftover" | "custom" | "out" | "takeaway" | "friends" | "skip";
+export type PlannedMealKind =
+  "recipe" | "leftover" | "custom" | "out" | "takeaway" | "friends" | "work" | "skip";
 
 export const PLANNED_MEAL_KINDS: PlannedMealKind[] = [
   "recipe",
@@ -239,8 +240,18 @@ export const PLANNED_MEAL_KINDS: PlannedMealKind[] = [
   "out",
   "takeaway",
   "friends",
+  "work",
   "skip",
 ];
+
+/** Meals that aren't cooked at home, by what they are — the name when nothing else is given, and the tag. */
+export const MEAL_KIND_LABELS: Partial<Record<PlannedMealKind, string>> = {
+  out: "Eating out",
+  takeaway: "Takeaway",
+  friends: "At friends'",
+  work: "At work",
+  skip: "Skipped",
+};
 
 export type RecipeDifficulty = "easy" | "medium" | "hard";
 
