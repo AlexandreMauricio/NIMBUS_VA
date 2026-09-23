@@ -224,10 +224,16 @@ abbreviations spelled out, and the English when every word is known
 write what it really is. Typing the name of a food you already have
 links the line to it instead.
 
-**Confirm import** then applies the lines you checked, to what you tick:
-**prices** (per unit, at that shop, on that day), the **pantry** (as
-confirmed stock), and the **shopping list** (lines for those foods ticked
-off). A line never checked is left out rather than guessed into the
+**Confirm import** then applies the lines you checked (✓ only checks a
+line — nothing moves before this), to what you tick: **prices** (per
+unit, at that shop, on that day), the **pantry** (as confirmed stock),
+and the **shopping list** (lines for those foods ticked off). Each line
+says where it **goes to** — cupboard, fridge or freezer — guessed as the
+freezer when the line says frozen ("congelado"), else wherever that food
+already is, else the fridge for milk, yoghurt, cheese, meat and fish
+(long-life "UHT" stays in the cupboard), else the cupboard; you change it
+before confirming. In the fridge, a food with a known keeping time gets
+an eat-by date. A line never checked is left out rather than guessed into the
 kitchen. Each confirmed line's words become a name for its food, so the
 same receipt line matches for certain next time
 ([purchases.ts](../src/meals/purchases.ts)).
@@ -246,8 +252,11 @@ With prices from more than one shop:
 
 **Bought** on the shopping list asks which shop too, and Today's spend
 panel shows what the plan costs against what was actually **spent** this
-week and this month (Household takes a monthly budget). Deleting a purchase
-forgets its prices; the food it put in the pantry stays.
+week and this month (Household takes a monthly budget). Any purchase can
+be deleted from the history (✕): its prices are forgotten, and — ticked
+by default — what it put in the pantry comes out again, as much as it
+added, from the item it went into (for a purchase typed by mistake or
+made to try things).
 
 ## The planner
 

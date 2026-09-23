@@ -420,6 +420,10 @@ export interface PurchaseLine {
   confidence: number;
   /** You looked at it (or typed it): no longer a guess. */
   confirmed: boolean;
+  /** Where it goes in the kitchen on confirming — guessed, then yours to change. */
+  place: StoragePlace;
+  /** What confirming put in the pantry, so deleting the purchase can take it back out. */
+  stocked: { itemId: string; quantity: number; unit: string } | null;
 }
 
 export interface Purchase {

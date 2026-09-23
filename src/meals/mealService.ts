@@ -22,7 +22,7 @@ import { isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
 import { pricePerBaseUnit, recipeCost, scaleFor } from "./recipes";
 import { effectOfReplacing, generatePlan, proposalFigures, replaceOptions } from "./generator";
 import type { PlannerInput, ReplaceOption } from "./generator";
-import { currentPrice, linePricePerBase, matchLine } from "./purchases";
+import { currentPrice, guessPlace, linePricePerBase, matchLine } from "./purchases";
 import { buildShoppingList } from "./shopping";
 import type { ShoppingList } from "./shopping";
 import {
@@ -83,7 +83,7 @@ import {
 import { ingredientKey, matchIngredient } from "./names";
 import { dayRange, servingsNeeded } from "./plan";
 import { parseAmountText } from "./recipeImport";
-import { normaliseUnit, toBase } from "./units";
+import { normaliseUnit, subtract, toBase } from "./units";
 
 function text(value: unknown, max: number): string | null {
   return typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ").slice(0, max) : null;
@@ -543,7 +543,17 @@ function parsePurchaseLine(raw: unknown): PurchaseLine | null {
     price: money(r.price),
     confidence: typeof r.confidence === "number" && r.confidence >= 0 && r.confidence <= 1 ? r.confidence : 0,
     confirmed: r.confirmed === true,
+    place: STORAGE_PLACES.includes(r.place as StoragePlace) ? (r.place as StoragePlace) : "cupboard",
+    stocked: parseStocked(r.stocked),
   };
+}
+
+function parseStocked(raw: unknown): PurchaseLine["stocked"] {
+  const r = (raw ?? null) as Record<string, unknown> | null;
+  if (!r || typeof r.itemId !== "string" || !r.itemId) return null;
+  const quantity = positive(r.quantity);
+  const unit = normaliseUnit(r.unit);
+  return quantity !== null && unit ? { itemId: r.itemId, quantity, unit } : null;
 }
 
 function parsePurchase(raw: unknown): Purchase | null {
@@ -1446,6 +1456,14 @@ export class MealService {
         confidence:
           source === "manual" && match.ingredientId ? Math.max(match.confidence, 0.9) : match.confidence,
         confirmed: source === "manual" && Boolean(match.ingredientId) && match.confidence >= 0.8,
+        place: STORAGE_PLACES.includes(l.place as StoragePlace)
+          ? (l.place as StoragePlace)
+          : guessPlace(
+              lineText,
+              this.state.ingredients.find((i) => i.id === match.ingredientId) ?? null,
+              this.state.pantry
+            ),
+        stocked: null,
       });
     }
     if (!lines.length) throw new Error("A purchase needs at least one line.");
@@ -1483,8 +1501,17 @@ export class MealService {
         line.ingredientId = c.ingredientId;
       else throw new Error("That food isn't known.");
     }
+    const before = line.ingredientId;
     if (typeof c.newFood === "string" && text(c.newFood, 120))
       line.ingredientId = this.ensureIngredient(c.newFood, normaliseUnit(c.unit) ?? line.unit ?? "g").id;
+    // A place you chose stays; a different food brings its own guess.
+    if (STORAGE_PLACES.includes(c.place as StoragePlace)) line.place = c.place as StoragePlace;
+    else if (line.ingredientId !== before)
+      line.place = guessPlace(
+        line.raw,
+        this.state.ingredients.find((i) => i.id === line.ingredientId) ?? null,
+        this.state.pantry
+      );
     if (c.notFood !== undefined) line.notFood = c.notFood === true;
     if (c.quantity !== undefined) line.quantity = positive(c.quantity);
     if (c.unit !== undefined) line.unit = normaliseUnit(c.unit);
@@ -1549,8 +1576,7 @@ export class MealService {
         ingredient.lastPrice = perBase;
       }
       if (toPantry && line.quantity !== null && line.unit) {
-        const place =
-          this.state.pantry.find((item) => item.ingredientId === ingredient.id)?.place ?? "cupboard";
+        const place = line.place;
         const item: PantryItem = {
           id: randomUUID(),
           ingredientId: ingredient.id,
@@ -1562,13 +1588,28 @@ export class MealService {
           confidence: "confirmed",
           packaging: null,
           openedAt: null,
-          expiresAt: null,
+          // In the fridge, a food with a known keeping time gets an eat-by date.
+          expiresAt:
+            place === "fridge" && ingredient.fridgeDays
+              ? isoDate(new Date(Date.parse(this.now()) + ingredient.fridgeDays * 86_400_000))
+              : null,
           lastCorrection: null,
           addedAt: this.now(),
           updatedAt: this.now(),
         };
-        if (this.state.pantry.length < MAX_PANTRY_ITEMS)
+        if (this.state.pantry.length < MAX_PANTRY_ITEMS) {
           this.state.pantry = mergeInto(this.state.pantry, item);
+          // Remember where it went — a new item, or topped up into one already there.
+          const into =
+            this.state.pantry.find((entry) => entry.id === item.id) ??
+            this.state.pantry.find(
+              (entry) =>
+                entry.ingredientId === ingredient.id &&
+                entry.place === place &&
+                entry.updatedAt === item.updatedAt
+            );
+          line.stocked = into ? { itemId: into.id, quantity: line.quantity, unit: line.unit } : null;
+        }
       }
       if (toShopping) {
         this.state.shopping = this.state.shopping.filter((item) => item.ingredientId !== ingredient.id);
@@ -1586,10 +1627,37 @@ export class MealService {
   }
 
   /** Forgets a purchase and the prices it recorded. What it put in the pantry stays — that's food now. */
-  removePurchase(purchaseId: unknown): void {
-    this.state.purchases = this.state.purchases.filter((entry) => entry.id !== purchaseId);
+  /**
+   * Deleting a purchase forgets its prices. With `takeBack`, what it put in
+   * the pantry comes out again — as much as it added, from the item it
+   * went into, if that's still there — for a purchase entered by mistake
+   * or to try things. Returns how many pantry items changed.
+   */
+  removePurchase(purchaseId: unknown, options: unknown = {}): number {
+    const purchase = this.state.purchases.find((entry) => entry.id === purchaseId);
+    if (!purchase) return 0;
+    let changed = 0;
+    if (((options ?? {}) as Record<string, unknown>).takeBack === true)
+      for (const line of purchase.lines) {
+        const stocked = line.stocked;
+        const item = stocked && this.state.pantry.find((entry) => entry.id === stocked.itemId);
+        if (!stocked || !item) continue;
+        const left = subtract(item, stocked);
+        if (!left) continue;
+        changed += 1;
+        if (left.quantity <= 1e-9) this.state.pantry = this.state.pantry.filter((entry) => entry !== item);
+        else {
+          if (item.unit === stocked.unit)
+            item.startQuantity = Math.max(left.quantity, item.startQuantity - stocked.quantity);
+          item.quantity = left.quantity;
+          item.unit = left.unit;
+          item.updatedAt = this.now();
+        }
+      }
+    this.state.purchases = this.state.purchases.filter((entry) => entry !== purchase);
     this.state.prices = this.state.prices.filter((record) => record.purchaseId !== purchaseId);
     this.save();
+    return changed;
   }
 
   /**

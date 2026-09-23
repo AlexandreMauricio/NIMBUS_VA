@@ -15,7 +15,7 @@
 
 import { ingredientKey } from "./names";
 import { toBase } from "./units";
-import type { Ingredient, PriceRecord, Store } from "./types";
+import type { Ingredient, PantryItem, PriceRecord, StoragePlace, Store } from "./types";
 
 /** A price older than this no longer counts as what something costs. */
 export const PRICE_WINDOW_DAYS = 90;
@@ -140,6 +140,53 @@ export function foodNameGuesses(raw: string): string[] {
   // Portuguese puts the thing first ("coxa de frango"); English puts it last ("chicken thigh").
   if (english.every(Boolean)) guesses.unshift(capital(english.reverse().join(" ")));
   return [...new Set(guesses)];
+}
+
+/** Foods that live in the fridge, as `wordsOf` spells them (English, singular). */
+const FRIDGE_WORDS = new Set([
+  "milk",
+  "yoghurt",
+  "cheese",
+  "butter",
+  "cream",
+  "chicken",
+  "thigh",
+  "breast",
+  "meat",
+  "beef",
+  "pork",
+  "mince",
+  "fish",
+  "salmon",
+  "ham",
+  "fiambre",
+  "lettuce",
+  "spinach",
+  "fresco",
+  "fresh",
+]);
+const FREEZER_WORDS = new Set(["frozen", "congelado", "congelada", "ultracongelado", "ultracongelada"]);
+/** Long-life: in the cupboard until opened, whatever the food. */
+const SHELF_WORDS = new Set(["uht"]);
+
+/**
+ * Where a bought food goes: the freezer when the line says frozen, else
+ * wherever that food already is in the pantry, else the fridge for milk,
+ * meat, fish and the like, else the cupboard. A suggestion shown on the
+ * line — you change it before confirming.
+ */
+export function guessPlace(
+  raw: string,
+  ingredient: Pick<Ingredient, "id" | "name" | "category"> | null,
+  pantry: Pick<PantryItem, "ingredientId" | "place">[]
+): StoragePlace {
+  const words = wordsOf(`${raw} ${ingredient?.name ?? ""} ${ingredient?.category ?? ""}`);
+  const has = (set: Set<string>) => [...words].some((word) => set.has(word));
+  if (has(FREEZER_WORDS)) return "freezer";
+  const already = ingredient ? pantry.find((item) => item.ingredientId === ingredient.id) : undefined;
+  if (already) return already.place;
+  if (has(SHELF_WORDS)) return "cupboard";
+  return has(FRIDGE_WORDS) ? "fridge" : "cupboard";
 }
 
 export interface LineMatch {

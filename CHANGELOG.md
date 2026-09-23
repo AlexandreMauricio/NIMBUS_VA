@@ -20,6 +20,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.22 — 2026-09-23
+
+- **The purchase review says where each line goes.** A "Goes to" column
+  — cupboard, fridge or freezer — guessed from the line (frozen goes to
+  the freezer), where that food already is, or what it is (milk, meat,
+  fish to the fridge; UHT milk stays in the cupboard). Before, a food new
+  to the pantry always went to the cupboard, unseen. In the fridge, a food
+  with a known keeping time gets an eat-by date. The review also says
+  plainly that ✓ only checks a line and nothing moves until Confirm import.
+- **Purchases can be deleted from the history**, each row with a ✕, and
+  the delete can take back out of the pantry what that purchase added —
+  as much as it added, from the item it went into.
+
 ## 0.6.21 — 2026-09-23
 
 - **A new food from a receipt gets the name you write.** "New food…" in

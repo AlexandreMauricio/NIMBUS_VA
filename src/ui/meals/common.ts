@@ -232,6 +232,8 @@ export interface PurchaseLineUI {
   price: number | null;
   confidence: number;
   confirmed: boolean;
+  place: StoragePlace;
+  stocked: { itemId: string; quantity: number; unit: string } | null;
 }
 
 export interface PurchaseUI {
@@ -325,7 +327,7 @@ export interface MealsBridge {
   updatePurchase(id: string, changes: Record<string, unknown>): Promise<unknown>;
   updatePurchaseLine(id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown>;
   confirmPurchase(id: string, apply: Record<string, boolean>): Promise<unknown>;
-  removePurchase(id: string): Promise<void>;
+  removePurchase(id: string, options?: { takeBack?: boolean }): Promise<number>;
   markShopping(ingredientId: string, kind: string | null, extra?: Record<string, unknown>): Promise<void>;
   eatLeftover(mealId: string, leftoverId: string, portions: number): Promise<unknown>;
   updateMealPreferences(changes: Record<string, unknown>): Promise<unknown>;

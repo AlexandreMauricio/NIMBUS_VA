@@ -497,6 +497,8 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     price,
     confidence,
     confirmed,
+    place: key === "chicken" || key === "yoghurt" ? ("fridge" as const) : ("cupboard" as const),
+    stocked: null,
   });
   const bought: Purchase = {
     id: id(),

@@ -109,7 +109,9 @@ export function purchasesView(data: MealsSnapshot): HTMLElement {
       if (purchase.status === "review" && unchecked)
         status.appendChild(make("span", "meals-line-meta", ` ${unchecked} to check · pantry not updated`));
       row.appendChild(status);
-      const action = make("td", "is-number");
+      const action = make("td", "is-number meals-row-actions");
+      action.appendChild(button("✕", "meals-link", () => confirmDelete(purchase)));
+      action.lastElementChild!.setAttribute("title", "Delete this purchase");
       action.appendChild(
         button(
           purchase.status === "review" ? `Review ${unchecked || ""} →`.replace("  ", " ") : "View",
@@ -374,7 +376,7 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
 
   const table = make("div", "meals-review");
   const header = make("div", "meals-review-row is-head");
-  for (const title of ["As written", "Matched to", "Amount", "Price", ""])
+  for (const title of ["As written", "Matched to", "Amount", "Price", "Goes to", ""])
     header.appendChild(make("span", undefined, title));
   table.appendChild(header);
   const foodOptions: Array<[string, string]> = [
@@ -448,6 +450,17 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
     price.value = line.price === null ? "" : String(line.price);
     price.disabled = !reviewing;
     row.appendChild(price);
+    const place = select(
+      [
+        ["cupboard", "Cupboard"],
+        ["fridge", "Fridge"],
+        ["freezer", "Freezer"],
+      ],
+      line.place
+    );
+    place.disabled = !reviewing || line.notFood;
+    place.title = "Where it goes in the pantry when you confirm the import";
+    row.appendChild(place);
     const save = () => {
       if (food.value === "__new" && !newName.value.trim()) {
         newName.focus();
@@ -461,6 +474,7 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
           quantity: quantity.value ? Number(quantity.value) : null,
           unit: unit.value,
           price: price.value ? Number(price.value) : null,
+          place: place.value,
         })
       );
     };
@@ -475,7 +489,7 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
       newName.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && newName.value.trim()) save();
       });
-      for (const control of [quantity, unit, price])
+      for (const control of [quantity, unit, price, place])
         control.addEventListener("change", () => {
           if (food.value !== "__new") save();
         });
@@ -501,6 +515,13 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
     );
     const box3 = checkbox("Tick matching shopping-list items");
     apply.append(box1.label, box2.label, box3.label);
+    apply.appendChild(
+      make(
+        "p",
+        "meals-note",
+        "✓ checks a line. Nothing moves until Confirm import: then each checked line goes to the place in its row — guessed from where that food already is, or from what it is — and a line not checked stays out."
+      )
+    );
     if (toLook)
       apply.appendChild(
         make("p", "meals-note", `${toLook} line(s) not checked yet are kept in the total but not applied.`)
@@ -525,29 +546,20 @@ export function reviewDrawer(data: MealsSnapshot): HTMLElement | null {
         state.reviewing = null;
         rerender();
       }),
-      button(
-        "Delete",
-        "btn btn-ghost",
-        () =>
-          void act(async () => {
-            await bridge().removePurchase(purchase.id);
-            state.reviewing = null;
-          }, "Purchase deleted.")
-      )
+      button("Delete", "btn btn-ghost", () => confirmDelete(purchase))
     );
     body.appendChild(actions);
   } else {
-    body.appendChild(
-      button(
-        "Delete — forgets its prices; the food stays in the pantry",
-        "btn btn-ghost",
-        () =>
-          void act(async () => {
-            await bridge().removePurchase(purchase.id);
-            state.reviewing = null;
-          }, "Purchase deleted.")
-      )
-    );
+    const stocked = purchase.lines.filter((line) => line.stocked);
+    if (stocked.length)
+      body.appendChild(
+        make(
+          "p",
+          "meals-note",
+          `Went to the pantry: ${stocked.map((line) => `${line.raw} → ${PLACE_LABELS[line.place]}`).join(" · ")}`
+        )
+      );
+    body.appendChild(button("Delete purchase", "btn btn-ghost", () => confirmDelete(purchase)));
   }
   const backdrop = make("div", "meals-drawer-backdrop");
   backdrop.addEventListener("click", (event) => {
@@ -571,4 +583,56 @@ function checkbox(text: string): { label: HTMLElement; input: HTMLInputElement }
 /** "3 lines to check" for the Today shopping panel and the tab header. */
 export function reviewCount(): number {
   return snapshot?.spent.toReview ?? 0;
+}
+
+const PLACE_LABELS: Record<string, string> = { cupboard: "Cupboard", fridge: "Fridge", freezer: "Freezer" };
+
+/**
+ * Deleting a purchase: its prices go; what it put in the pantry can come
+ * out with it — for a purchase typed by mistake, or one made to try things.
+ */
+function confirmDelete(purchase: PurchaseUI): void {
+  const box = make("div");
+  box.appendChild(make("h3", "meals-drawer-title", "Delete this purchase?"));
+  box.appendChild(
+    make(
+      "p",
+      "meals-note",
+      `${purchase.storeName ?? "A purchase"} · ${dayLabel(purchase.date)} · ${purchase.lines.length} line${purchase.lines.length === 1 ? "" : "s"}. Its prices are forgotten.`
+    )
+  );
+  const stocked = purchase.lines.filter((line) => line.stocked).length;
+  const takeBack = input("checkbox", "");
+  takeBack.checked = true;
+  if (stocked) {
+    const label = make("label", "meals-check");
+    label.append(
+      takeBack,
+      document.createTextNode(
+        ` Also take out what it added to the pantry (${stocked} item${stocked === 1 ? "" : "s"}, as much as it added)`
+      )
+    );
+    box.appendChild(label);
+  } else if (purchase.status !== "review")
+    box.appendChild(make("p", "meals-note", "It didn't add anything to the pantry."));
+  const actions = make("div", "meals-row");
+  actions.append(
+    button(
+      "Delete",
+      "btn btn-primary",
+      () =>
+        void act(
+          async () => {
+            await bridge().removePurchase(purchase.id, { takeBack: stocked > 0 && takeBack.checked });
+            state.reviewing = null;
+          },
+          stocked && takeBack.checked
+            ? "Purchase deleted, and its food taken out of the pantry."
+            : "Purchase deleted."
+        )
+    ),
+    button("Cancel", "btn btn-ghost", () => rerender())
+  );
+  box.appendChild(actions);
+  showModal(box);
 }

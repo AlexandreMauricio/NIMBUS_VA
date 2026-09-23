@@ -445,7 +445,8 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:update-purchase-line", id, lineId, changes),
   confirmPurchase: (id: string, apply: Record<string, boolean>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:confirm-purchase", id, apply),
-  removePurchase: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-purchase", id),
+  removePurchase: (id: string, options?: { takeBack?: boolean }): Promise<number> =>
+    ipcRenderer.invoke("nimbus:remove-purchase", id, options ?? {}),
   markShopping: (ingredientId: string, kind: string | null, extra?: Record<string, unknown>): Promise<void> =>
     ipcRenderer.invoke("nimbus:mark-shopping", ingredientId, kind, extra ?? {}),
   /** The one Meals call that names an address: http(s) only, and never a host on this network. */

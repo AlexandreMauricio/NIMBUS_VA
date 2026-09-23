@@ -305,7 +305,9 @@ export function registerMealsIpc(ctx: IpcContext): void {
   handle("nimbus:confirm-purchase", (_event, id: unknown, apply: unknown) =>
     ctx.mealService.confirmPurchase(String(id ?? ""), apply)
   );
-  handle("nimbus:remove-purchase", (_event, id: unknown) => ctx.mealService.removePurchase(String(id ?? "")));
+  handle("nimbus:remove-purchase", (_event, id: unknown, options: unknown) =>
+    ctx.mealService.removePurchase(String(id ?? ""), options)
+  );
   handle("nimbus:mark-shopping", (_event, ingredientId: unknown, kind: unknown, extra: unknown) =>
     ctx.mealService.markShopping(ingredientId, kind ?? null, extra)
   );

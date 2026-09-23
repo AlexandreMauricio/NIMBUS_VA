@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseReceiptText, readDate, reconcile, repairOcrLine, sizeFromDescription } from "./receiptText";
-import { foodNameGuesses, linePricePerBase, matchLine, pricesByStore, splitShopSaving } from "./purchases";
+import {
+  foodNameGuesses,
+  guessPlace,
+  linePricePerBase,
+  matchLine,
+  pricesByStore,
+  splitShopSaving,
+} from "./purchases";
 import { MealService } from "./mealService";
 import type { MealsState, MealsStore, PriceRecord } from "./types";
 
@@ -281,4 +288,54 @@ test("purchases: a new food takes the name you write, and the receipt's words ma
   const second = meals.createPurchase({ store: "Continente", lines });
   assert.equal(second.lines[0].ingredientId, soy.id);
   assert.equal(second.lines[0].confidence, 1);
+});
+
+test("purchases: where a bought food goes — frozen, where it already is, fridge foods, else the cupboard", () => {
+  const vinegar = { id: "v", name: "Fruit vinegar", category: null };
+  const chicken = { id: "c", name: "Chicken breasts", category: null };
+  assert.equal(guessPlace("VINAGRE FRUTA CNT 500ML", vinegar, []), "cupboard");
+  assert.equal(guessPlace("PEITO FRANGO KG", chicken, []), "fridge");
+  assert.equal(guessPlace("PEITO FRANGO KG", null, []), "fridge", "the line's words are enough");
+  assert.equal(guessPlace("PEITO FRANGO CONGELADO", chicken, []), "freezer");
+  assert.equal(guessPlace("PEITO FRANGO KG", chicken, [{ ingredientId: "c", place: "freezer" }]), "freezer");
+  assert.equal(guessPlace("LEITE MG UHT 1L", null, []), "cupboard", "long-life milk");
+  assert.equal(guessPlace("LEITE MG 1L", null, []), "fridge");
+});
+
+test("purchases: each line goes to its place, and deleting can take it back out of the pantry", () => {
+  const meals = service();
+  const purchase = meals.createPurchase({
+    store: "Continente",
+    lines: [
+      { name: "VINAGRE FRUTA CNT", quantity: 500, unit: "ml", price: 0.54 },
+      { name: "PEITO FRANGO KG", quantity: 1, unit: "kg", price: 6.2 },
+    ],
+  });
+  const [vinegar, chicken] = purchase.lines;
+  assert.equal(vinegar.place, "cupboard");
+  assert.equal(chicken.place, "fridge");
+  meals.updatePurchaseLine(purchase.id, vinegar.id, { newFood: "Fruit vinegar" });
+  meals.updatePurchaseLine(purchase.id, chicken.id, { newFood: "Chicken breasts", place: "freezer" });
+  meals.confirmPurchase(purchase.id, { prices: true, pantry: true, shopping: false });
+  const places = new Map(meals.listPantry().map((item) => [item.name, item.place]));
+  assert.equal(places.get("Fruit vinegar"), "cupboard");
+  assert.equal(places.get("Chicken breasts"), "freezer", "your choice, not the guess");
+
+  // A second bottle tops up the first; deleting it takes out just the one it added.
+  const again = meals.createPurchase({
+    store: "Continente",
+    lines: [{ name: "VINAGRE FRUTA CNT", quantity: 500, unit: "ml", price: 0.54 }],
+  });
+  meals.updatePurchaseLine(again.id, again.lines[0].id, {});
+  meals.confirmPurchase(again.id, { prices: true, pantry: true, shopping: false });
+  const bottle = () => meals.listPantry().find((item) => item.name === "Fruit vinegar");
+  assert.equal(bottle()!.quantity, 1000);
+  assert.equal(meals.removePurchase(again.id, { takeBack: true }), 1);
+  assert.equal(bottle()!.quantity, 500);
+
+  // Without taking back, the food stays.
+  meals.removePurchase(purchase.id);
+  assert.equal(meals.listPurchases().length, 0);
+  assert.equal(meals.getState().prices.length, 0, "prices go with it");
+  assert.ok(bottle(), "the first bottle stays unless asked");
 });
