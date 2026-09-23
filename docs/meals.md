@@ -100,8 +100,8 @@ for 5 cooks 5 for the 2 of you; the other 3 are leftovers.
 Meat bought in bulk goes into the freezer in bags, and a bag is defrosted
 **whole** ([freezer.ts](../src/meals/freezer.ts)).
 
-- In the purchase review, a line going to the fridge or freezer offers
-  **how to bag it** — one bag, bags the size your planned meals use, or
+- In the purchase review, a line of meat or fish (or anything set to go to
+  the freezer) offers **how to bag it** — one bag, bags the size your planned meals use, or
   singles — and says which fits your meals ("2 bags of 3 · fits your
   meals" when two planned dinners use 3 each). Choosing one sends it to
   the freezer as that many pantry items, each marked as a bag.

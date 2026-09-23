@@ -20,6 +20,12 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.26 — 2026-09-23
+
+- Freezing in bags is offered for meat and fish (or anything you send to
+  the freezer), not for yoghurt; a scrap left over after even bags goes in
+  with the last bag instead of a bag of 10 g.
+
 ## 0.6.25 — 2026-09-23
 
 - **Frozen bags.** The purchase review offers how to bag a line for the

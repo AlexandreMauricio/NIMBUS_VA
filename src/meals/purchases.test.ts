@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseReceiptText, readDate, reconcile, repairOcrLine, sizeFromDescription } from "./receiptText";
 import {
+  bagsWorthOffering,
   foodNameGuesses,
   guessPlace,
   linePricePerBase,
@@ -338,4 +339,13 @@ test("purchases: each line goes to its place, and deleting can take it back out 
   assert.equal(meals.listPurchases().length, 0);
   assert.equal(meals.getState().prices.length, 0, "prices go with it");
   assert.ok(bottle(), "the first bottle stays unless asked");
+});
+
+test("purchases: freezing in bags is offered for meat and fish, not yoghurt", () => {
+  assert.equal(bagsWorthOffering("COXA FRANGO KG", null, "fridge"), true);
+  assert.equal(
+    bagsWorthOffering("IOG GREGO NAT", { name: "Greek yoghurt", category: "Dairy" }, "fridge"),
+    false
+  );
+  assert.equal(bagsWorthOffering("PAO FORMA", null, "freezer"), true, "anything you send to the freezer");
 });

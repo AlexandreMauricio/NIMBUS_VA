@@ -169,6 +169,39 @@ const FREEZER_WORDS = new Set(["frozen", "congelado", "congelada", "ultracongela
 /** Long-life: in the cupboard until opened, whatever the food. */
 const SHELF_WORDS = new Set(["uht"]);
 
+/** Meat and fish — what's bought in bulk and frozen in bags. */
+const BAG_WORDS = new Set([
+  "chicken",
+  "thigh",
+  "breast",
+  "meat",
+  "beef",
+  "pork",
+  "mince",
+  "fish",
+  "salmon",
+  "cod",
+  "tuna",
+  "sausage",
+  "burger",
+  "steak",
+  "lamb",
+  "turkey",
+  "shrimp",
+  "hake",
+]);
+
+/** Whether to offer freezing a line in bags: meat and fish, or anything already going to the freezer. */
+export function bagsWorthOffering(
+  raw: string,
+  ingredient: Pick<Ingredient, "name" | "category"> | null,
+  place: StoragePlace
+): boolean {
+  if (place === "freezer") return true;
+  const words = wordsOf(`${raw} ${ingredient?.name ?? ""} ${ingredient?.category ?? ""}`);
+  return [...words].some((word) => BAG_WORDS.has(word));
+}
+
 /**
  * Where a bought food goes: the freezer when the line says frozen, else
  * wherever that food already is in the pantry, else the fridge for milk,

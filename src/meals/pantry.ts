@@ -437,12 +437,22 @@ export function suggestBags(
     .sort((a, b) => b - a)
     .map((size) => {
       const count = Math.floor(whole.quantity / size + 1e-9);
-      const rest = round3(whole.quantity - count * size);
-      const bags = [...Array(count).fill(inUnit(size)), ...(rest > 0 ? [inUnit(rest)] : [])];
+      let rest = round3(whole.quantity - count * size);
+      const bags: number[] = Array(count).fill(inUnit(size));
+      // A scrap (under a quarter of a bag) goes in with the last bag, not a bag of its own.
+      if (rest > 0 && rest < size / 4) {
+        bags[bags.length - 1] = inUnit(size + rest);
+        rest = 0;
+      } else if (rest > 0) bags.push(inUnit(rest));
+      const last = bags[bags.length - 1];
       const label =
-        count === 1 && rest <= 0
-          ? `1 bag of ${inUnit(size)}${unitLabel}`
-          : `${count} bag${count === 1 ? "" : "s"} of ${inUnit(size)}${unitLabel}${rest > 0 ? ` + 1 of ${inUnit(rest)}${unitLabel}` : ""}`;
+        bags.length === 1
+          ? `1 bag of ${last}${unitLabel}`
+          : rest > 0
+            ? `${count} bag${count === 1 ? "" : "s"} of ${inUnit(size)}${unitLabel} + 1 of ${inUnit(rest)}${unitLabel}`
+            : last !== inUnit(size)
+              ? `${count} bags of ${inUnit(size)}${unitLabel} (the last ${last}${unitLabel})`
+              : `${count} bags of ${inUnit(size)}${unitLabel}`;
       return { sizes: bags, label, recommended: common !== null ? size === common : size === whole.quantity };
     });
 }

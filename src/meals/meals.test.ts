@@ -1168,6 +1168,9 @@ test("frozen bags: bagged the way the planned meals use it, and each bag is used
   assert.deepEqual(options.find((o) => o.label === "2 bags of 3")!.sizes, [3, 3]);
   const mince = suggestBags({ quantity: 1, unit: "kg" }, [{ quantity: 400, unit: "g" }]);
   assert.equal(mince.find((o) => o.recommended)!.label, "2 bags of 0.4 kg + 1 of 0.2 kg");
+  // A scrap goes in with the last bag.
+  const thighs = suggestBags({ quantity: 1.21, unit: "kg" }, [{ quantity: 600, unit: "g" }]);
+  assert.deepEqual(thighs.find((o) => o.recommended)!.sizes, [0.6, 0.61]);
 
   // A recipe for 2 needing 2 breasts, the 6 in one bag: all 6 come out, and it should cook 6.
   const recipe = {

@@ -18,7 +18,7 @@ import { BrowserWindow } from "electron";
 import { recipePhotoUrl } from "../../meals/types";
 import { choosePictureFile, removePictureFile } from "../coverStore";
 import { chooseAndReadReceipt } from "../receiptImport";
-import { currentPrice, pricesByStore, splitShopSaving } from "../../meals/purchases";
+import { bagsWorthOffering, currentPrice, pricesByStore, splitShopSaving } from "../../meals/purchases";
 import type { StorePrice } from "../../meals/purchases";
 import { reconcile } from "../../meals/receiptText";
 import { bagNeeds, defrostList } from "../../meals/freezer";
@@ -175,7 +175,8 @@ export function registerMealsIpc(ctx: IpcContext): void {
             line.ingredientId &&
             line.quantity !== null &&
             line.unit &&
-            !line.notFood
+            !line.notFood &&
+            bagsWorthOffering(line.raw, ingredients.get(line.ingredientId) ?? null, line.place)
               ? suggestBags(
                   { quantity: line.quantity, unit: line.unit },
                   bagNeeds(line.ingredientId, state.plan, recipes, today, family)
