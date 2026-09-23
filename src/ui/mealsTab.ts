@@ -616,25 +616,42 @@ function heroCard(data: MealsSnapshot, entry: MealsSnapshot["plan"][number]): HT
   hero.appendChild(body);
 
   // The right-hand column: what the recipe is short of, or that nothing is.
+  // The right-hand column: what it takes, and which of it is in the kitchen.
   const side = make("div", "meals-hero-side");
   if (recipe) {
     const missing = recipe.lines.filter((line) => !line.optional && line.status !== "have");
-    side.appendChild(make("p", "card-kicker", missing.length ? "Not at home" : "Everything is in"));
+    side.appendChild(
+      make(
+        "p",
+        "card-kicker",
+        missing.length ? `What it takes · ${missing.length} not at home` : "What it takes · everything is in"
+      )
+    );
     const list = make("div", "meals-hero-list");
-    for (const line of missing.slice(0, 6)) {
+    const factor = cookServings / Math.max(1, recipe.recipe.servings);
+    for (const line of recipe.lines.slice(0, 9)) {
       const row = make("div", "meals-hero-line");
       row.append(
-        make("span", undefined, line.text),
-        pill(line.short ? formatAmount(line.short) : "missing", "urgent")
+        make(
+          "span",
+          "meals-hero-amount",
+          formatAmount({ quantity: line.needed.quantity * factor, unit: line.needed.unit })
+        ),
+        make("span", "meals-hero-name", line.text)
+      );
+      row.appendChild(
+        line.status === "have"
+          ? pill("✓", "ok")
+          : line.optional
+            ? pill("optional")
+            : pill(line.short ? `short ${formatAmount(line.short)}` : "missing", "urgent")
       );
       list.appendChild(row);
     }
-    if (!missing.length)
-      list.appendChild(make("p", "meals-hero-text", "The pantry covers every ingredient this recipe needs."));
     side.appendChild(list);
     if (missing.length)
       side.appendChild(
-        button("See the shopping list", "meals-link", () => {
+        button("See the shopping list →", "meals-link", () => {
           state.view = "shopping";
           render();
         })
@@ -668,7 +685,13 @@ function mealCard(entry: MealsSnapshot["plan"][number]): HTMLElement {
   card.append(top, make("div", "meals-meal-name", entry.name));
   const pills = make("div", "meals-row meals-row-tight");
   if (entry.nutrition?.kcal) pills.appendChild(pill(`≈ ${entry.nutrition.kcal} kcal`));
-  pills.appendChild(entry.cost === null ? pill("no price", "est") : pill(`≈ ${euro(entry.cost)}`));
+  pills.appendChild(
+    entry.cost !== null
+      ? pill(`≈ ${euro(entry.cost)}`)
+      : entry.meal.kind === "leftover"
+        ? pill("already cooked", "accent")
+        : pill("no price", "est")
+  );
   card.appendChild(pills);
   const actions = make("div", "meals-row meals-row-tight");
   if (!entry.meal.cookedAt && entry.meal.kind === "recipe" && entry.meal.recipeId)
@@ -805,18 +828,27 @@ function attentionPanel(data: MealsSnapshot): HTMLElement {
     );
     list.appendChild(row);
   }
-  for (const item of unconfirmed.slice(0, 3)) {
-    const row = make("div", "meals-line");
-    row.append(
-      make("strong", undefined, item.name),
-      make("span", "meals-line-meta", "NIMBUS worked this out — check it when you can"),
-      pill("estimated", "est")
-    );
-    list.appendChild(row);
-  }
   if (!list.childNodes.length)
     list.appendChild(make("p", "meals-note", "Nothing going off, and no guesses to check."));
   body.appendChild(list);
+  if (unconfirmed.length) {
+    // One line for every guess, rather than the same sentence per food.
+    const row = make("div", "meals-line");
+    row.append(
+      make(
+        "span",
+        "meals-line-meta",
+        `NIMBUS worked these out: ${unconfirmed.map((item) => item.name).join(", ")}`
+      ),
+      pill("estimated", "est"),
+      button("Check them →", "meals-link", () => {
+        state.view = "pantry";
+        state.pantryFilter = "unconfirmed";
+        render();
+      })
+    );
+    body.appendChild(row);
+  }
   return box;
 }
 
@@ -2246,7 +2278,8 @@ function addStockForm(data: MealsSnapshot): HTMLElement {
     field("Use by", expires)
   );
   body.append(form, datalist);
-  body.appendChild(
+  const addRow = make("div", "meals-row");
+  addRow.appendChild(
     button(
       "Add to pantry",
       "btn btn-primary",
@@ -2264,6 +2297,7 @@ function addStockForm(data: MealsSnapshot): HTMLElement {
         )
     )
   );
+  body.appendChild(addRow);
   return box;
 }
 

@@ -118,10 +118,19 @@ export function planCost(
 }
 
 /** A meal's display name, whatever it is made of. */
-export function mealName(meal: PlannedMeal, recipes: Map<string, Recipe>): string {
+export function mealName(
+  meal: PlannedMeal,
+  recipes: Map<string, Recipe>,
+  leftovers: Map<string, { name: string }> = new Map()
+): string {
   if (meal.kind === "recipe" && meal.recipeId) {
     const recipe = recipes.get(meal.recipeId);
     if (recipe) return recipe.name;
+  }
+  // Leftovers read as what they are — "Chilli con carne", not "Meal".
+  if (meal.kind === "leftover" && meal.leftoverId) {
+    const leftover = leftovers.get(meal.leftoverId);
+    if (leftover) return `${leftover.name} (leftovers)`;
   }
   if (meal.name) return meal.name;
   return meal.kind === "out" ? "Eating out" : "Meal";

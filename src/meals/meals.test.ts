@@ -10,7 +10,7 @@ import {
   summariseStock,
 } from "./pantry";
 import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCookingAt } from "./recipes";
-import { dayRange, mealsOn, nextMeal, planCost, servingsNeeded } from "./plan";
+import { dayRange, mealName, mealsOn, nextMeal, planCost, servingsNeeded } from "./plan";
 import { MealService, ingredientKey, parseState } from "./mealService";
 import { durationMinutes, parseIngredientLine, parseRecipePage } from "./recipeImport";
 import type { Ingredient, MealsState, MealsStore, PantryItem, Recipe } from "./types";
@@ -593,4 +593,36 @@ test("demo data: loads a working kitchen, and removing it takes out exactly what
   assert.equal(meals.listLeftovers().length, 0);
   // My own ingredient survives, because my recipe still uses it.
   assert.equal(meals.findIngredient("Rice")!.id, myRice);
+});
+
+test("a planned meal reads as what it is: the recipe, the leftovers, or where you ate", () => {
+  const { service: meals } = service();
+  const saved = meals.saveRecipe({ name: "Porridge", servings: 1, ingredients: [] });
+  const leftover = meals.addLeftover({ name: "Chilli con carne", portions: 2 });
+  const recipes = new Map(meals.listRecipes().map((r) => [r.id, r]));
+  const leftovers = new Map(meals.listLeftovers().map((l) => [l.id, l]));
+  const named = (meal: { id: string }) =>
+    mealName(
+      meals.listPlan().find((m) => m.id === meal.id)!,
+      recipes,
+      leftovers
+    );
+
+  const breakfast = meals.planMeal({
+    date: "2026-09-22",
+    slot: "breakfast",
+    kind: "recipe",
+    recipeId: saved.id,
+  });
+  const lunch = meals.planMeal({
+    date: "2026-09-22",
+    slot: "lunch",
+    kind: "leftover",
+    leftoverId: leftover.id,
+  });
+  const dinner = meals.planMeal({ date: "2026-09-22", slot: "dinner", kind: "out", name: "Canteen" });
+  assert.deepEqual(
+    [named(breakfast), named(lunch), named(dinner)],
+    ["Porridge", "Chilli con carne (leftovers)", "Canteen"]
+  );
 });

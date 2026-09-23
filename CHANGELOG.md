@@ -18,6 +18,24 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.10 — 2026-09-23
+
+- **Fixed: the Meals tab's spacing collapsed.** It asked for a spacing step
+  the design system doesn't define, so the tabs, the hero's figures and the
+  panels' padding all ran together. (The Weather tab quietly had the same
+  bug in its "now" card.)
+- **Fixed: "Meals" appeared twice** — the page title and the tab's own
+  header both printed it.
+- **Leftovers in the plan now read as what they are** — "Chilli con carne
+  (leftovers)" instead of "Meal", and their card says "already cooked"
+  rather than "no price".
+- The hero's right-hand column now lists **what the meal takes**, ticked
+  or marked short, instead of sitting empty when nothing is missing;
+  "Needs attention" sums up the estimates in one line with a link to
+  check them; panels no longer stretch to the tallest one in their row.
+
+---
+
 ## 0.6.9 — 2026-09-22
 
 - **Meals looks like its design now.** The tab was rebuilt to the mock-up

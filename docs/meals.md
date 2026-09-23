@@ -104,7 +104,7 @@ figures, chips for filters, counters above the lists, and grouped tables
 for the shopping list and the pantry:
 
 - **Today** — a hero card for the next meal (when to start cooking, its
-  cost, how much of it is at home, and what it is short of beside it),
+  cost, and its ingredients beside it, ticked or marked short),
   a card per meal today, then panels: **nutrition** as dials against the
   daily target, **spend** as a column a day with the budget as a dashed
   line, **what needs eating**, **leftovers**, the shopping total, and the

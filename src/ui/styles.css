@@ -2644,7 +2644,7 @@ details.context-card > summary .context-card-title {
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-6);
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
@@ -4784,7 +4784,7 @@ details.context-card > summary .context-card-title {
 .meals-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-5);
+  gap: var(--space-6);
   border-bottom: 1px solid var(--color-divider);
 }
 
@@ -4824,8 +4824,8 @@ details.context-card > summary .context-card-title {
 .meals-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(200px, 0.9fr);
-  gap: var(--space-5);
-  padding: var(--space-5);
+  gap: var(--space-6);
+  padding: var(--space-6);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   border: 1px solid var(--color-accent-700);
@@ -4888,10 +4888,21 @@ details.context-card > summary .context-card-title {
   font-size: 0.82rem;
 }
 
+.meals-hero-amount {
+  min-width: 4.5rem;
+  color: var(--color-neutral-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.meals-hero-name {
+  flex: 1;
+  min-width: 0;
+}
+
 .meals-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3) var(--space-5);
+  gap: var(--space-3) var(--space-6);
 }
 
 .meals-fact {
@@ -4909,7 +4920,7 @@ details.context-card > summary .context-card-title {
 .meals-panel {
   display: flex;
   flex-direction: column;
-  padding: var(--space-5);
+  padding: var(--space-6);
   border-radius: var(--radius-md);
   background: var(--color-surface);
 }
@@ -4946,7 +4957,7 @@ details.context-card > summary .context-card-title {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-4);
-  align-items: stretch;
+  align-items: start;
 }
 
 .meals-dialog {
@@ -5022,7 +5033,7 @@ details.context-card > summary .context-card-title {
 /* Nutrition rings. */
 .meals-rings {
   display: flex;
-  gap: var(--space-5);
+  gap: var(--space-6);
   flex-wrap: wrap;
 }
 

@@ -1146,7 +1146,7 @@ function registerIpcHandlers(): void {
       leftovers: usableLeftovers(state.leftovers, now),
       plan: state.plan.map((meal) => ({
         meal,
-        name: mealName(meal, recipes),
+        name: mealName(meal, recipes, new Map(state.leftovers.map((l) => [l.id, l]))),
         cost:
           meal.cost ??
           (meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
