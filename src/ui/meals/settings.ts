@@ -76,6 +76,11 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
   budget.min = "0";
   budget.placeholder = "none";
   budget.value = data.preferences.dailyBudget === null ? "" : String(data.preferences.dailyBudget);
+  const monthly = input("number");
+  monthly.step = "1";
+  monthly.min = "0";
+  monthly.placeholder = "none";
+  monthly.value = data.preferences.monthlyBudget === null ? "" : String(data.preferences.monthlyBudget);
   const kcal = input("number");
   kcal.min = "0";
   kcal.placeholder = "none";
@@ -101,6 +106,7 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
   const form = make("div", "meals-form");
   form.append(
     field("Budget €/day", budget),
+    field("Budget €/month", monthly),
     field("Calories/day", kcal),
     field("Protein g/day", protein),
     field("Carbs g/day", carbs),
@@ -155,6 +161,7 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
                 .map((v) => v.trim())
                 .filter(Boolean),
               dailyBudget: budget.value ? Number(budget.value) : null,
+              monthlyBudget: monthly.value ? Number(monthly.value) : null,
               dailyKcal: kcal.value ? Number(kcal.value) : null,
               dailyProtein: protein.value ? Number(protein.value) : null,
               dailyCarbs: carbs.value ? Number(carbs.value) : null,

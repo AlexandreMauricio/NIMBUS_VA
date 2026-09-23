@@ -20,6 +20,7 @@ import { logger } from "../logging/logger";
 import { buildDemoData } from "./demoData";
 import { isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
 import { pricePerBaseUnit, scaleFor } from "./recipes";
+import { linePricePerBase, matchLine } from "./purchases";
 import { buildShoppingList } from "./shopping";
 import type { ShoppingList } from "./shopping";
 import {
@@ -38,6 +39,19 @@ import {
   MAX_RECIPE_INGREDIENTS,
   MAX_RECIPE_STEPS,
   MAX_SHOPPING_ITEMS,
+  MAX_SHOPPING_MARKS,
+  MAX_STORES,
+  MAX_PURCHASES,
+  MAX_PURCHASE_LINES,
+  MAX_PRICES,
+  PriceRecord,
+  Purchase,
+  PurchaseLine,
+  PurchaseSource,
+  PurchaseStatus,
+  ShoppingMark,
+  ShoppingMarkKind,
+  Store,
   MEAL_SLOTS,
   ManualShoppingItem,
   MealPreferences,
@@ -57,7 +71,7 @@ import {
   STORAGE_PLACES,
   StoragePlace,
 } from "./types";
-import { matchIngredient } from "./names";
+import { ingredientKey, matchIngredient } from "./names";
 import { servingsNeeded } from "./plan";
 import { normaliseUnit, toBase } from "./units";
 
@@ -360,6 +374,7 @@ export function parsePreferences(raw: unknown): MealPreferences {
     dailyProtein: positive(r.dailyProtein),
     dailyCarbs: positive(r.dailyCarbs),
     dailyFibre: positive(r.dailyFibre),
+    monthlyBudget: positive(r.monthlyBudget),
   };
 }
 
@@ -391,6 +406,10 @@ export function parseState(raw: unknown): MealsState {
     shopping: [],
     preferences: { ...DEFAULT_MEAL_PREFERENCES },
     demoIds: [],
+    stores: [],
+    purchases: [],
+    prices: [],
+    shoppingMarks: [],
   };
   if (!raw || typeof raw !== "object") return empty;
   const r = raw as Record<string, unknown>;
@@ -413,6 +432,99 @@ export function parseState(raw: unknown): MealsState {
       ? r.demoIds.filter((entry): entry is string => typeof entry === "string").slice(0, 10_000)
       : [],
     preferences: parsePreferences(r.preferences),
+    stores: take(r.stores, parseStore, MAX_STORES),
+    purchases: take(r.purchases, parsePurchase, MAX_PURCHASES),
+    prices: take(r.prices, parsePriceRecord, MAX_PRICES),
+    shoppingMarks: take(r.shoppingMarks, parseShoppingMark, MAX_SHOPPING_MARKS),
+  };
+}
+
+function parseStore(raw: unknown): Store | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const name = text(r.name, 60);
+  return typeof r.id === "string" && r.id && name ? { id: r.id, name } : null;
+}
+
+const PURCHASE_SOURCES: PurchaseSource[] = ["manual", "pdf", "photo"];
+const PURCHASE_STATUSES: PurchaseStatus[] = ["review", "imported", "history"];
+
+function money(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
+function parsePurchaseLine(raw: unknown): PurchaseLine | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const lineText = text(r.raw, 200);
+  if (typeof r.id !== "string" || !r.id || !lineText) return null;
+  return {
+    id: r.id,
+    raw: lineText,
+    ingredientId: typeof r.ingredientId === "string" && r.ingredientId ? r.ingredientId : null,
+    notFood: r.notFood === true,
+    quantity: positive(r.quantity),
+    unit: normaliseUnit(r.unit),
+    price: money(r.price),
+    confidence: typeof r.confidence === "number" && r.confidence >= 0 && r.confidence <= 1 ? r.confidence : 0,
+    confirmed: r.confirmed === true,
+  };
+}
+
+function parsePurchase(raw: unknown): Purchase | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const date = isoDay(r.date);
+  if (typeof r.id !== "string" || !r.id || !date) return null;
+  return {
+    id: r.id,
+    storeId: typeof r.storeId === "string" && r.storeId ? r.storeId : null,
+    date,
+    source: PURCHASE_SOURCES.includes(r.source as PurchaseSource) ? (r.source as PurchaseSource) : "manual",
+    status: PURCHASE_STATUSES.includes(r.status as PurchaseStatus) ? (r.status as PurchaseStatus) : "review",
+    lines: Array.isArray(r.lines)
+      ? r.lines
+          .map(parsePurchaseLine)
+          .filter((line): line is PurchaseLine => line !== null)
+          .slice(0, MAX_PURCHASE_LINES)
+      : [],
+    total: money(r.total),
+    fileName: text(r.fileName, 200),
+    addedAt: stamp(r.addedAt),
+    updatedAt: stamp(r.updatedAt),
+  };
+}
+
+function parsePriceRecord(raw: unknown): PriceRecord | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const date = isoDay(r.date);
+  if (
+    typeof r.ingredientId !== "string" ||
+    !r.ingredientId ||
+    !date ||
+    typeof r.pricePerBase !== "number" ||
+    !Number.isFinite(r.pricePerBase) ||
+    r.pricePerBase <= 0
+  )
+    return null;
+  return {
+    ingredientId: r.ingredientId,
+    storeId: typeof r.storeId === "string" && r.storeId ? r.storeId : null,
+    pricePerBase: r.pricePerBase,
+    date,
+    purchaseId: typeof r.purchaseId === "string" && r.purchaseId ? r.purchaseId : null,
+  };
+}
+
+const MARK_KINDS: ShoppingMarkKind[] = ["unavailable", "skip", "substitute"];
+
+function parseShoppingMark(raw: unknown): ShoppingMark | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  if (typeof r.ingredientId !== "string" || !r.ingredientId || typeof r.at !== "string") return null;
+  if (!MARK_KINDS.includes(r.kind as ShoppingMarkKind)) return null;
+  return {
+    ingredientId: r.ingredientId,
+    kind: r.kind as ShoppingMarkKind,
+    substituteId: typeof r.substituteId === "string" && r.substituteId ? r.substituteId : null,
+    storeId: typeof r.storeId === "string" && r.storeId ? r.storeId : null,
+    at: r.at,
   };
 }
 
@@ -1160,11 +1272,268 @@ export class MealService {
     const paid = typeof r.paid === "number" && Number.isFinite(r.paid) && r.paid >= 0 ? r.paid : null;
     if (paid !== null) {
       const price = pricePerBaseUnit(paid, { quantity, unit });
-      if (price !== null) this.updateIngredient(item.ingredientId, { lastPrice: price });
+      if (price !== null) {
+        this.updateIngredient(item.ingredientId, { lastPrice: price });
+        const store = text(r.store, 60) ? this.ensureStore(r.store) : null;
+        this.recordPrice({
+          ingredientId: item.ingredientId,
+          storeId: store?.id ?? null,
+          pricePerBase: price,
+          date: this.today(),
+          purchaseId: null,
+        });
+      }
     }
+    this.state.shoppingMarks = this.state.shoppingMarks.filter(
+      (mark) => mark.ingredientId !== item.ingredientId
+    );
     if (typeof r.itemId === "string" && r.itemId) this.removeShoppingItem(r.itemId);
     else this.save();
     return item;
+  }
+
+  // ---------- Shops, purchases and prices ----------
+
+  listStores(): Store[] {
+    return [...this.state.stores];
+  }
+
+  /** A shop by name, created the first time it's named. */
+  ensureStore(name: unknown): Store {
+    const cleaned = text(name, 60);
+    if (!cleaned) throw new Error("A shop needs a name.");
+    const key = ingredientKey(cleaned);
+    const existing = this.state.stores.find((store) => ingredientKey(store.name) === key);
+    if (existing) return existing;
+    if (this.state.stores.length >= MAX_STORES) throw new Error("Too many shops.");
+    const store = { id: randomUUID(), name: cleaned };
+    this.state.stores.push(store);
+    this.save();
+    return store;
+  }
+
+  private recordPrice(record: PriceRecord): void {
+    this.state.prices.push(record);
+    if (this.state.prices.length > MAX_PRICES)
+      this.state.prices.splice(0, this.state.prices.length - MAX_PRICES);
+  }
+
+  listPurchases(): Purchase[] {
+    return [...this.state.purchases].sort(
+      (a, b) => b.date.localeCompare(a.date) || b.addedAt.localeCompare(a.addedAt)
+    );
+  }
+
+  /**
+   * A purchase to check: its lines as read or typed, each matched to a
+   * known food where one fits (with how sure), waiting in "review" until
+   * you confirm it. Nothing in the kitchen changes yet.
+   */
+  createPurchase(input: unknown): Purchase {
+    const r = (input ?? {}) as Record<string, unknown>;
+    if (this.state.purchases.length >= MAX_PURCHASES) throw new Error("Too many purchases kept.");
+    const source = PURCHASE_SOURCES.includes(r.source as PurchaseSource)
+      ? (r.source as PurchaseSource)
+      : "manual";
+    const rawLines = Array.isArray(r.lines) ? r.lines.slice(0, MAX_PURCHASE_LINES) : [];
+    const lines: PurchaseLine[] = [];
+    for (const raw of rawLines) {
+      const l = (raw ?? {}) as Record<string, unknown>;
+      const lineText = text(l.raw ?? l.name, 200);
+      if (!lineText) continue;
+      const typed =
+        typeof l.ingredientId === "string" && this.state.ingredients.some((i) => i.id === l.ingredientId);
+      const match = typed
+        ? { ingredientId: l.ingredientId as string, confidence: 1 }
+        : matchLine(lineText, this.state.ingredients);
+      lines.push({
+        id: randomUUID(),
+        raw: lineText,
+        ingredientId: match.ingredientId,
+        notFood: l.notFood === true,
+        quantity: positive(l.quantity),
+        unit: normaliseUnit(l.unit),
+        price: money(l.price),
+        // What you typed yourself is known; what was read off paper is a guess until checked.
+        confidence:
+          source === "manual" && match.ingredientId ? Math.max(match.confidence, 0.9) : match.confidence,
+        confirmed: source === "manual" && Boolean(match.ingredientId) && match.confidence >= 0.8,
+      });
+    }
+    if (!lines.length) throw new Error("A purchase needs at least one line.");
+    const store = text(r.store, 60) ? this.ensureStore(r.store) : null;
+    const purchase: Purchase = {
+      id: randomUUID(),
+      storeId: store?.id ?? null,
+      date: isoDay(r.date) ?? this.today(),
+      source,
+      status: "review",
+      lines,
+      total: money(r.total),
+      fileName: text(r.fileName, 200),
+      addedAt: this.now(),
+      updatedAt: this.now(),
+    };
+    this.state.purchases.push(purchase);
+    this.save();
+    return purchase;
+  }
+
+  /** Checking one line: which food (or not food), how much, what it cost. The line is then confirmed. */
+  updatePurchaseLine(purchaseId: unknown, lineId: unknown, changes: unknown): Purchase {
+    const purchase = this.state.purchases.find((entry) => entry.id === purchaseId);
+    if (!purchase) throw new Error("That purchase is gone.");
+    const line = purchase.lines.find((entry) => entry.id === lineId);
+    if (!line) throw new Error("That line is gone.");
+    const c = (changes ?? {}) as Record<string, unknown>;
+    if (c.ingredientId !== undefined) {
+      if (c.ingredientId === null) line.ingredientId = null;
+      else if (
+        typeof c.ingredientId === "string" &&
+        this.state.ingredients.some((i) => i.id === c.ingredientId)
+      )
+        line.ingredientId = c.ingredientId;
+      else throw new Error("That food isn't known.");
+    }
+    if (typeof c.newFood === "string" && text(c.newFood, 120))
+      line.ingredientId = this.ensureIngredient(c.newFood, normaliseUnit(c.unit) ?? line.unit ?? "g").id;
+    if (c.notFood !== undefined) line.notFood = c.notFood === true;
+    if (c.quantity !== undefined) line.quantity = positive(c.quantity);
+    if (c.unit !== undefined) line.unit = normaliseUnit(c.unit);
+    if (c.price !== undefined) line.price = money(c.price);
+    line.confirmed = true;
+    line.confidence = line.ingredientId || line.notFood ? 1 : line.confidence;
+    purchase.updatedAt = this.now();
+    this.save();
+    return purchase;
+  }
+
+  updatePurchase(purchaseId: unknown, changes: unknown): Purchase {
+    const purchase = this.state.purchases.find((entry) => entry.id === purchaseId);
+    if (!purchase) throw new Error("That purchase is gone.");
+    const c = (changes ?? {}) as Record<string, unknown>;
+    if (c.store !== undefined) purchase.storeId = text(c.store, 60) ? this.ensureStore(c.store).id : null;
+    if (c.date !== undefined) purchase.date = isoDay(c.date) ?? purchase.date;
+    if (c.total !== undefined) purchase.total = money(c.total);
+    purchase.updatedAt = this.now();
+    this.save();
+    return purchase;
+  }
+
+  /**
+   * Confirming a purchase: every line you've checked that is a food,
+   * with an amount, applied to what you ask —
+   *
+   *  - `prices`: its price per unit, at that shop, on that day;
+   *  - `pantry`: the food into the kitchen, as confirmed stock;
+   *  - `shopping`: lines added by hand for that food ticked off (the ones
+   *    worked out from the plan go by themselves, now the pantry has it).
+   *
+   * Each confirmed line's text becomes an alias of its food, so the same
+   * receipt line matches for certain next time. Lines never checked are
+   * left out rather than guessed into the kitchen.
+   */
+  confirmPurchase(purchaseId: unknown, apply: unknown): Purchase {
+    const purchase = this.state.purchases.find((entry) => entry.id === purchaseId);
+    if (!purchase) throw new Error("That purchase is gone.");
+    if (purchase.status !== "review") throw new Error("That purchase is already confirmed.");
+    const a = (apply ?? {}) as Record<string, unknown>;
+    const toPrices = a.prices !== false;
+    const toPantry = a.pantry !== false;
+    const toShopping = a.shopping !== false;
+    for (const line of purchase.lines) {
+      if (!line.confirmed || line.notFood || !line.ingredientId) continue;
+      const ingredient = this.state.ingredients.find((i) => i.id === line.ingredientId);
+      if (!ingredient) continue;
+      // The line's own words, remembered as a name for this food.
+      const lineKey = ingredientKey(line.raw);
+      const known = [ingredient.name, ...ingredient.aliases].some((name) => ingredientKey(name) === lineKey);
+      if (lineKey && !known && ingredient.aliases.length < 20) ingredient.aliases.push(line.raw);
+      const perBase = linePricePerBase(line);
+      if (toPrices && perBase !== null) {
+        this.recordPrice({
+          ingredientId: ingredient.id,
+          storeId: purchase.storeId,
+          pricePerBase: perBase,
+          date: purchase.date,
+          purchaseId: purchase.id,
+        });
+        ingredient.lastPrice = perBase;
+      }
+      if (toPantry && line.quantity !== null && line.unit) {
+        const place =
+          this.state.pantry.find((item) => item.ingredientId === ingredient.id)?.place ?? "cupboard";
+        const item: PantryItem = {
+          id: randomUUID(),
+          ingredientId: ingredient.id,
+          name: ingredient.name,
+          quantity: line.quantity,
+          unit: line.unit,
+          startQuantity: line.quantity,
+          place,
+          confidence: "confirmed",
+          packaging: null,
+          openedAt: null,
+          expiresAt: null,
+          lastCorrection: null,
+          addedAt: this.now(),
+          updatedAt: this.now(),
+        };
+        if (this.state.pantry.length < MAX_PANTRY_ITEMS)
+          this.state.pantry = mergeInto(this.state.pantry, item);
+      }
+      if (toShopping) {
+        this.state.shopping = this.state.shopping.filter((item) => item.ingredientId !== ingredient.id);
+        this.state.shoppingMarks = this.state.shoppingMarks.filter(
+          (mark) => mark.ingredientId !== ingredient.id
+        );
+      }
+      ingredient.updatedAt = this.now();
+    }
+    purchase.status = toPantry ? "imported" : "history";
+    purchase.updatedAt = this.now();
+    this.save();
+    logger.info("Purchase confirmed", { lines: purchase.lines.length, status: purchase.status });
+    return purchase;
+  }
+
+  /** Forgets a purchase and the prices it recorded. What it put in the pantry stays — that's food now. */
+  removePurchase(purchaseId: unknown): void {
+    this.state.purchases = this.state.purchases.filter((entry) => entry.id !== purchaseId);
+    this.state.prices = this.state.prices.filter((record) => record.purchaseId !== purchaseId);
+    this.save();
+  }
+
+  /**
+   * A note on a food of this week's list: not in the shop ("unavailable",
+   * optionally which shop), skipped this week, or replaced by another food.
+   * Clearing (kind null) removes the note. Notes are forgotten after a week.
+   */
+  markShopping(ingredientId: unknown, kind: unknown, extra: unknown = {}): void {
+    if (typeof ingredientId !== "string" || !ingredientId) throw new Error("Which food?");
+    this.state.shoppingMarks = this.state.shoppingMarks.filter((mark) => mark.ingredientId !== ingredientId);
+    if (kind !== null && MARK_KINDS.includes(kind as ShoppingMarkKind)) {
+      const e = (extra ?? {}) as Record<string, unknown>;
+      const substitute =
+        typeof e.substituteId === "string" && this.state.ingredients.some((i) => i.id === e.substituteId)
+          ? e.substituteId
+          : null;
+      if (kind === "substitute" && !substitute) throw new Error("Substitute with what?");
+      this.state.shoppingMarks.push({
+        ingredientId,
+        kind: kind as ShoppingMarkKind,
+        substituteId: substitute,
+        storeId: typeof e.storeId === "string" && e.storeId ? e.storeId : null,
+        at: this.now(),
+      });
+    }
+    this.save();
+  }
+
+  /** The week's notes on the shopping list, older ones dropped. */
+  shoppingMarks(): ShoppingMark[] {
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    return this.state.shoppingMarks.filter((mark) => mark.at >= weekAgo);
   }
 
   // ---------- Demo data ----------
@@ -1186,7 +1555,19 @@ export class MealService {
     this.state.pantry.push(...demo.pantry);
     this.state.leftovers.push(...demo.leftovers);
     this.state.plan.push(...demo.plan);
+    // A shop you already have by that name is used instead of a second one.
+    const storeIds = new Map<string, string>();
+    for (const store of demo.stores) {
+      const existing = this.state.stores.find((s) => ingredientKey(s.name) === ingredientKey(store.name));
+      if (existing) storeIds.set(store.id, existing.id);
+      else this.state.stores.push(store);
+    }
+    const shopOf = (id: string | null) => (id ? (storeIds.get(id) ?? id) : null);
+    this.state.purchases.push(...demo.purchases.map((p) => ({ ...p, storeId: shopOf(p.storeId) })));
+    this.state.prices.push(...demo.prices.map((p) => ({ ...p, storeId: shopOf(p.storeId) })));
     this.state.demoIds = [
+      ...demo.stores.filter((store) => !storeIds.has(store.id)).map((store) => store.id),
+      ...demo.purchases.map((entry) => entry.id),
       ...demo.ingredients.map((entry) => entry.id),
       ...demo.recipes.map((entry) => entry.id),
       ...demo.pantry.map((entry) => entry.id),
@@ -1208,6 +1589,23 @@ export class MealService {
     this.state.plan = this.state.plan.filter((meal) => !ids.has(meal.id));
     this.state.leftovers = this.state.leftovers.filter((entry) => !ids.has(entry.id));
     this.state.pantry = this.state.pantry.filter((item) => !ids.has(item.id));
+    this.state.purchases = this.state.purchases.filter((purchase) => !ids.has(purchase.id));
+    // Demo prices: those of demo purchases, and the typed demo price (a demo food at a demo shop).
+    this.state.prices = this.state.prices.filter(
+      (record) =>
+        !(record.purchaseId && ids.has(record.purchaseId)) &&
+        !(
+          record.purchaseId === null &&
+          ids.has(record.ingredientId) &&
+          record.storeId &&
+          ids.has(record.storeId)
+        )
+    );
+    const shopsInUse = new Set([
+      ...this.state.purchases.map((p) => p.storeId),
+      ...this.state.prices.map((p) => p.storeId),
+    ]);
+    this.state.stores = this.state.stores.filter((store) => !ids.has(store.id) || shopsInUse.has(store.id));
     // Meals you planned yourself from a demo recipe stay, named, unlinked.
     this.unlinkRecipes(ids);
     // An ingredient the demo created is only removed once nothing points
@@ -1261,6 +1659,7 @@ export class MealService {
     if (c.dailyProtein !== undefined) current.dailyProtein = positive(c.dailyProtein);
     if (c.dailyCarbs !== undefined) current.dailyCarbs = positive(c.dailyCarbs);
     if (c.dailyFibre !== undefined) current.dailyFibre = positive(c.dailyFibre);
+    if (c.monthlyBudget !== undefined) current.monthlyBudget = positive(c.monthlyBudget);
     this.save();
     return this.getPreferences();
   }

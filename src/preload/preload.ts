@@ -422,6 +422,17 @@ contextBridge.exposeInMainWorld("nimbus", {
     ipcRenderer.invoke("nimbus:add-shopping-item", input),
   removeShoppingItem: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-shopping-item", id),
   buyItem: (input: Record<string, unknown>): Promise<unknown> => ipcRenderer.invoke("nimbus:buy-item", input),
+  createPurchase: (input: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:create-purchase", input),
+  updatePurchase: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-purchase", id, changes),
+  updatePurchaseLine: (id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:update-purchase-line", id, lineId, changes),
+  confirmPurchase: (id: string, apply: Record<string, boolean>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:confirm-purchase", id, apply),
+  removePurchase: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-purchase", id),
+  markShopping: (ingredientId: string, kind: string | null, extra?: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke("nimbus:mark-shopping", ingredientId, kind, extra ?? {}),
   /** The one Meals call that names an address: http(s) only, and never a host on this network. */
   importRecipeUrl: (url: string): Promise<unknown> => ipcRenderer.invoke("nimbus:import-recipe-url", url),
   loadDemoMeals: (): Promise<void> => ipcRenderer.invoke("nimbus:load-demo-meals"),

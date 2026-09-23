@@ -24,7 +24,10 @@ import type {
   NutritionPer100,
   PantryItem,
   PlannedMeal,
+  PriceRecord,
+  Purchase,
   Recipe,
+  Store,
   StoragePlace,
 } from "./types";
 
@@ -34,6 +37,9 @@ export interface DemoData {
   pantry: PantryItem[];
   leftovers: Leftover[];
   plan: PlannedMeal[];
+  stores: Store[];
+  purchases: Purchase[];
+  prices: PriceRecord[];
 }
 
 /** Prices are per base unit (€/g, €/ml, €/piece), as purchases record them. */
@@ -462,11 +468,103 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     };
   });
 
+  // Two shops and two purchases: one confirmed (so there are prices to
+  // compare and money spent), one waiting for review with a line to check.
+  const lidl: Store = { id: id(), name: "Lidl" };
+  const continente: Store = { id: id(), name: "Continente" };
+  const food = (key: string) => ingredients.get(key)!.id;
+  const line = (
+    raw: string,
+    key: string | null,
+    quantity: number | null,
+    unit: string | null,
+    price: number,
+    confidence: number,
+    confirmed: boolean,
+    notFood = false
+  ) => ({
+    id: id(),
+    raw,
+    ingredientId: key ? food(key) : null,
+    notFood,
+    quantity,
+    unit,
+    price,
+    confidence,
+    confirmed,
+  });
+  const bought: Purchase = {
+    id: id(),
+    storeId: lidl.id,
+    date: dayFrom(today, -4),
+    source: "manual",
+    status: "imported",
+    lines: [
+      line("Coxa de frango", "chicken", 1, "kg", 5.49, 1, true),
+      line("Batata 2kg", "potato", 2, "kg", 1.99, 1, true),
+      line("Limão rede", "lemon", 4, "piece", 1.29, 1, true),
+    ],
+    total: 8.77,
+    fileName: null,
+    addedAt: now,
+    updatedAt: now,
+  };
+  const waiting: Purchase = {
+    id: id(),
+    storeId: continente.id,
+    date: dayFrom(today, -1),
+    source: "photo",
+    status: "review",
+    lines: [
+      line("COXA FRANGO KG", "chicken", 1.21, "kg", 6.65, 0.82, false),
+      line("IOG GREGO NAT 4X125G", "yoghurt", 500, "g", 2.49, 0.78, false),
+      line("ESP VERDE", null, 1, "piece", 2.99, 0, false),
+      line("SACO REUT", null, 1, "piece", 0.1, 0, false),
+    ],
+    total: 12.23,
+    fileName: "receipt.jpg",
+    addedAt: now,
+    updatedAt: now,
+  };
+  const prices: PriceRecord[] = [
+    {
+      ingredientId: food("chicken"),
+      storeId: lidl.id,
+      pricePerBase: 0.00549,
+      date: bought.date,
+      purchaseId: bought.id,
+    },
+    {
+      ingredientId: food("potato"),
+      storeId: lidl.id,
+      pricePerBase: 0.000995,
+      date: bought.date,
+      purchaseId: bought.id,
+    },
+    {
+      ingredientId: food("lemon"),
+      storeId: lidl.id,
+      pricePerBase: 0.3225,
+      date: bought.date,
+      purchaseId: bought.id,
+    },
+    {
+      ingredientId: food("chicken"),
+      storeId: continente.id,
+      pricePerBase: 0.00599,
+      date: dayFrom(today, -12),
+      purchaseId: null,
+    },
+  ];
+
   return {
     ingredients: [...ingredients.values()],
     recipes: [...recipes.values()],
     pantry,
     leftovers,
     plan,
+    stores: [lidl, continente],
+    purchases: [bought, waiting],
+    prices,
   };
 }

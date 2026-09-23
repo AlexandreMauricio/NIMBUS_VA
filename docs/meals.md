@@ -194,6 +194,42 @@ stored.
 Meals already cooked are left out, and so are optional lines: nobody
 shops for a pinch of salt.
 
+## Purchases, shops and prices
+
+**Purchases & imports** keeps what you bought. A purchase is typed in
+line by line (receipts and invoices are read in later versions), and each
+line is **matched** to one of your foods — by its words, receipt
+abbreviations spelled out ("IOG" is iogurte) and common Portuguese food
+names understood ("COXA FRANGO" is chicken thighs) — with how sure the
+match is. Nothing changes yet: the purchase waits in **review**, where
+uncertain lines are outlined and each can be pointed at a food, a new
+food, or **not food** (a bag stays in the total, never in the kitchen).
+
+**Confirm import** then applies the lines you checked, to what you tick:
+**prices** (per unit, at that shop, on that day), the **pantry** (as
+confirmed stock), and the **shopping list** (lines for those foods ticked
+off). A line never checked is left out rather than guessed into the
+kitchen. Each confirmed line's words become a name for its food, so the
+same receipt line matches for certain next time
+([purchases.ts](../src/meals/purchases.ts)).
+
+With prices from more than one shop:
+
+- a food **costs** its cheapest recent price (90 days) at any shop, so
+  recipe and plan costs follow what you actually pay;
+- the **price watch** shows one food's latest price at each shop — typed
+  prices dashed, receipt prices solid;
+- the shopping list can be grouped **by store**, says where each line is
+  cheapest and where the price came from, and how much buying at two
+  shops saves over the one that prices most of the list;
+- a line **not in the shop** offers fallbacks — a food of the same kind
+  that's in the pantry, the next shop, or skipping it this week.
+
+**Bought** on the shopping list asks which shop too, and Today's spend
+panel shows what the plan costs against what was actually **spent** this
+week and this month (Settings takes a monthly budget). Deleting a purchase
+forgets its prices; the food it put in the pantry stays.
+
 ## Importing a recipe from a URL
 
 Recipes → **Import from a URL** reads the page's **schema.org Recipe**
@@ -262,11 +298,9 @@ Deliberately absent, and the order they're planned in:
    values by name or barcode, cached locally. Until then, values are
    typed (or come from the demo data), and a recipe says how many of its
    ingredients it could use.
-2. **Purchases and prices** — a purchase records several lines at once,
-   then digital PDF invoices parsed on the PC; price-per-store history and
-   a price watch come from those records. Buying from the shopping list
-   already records one price at a time. Photographs of receipts need OCR,
-   which NIMBUS has no engine for.
+2. **Reading receipts** — invoice PDFs and photographed receipts, read on
+   the PC into the same review. The parser for their text exists
+   ([receiptText.ts](../src/meals/receiptText.ts)); the reading is next.
 3. **The generator** — filling a week against the objectives (use the
    pantry first, use leftovers, save money, quick, high protein) and the
    budget, with the "why this was suggested" explanation. Restrictions,
@@ -275,5 +309,5 @@ Deliberately absent, and the order they're planned in:
 4. **The briefing and Attention** — `meals` already exists as a briefing
    category, unused. "Take the chicken out of the freezer" is the obvious
    first signal.
-5. **Shopping by store**, and leftovers scheduled into the plan
-   automatically (by hand, from the cook dialog, already works).
+5. Leftovers scheduled into the plan automatically (by hand, from the
+   cook dialog, already works).

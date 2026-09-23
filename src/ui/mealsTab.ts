@@ -32,6 +32,7 @@ import {
 } from "./meals/common";
 import { pantryView } from "./meals/pantry";
 import { planView } from "./meals/plan";
+import { purchasesView, reviewDrawer } from "./meals/purchases";
 import { recipesView } from "./meals/recipes";
 import { settingsView } from "./meals/settings";
 import { shoppingView } from "./meals/shopping";
@@ -81,6 +82,10 @@ function render(): void {
     ["recipes", "Recipes"],
     ["shopping", "Shopping"],
     ["pantry", "Pantry"],
+    [
+      "purchases",
+      data.spent.toReview ? `Purchases & imports · ${data.spent.toReview}` : "Purchases & imports",
+    ],
     ["settings", "Settings"],
   ];
   const nav = make("div", "meals-tabs");
@@ -107,5 +112,12 @@ function render(): void {
   else if (state.view === "recipes") root.appendChild(recipesView(data));
   else if (state.view === "shopping") root.appendChild(shoppingView(data));
   else if (state.view === "pantry") root.appendChild(pantryView(data));
+  else if (state.view === "purchases") root.appendChild(purchasesView(data));
   else root.appendChild(settingsView(data));
+
+  // The purchase review drawer sits over whichever view is open.
+  if (state.reviewing) {
+    const drawer = reviewDrawer(data);
+    if (drawer) root.appendChild(drawer);
+  }
 }

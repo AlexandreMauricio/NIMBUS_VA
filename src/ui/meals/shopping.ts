@@ -13,7 +13,9 @@ import {
   make,
   panel,
   rerender,
+  pill,
   select,
+  snapshot,
   state,
   showModal,
 } from "./common";
@@ -74,12 +76,24 @@ export function shoppingView(data: MealsSnapshot): HTMLElement {
       state.shoppingGroup = "category";
       rerender();
     }),
+    chip("By store", state.shoppingGroup === "store", () => {
+      state.shoppingGroup = "store";
+      rerender();
+    }),
     chip("By meal", state.shoppingGroup === "meal", () => {
       state.shoppingGroup = "meal";
       rerender();
     })
   );
   wrap.append(toolbar, grouping);
+  if (list.saving)
+    wrap.appendChild(
+      make(
+        "p",
+        "meals-note",
+        `Buying at ${[list.saving.mainStore, ...list.saving.otherStores].join(" + ")} saves ≈ ${euro(list.saving.saving)} over ${list.saving.mainStore} alone.`
+      )
+    );
 
   if (!list.lines.length) {
     wrap.appendChild(
@@ -98,17 +112,19 @@ export function shoppingView(data: MealsSnapshot): HTMLElement {
   const groups = new Map<string, typeof list.lines>();
   for (const line of list.lines) {
     const keys =
-      state.shoppingGroup === "meal"
-        ? line.manual
-          ? ["Added by hand"]
-          : line.forMeals.length
-            ? line.forMeals
-            : ["Other"]
-        : [
-            line.manual
-              ? "Added by hand"
-              : (line.ingredientId && categories.get(line.ingredientId)) || "Other",
-          ];
+      state.shoppingGroup === "store"
+        ? [line.shop ?? "No price yet"]
+        : state.shoppingGroup === "meal"
+          ? line.manual
+            ? ["Added by hand"]
+            : line.forMeals.length
+              ? line.forMeals
+              : ["Other"]
+          : [
+              line.manual
+                ? "Added by hand"
+                : (line.ingredientId && categories.get(line.ingredientId)) || "Other",
+            ];
     for (const key of keys) groups.set(key, [...(groups.get(key) ?? []), line]);
   }
 
@@ -147,8 +163,14 @@ export function shoppingView(data: MealsSnapshot): HTMLElement {
         )
       );
       row.appendChild(make("span", "meals-srow-buy", line.buy ? formatAmount(line.buy) : "—"));
-      row.appendChild(make("span", "meals-srow-price", line.cost === null ? "" : `≈ ${euro(line.cost)}`));
+      // The price, and where it came from: the cheapest shop and its receipt.
+      const price = make("span", "meals-srow-price");
+      price.appendChild(make("span", undefined, line.cost === null ? "" : `≈ ${euro(line.cost)}`));
+      if (line.shop)
+        price.appendChild(make("span", "meals-line-meta", `${line.shop} · ${line.priceSource ?? ""}`));
+      row.appendChild(price);
       const actions = make("span", "meals-srow-actions");
+      if (line.mark?.kind === "unavailable") actions.appendChild(pill("Unavailable", "urgent"));
       if (line.buy)
         actions.appendChild(
           button("Bought", "btn btn-secondary", () =>
@@ -158,6 +180,7 @@ export function shoppingView(data: MealsSnapshot): HTMLElement {
               quantity: line.buy!.quantity,
               unit: line.buy!.unit,
               itemId: line.itemId,
+              shop: line.shop,
             })
           )
         );
@@ -165,10 +188,74 @@ export function shoppingView(data: MealsSnapshot): HTMLElement {
         actions.appendChild(
           button("Remove", "meals-link", () => void act(() => bridge().removeShoppingItem(line.itemId!)))
         );
+      if (line.ingredientId && !line.mark)
+        actions.appendChild(
+          button(
+            "Not in shop",
+            "meals-link",
+            () =>
+              void act(() =>
+                bridge().markShopping(line.ingredientId!, "unavailable", {
+                  storeId: line.prices[0]?.storeId ?? null,
+                })
+              )
+          )
+        );
       row.appendChild(actions);
       group.appendChild(row);
+      // Not in the shop: what could stand in for it, as the design offers.
+      if (line.mark?.kind === "unavailable" && line.ingredientId) {
+        const fallbacks = make("div", "meals-fallbacks");
+        fallbacks.appendChild(make("span", "card-kicker", "Fallback"));
+        for (const substitute of line.substitutes)
+          fallbacks.appendChild(
+            button(
+              `↻ Substitute ${substitute.name} · in pantry`,
+              "meals-alt-btn is-rec",
+              () =>
+                void act(() =>
+                  bridge().markShopping(line.ingredientId!, "substitute", { substituteId: substitute.id })
+                )
+            )
+          );
+        const other = line.prices.find((p) => p.storeId !== line.mark!.storeId);
+        if (other) fallbacks.appendChild(make("span", "meals-alt-btn", `↻ Try ${other.storeName}`));
+        fallbacks.appendChild(
+          button(
+            "↻ Skip it",
+            "meals-alt-btn",
+            () => void act(() => bridge().markShopping(line.ingredientId!, "skip"))
+          )
+        );
+        fallbacks.appendChild(
+          button("Undo", "meals-link", () => void act(() => bridge().markShopping(line.ingredientId!, null)))
+        );
+        group.appendChild(fallbacks);
+      }
     }
     wrap.appendChild(group);
+  }
+
+  if (list.setAside.length) {
+    const { box, body } = panel("Set aside this week", `${list.setAside.length}`);
+    for (const entry of list.setAside) {
+      const row = make("div", "meals-line");
+      row.append(
+        make("strong", undefined, entry.name),
+        make(
+          "span",
+          "meals-line-meta",
+          entry.kind === "substitute" ? `using ${entry.substitute ?? "something else"} instead` : "skipped"
+        ),
+        button(
+          "Put back",
+          "meals-link",
+          () => void act(() => bridge().markShopping(entry.ingredientId ?? "", null))
+        )
+      );
+      body.appendChild(row);
+    }
+    wrap.appendChild(box);
   }
 
   if (list.covered.length) {
@@ -201,6 +288,7 @@ export function openBuy(line: {
   quantity: number;
   unit: string;
   itemId: string | null;
+  shop?: string | null;
 }): void {
   const { box, body } = panel(`Bought · ${line.name}`);
   box.classList.add("meals-dialog");
@@ -221,11 +309,20 @@ export function openBuy(line: {
     "cupboard"
   );
   const expires = input("date");
+  const shop = input("text");
+  shop.placeholder = "optional";
+  shop.value = line.shop ?? "";
+  shop.setAttribute("list", "mealsBuyShops");
+  const shops = make("datalist");
+  shops.id = "mealsBuyShops";
+  for (const store of snapshot?.stores ?? []) shops.appendChild(new Option(store.name));
+  body.appendChild(shops);
   const form = make("div", "meals-form");
   form.append(
     field("Amount", quantity),
     field("Unit", unit),
     field("Paid €", paid),
+    field("Shop", shop),
     field("Where", place),
     field("Use by", expires)
   );
@@ -252,6 +349,7 @@ export function openBuy(line: {
               quantity: Number(quantity.value),
               unit: unit.value,
               paid: paid.value ? Number(paid.value) : null,
+              store: shop.value || null,
               place: place.value,
               expiresAt: expires.value || null,
             }),

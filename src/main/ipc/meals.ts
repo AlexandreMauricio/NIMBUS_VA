@@ -15,6 +15,12 @@ import type { PublicPage } from "../publicFetch";
 import { BrowserWindow } from "electron";
 import { recipePhotoUrl } from "../../meals/types";
 import { choosePictureFile, removePictureFile } from "../coverStore";
+import { currentPrice, pricesByStore, splitShopSaving } from "../../meals/purchases";
+import type { StorePrice } from "../../meals/purchases";
+import { reconcile } from "../../meals/receiptText";
+import type { ShoppingList } from "../../meals/shopping";
+import type { MealsState, Purchase } from "../../meals/types";
+import { toBase } from "../../meals/units";
 import { handle } from "./handle";
 import type { IpcContext } from "./context";
 
@@ -33,7 +39,14 @@ export function registerMealsIpc(ctx: IpcContext): void {
     const state = ctx.mealService.getState();
     const ingredients = new Map(state.ingredients.map((ingredient) => [ingredient.id, ingredient]));
     const recipes = new Map(state.recipes.map((recipe) => [recipe.id, recipe]));
-    const lookup = (id: string) => ingredients.get(id);
+    // What a food costs now: the cheapest recent price at any shop, else the last one typed.
+    const priced = new Map(
+      state.ingredients.map((ingredient) => [
+        ingredient.id,
+        { ...ingredient, lastPrice: currentPrice(state.prices, ingredient, state.stores, today) },
+      ])
+    );
+    const lookup = (id: string) => priced.get(id);
     const needed = servingsNeeded(state.preferences.eaters);
     const leftoverMap = new Map(state.leftovers.map((leftover) => [leftover.id, leftover]));
     // The package of a food that would be used first — what "Home · exp. tomorrow" describes.
@@ -136,7 +149,23 @@ export function registerMealsIpc(ctx: IpcContext): void {
       }),
       days,
       weekCost: cost,
-      shopping: ctx.mealService.shoppingList(days),
+      shopping: shoppingWithShops(ctx.mealService.shoppingList(days), state, today),
+      stores: state.stores,
+      purchases: ctx.mealService.listPurchases().map((purchase) => ({
+        ...purchase,
+        storeName: state.stores.find((store) => store.id === purchase.storeId)?.name ?? null,
+        check: reconcile(purchase.lines, purchase.total),
+        spent: purchaseTotal(purchase),
+      })),
+      spent: spentSummary(state, days, today),
+      priceWatch: state.ingredients
+        .map((ingredient) => ({
+          ingredientId: ingredient.id,
+          name: ingredient.name,
+          prices: pricesByStore(state.prices, ingredient.id, state.stores, today, manualPurchaseIds(state)),
+        }))
+        .filter((entry) => entry.prices.length > 0)
+        .sort((a, b) => b.prices.length - a.prices.length || a.name.localeCompare(b.name)),
       hasDemoData: ctx.mealService.hasDemoData(),
     };
   };
@@ -246,7 +275,123 @@ export function registerMealsIpc(ctx: IpcContext): void {
     ctx.mealService.removeShoppingItem(String(id ?? ""))
   );
   handle("nimbus:buy-item", (_event, input: unknown) => ctx.mealService.buy(input));
+  // Purchases: created for review, checked line by line, then confirmed into
+  // prices, the pantry and the list — nothing moves before the confirm.
+  handle("nimbus:create-purchase", (_event, input: unknown) => ctx.mealService.createPurchase(input));
+  handle("nimbus:update-purchase", (_event, id: unknown, changes: unknown) =>
+    ctx.mealService.updatePurchase(String(id ?? ""), changes)
+  );
+  handle("nimbus:update-purchase-line", (_event, id: unknown, lineId: unknown, changes: unknown) =>
+    ctx.mealService.updatePurchaseLine(String(id ?? ""), String(lineId ?? ""), changes)
+  );
+  handle("nimbus:confirm-purchase", (_event, id: unknown, apply: unknown) =>
+    ctx.mealService.confirmPurchase(String(id ?? ""), apply)
+  );
+  handle("nimbus:remove-purchase", (_event, id: unknown) => ctx.mealService.removePurchase(String(id ?? "")));
+  handle("nimbus:mark-shopping", (_event, ingredientId: unknown, kind: unknown, extra: unknown) =>
+    ctx.mealService.markShopping(ingredientId, kind ?? null, extra)
+  );
   handle("nimbus:import-recipe-url", (_event, url: unknown) => fetchRecipePage(url));
   handle("nimbus:load-demo-meals", () => ctx.mealService.loadDemoData());
   handle("nimbus:remove-demo-meals", () => ctx.mealService.removeDemoData());
+}
+
+/** Purchases whose prices were typed in by hand — shown dashed in the price watch. */
+function manualPurchaseIds(state: MealsState): Set<string> {
+  return new Set(state.purchases.filter((purchase) => purchase.source === "manual").map((p) => p.id));
+}
+
+/** What a purchase came to: the printed total, else its lines added up. */
+function purchaseTotal(purchase: Purchase): number {
+  return (
+    purchase.total ?? Math.round(purchase.lines.reduce((sum, line) => sum + (line.price ?? 0), 0) * 100) / 100
+  );
+}
+
+/**
+ * Money actually spent — confirmed purchases only — this week (per day,
+ * for the spend bars) and this month, against the monthly budget.
+ */
+function spentSummary(state: MealsState, days: string[], today: string) {
+  const confirmed = state.purchases.filter((purchase) => purchase.status !== "review");
+  const month = today.slice(0, 7);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return {
+    byDay: days.map((date) => ({
+      date,
+      amount: round(confirmed.filter((p) => p.date === date).reduce((sum, p) => sum + purchaseTotal(p), 0)),
+    })),
+    week: round(confirmed.filter((p) => days.includes(p.date)).reduce((sum, p) => sum + purchaseTotal(p), 0)),
+    month: round(
+      confirmed.filter((p) => p.date.startsWith(month)).reduce((sum, p) => sum + purchaseTotal(p), 0)
+    ),
+    monthlyBudget: state.preferences.monthlyBudget,
+    toReview: state.purchases.filter((purchase) => purchase.status === "review").length,
+  };
+}
+
+/**
+ * The shopping list with shops: each line's prices by shop (cheapest
+ * first) and its cost at the cheapest, your notes on it (not in the shop,
+ * skipped, bought as something else), what the pantry could stand in for
+ * it, and the "two shops" hint. Skipped and substituted lines move out of
+ * the list into `setAside`.
+ */
+function shoppingWithShops(list: ShoppingList, state: MealsState, today: string) {
+  const manual = manualPurchaseIds(state);
+  const marks = new Map(
+    state.shoppingMarks
+      .filter((mark) => mark.at >= new Date(Date.now() - 7 * 86_400_000).toISOString())
+      .map((mark) => [mark.ingredientId, mark])
+  );
+  const onHand = new Set(state.pantry.map((item) => item.ingredientId));
+  const categoryOf = (id: string) => state.ingredients.find((i) => i.id === id)?.category ?? null;
+  const lines = list.lines.map((line) => {
+    const prices: StorePrice[] = line.ingredientId
+      ? pricesByStore(state.prices, line.ingredientId, state.stores, today, manual)
+      : [];
+    const base = line.buy ? toBase(line.buy) : null;
+    const cheapest = prices[0] ?? null;
+    const mark = line.ingredientId ? (marks.get(line.ingredientId) ?? null) : null;
+    const category = line.ingredientId ? categoryOf(line.ingredientId) : null;
+    return {
+      ...line,
+      prices,
+      cost: cheapest && base ? Math.round(cheapest.pricePerBase * base.quantity * 100) / 100 : line.cost,
+      shop: cheapest ? cheapest.storeName : null,
+      priceSource: cheapest ? `${cheapest.manual ? "typed" : "receipt"} ${cheapest.date}` : null,
+      mark,
+      // Foods in the kitchen of the same kind, for "substitute".
+      substitutes:
+        category && line.ingredientId
+          ? state.ingredients
+              .filter((i) => i.id !== line.ingredientId && i.category === category && onHand.has(i.id))
+              .slice(0, 3)
+              .map((i) => ({ id: i.id, name: i.name }))
+          : [],
+    };
+  });
+  const setAside = lines.filter((line) => line.mark && line.mark.kind !== "unavailable");
+  const kept = lines.filter((line) => !setAside.includes(line));
+  const cost = kept.reduce<number | null>(
+    (sum, line) => (line.cost === null ? sum : (sum ?? 0) + line.cost),
+    null
+  );
+  return {
+    ...list,
+    lines: kept,
+    setAside: setAside.map((line) => ({
+      name: line.name,
+      ingredientId: line.ingredientId,
+      kind: line.mark!.kind,
+      substitute: state.ingredients.find((i) => i.id === line.mark!.substituteId)?.name ?? null,
+    })),
+    toBuy: kept.length,
+    cost: cost === null ? null : Math.round(cost * 100) / 100,
+    saving: splitShopSaving(
+      kept
+        .filter((line) => line.buy && line.prices.length)
+        .map((line) => ({ baseQuantity: toBase(line.buy!)?.quantity ?? 0, prices: line.prices }))
+    ),
+  };
 }

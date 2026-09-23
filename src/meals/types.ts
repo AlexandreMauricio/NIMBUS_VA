@@ -275,6 +275,8 @@ export interface MealPreferences {
   dailyCarbs: number | null;
   /** Daily fibre per person, in grams. */
   dailyFibre: number | null;
+  /** A month's food budget in euros, or null. */
+  monthlyBudget: number | null;
 }
 
 export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
@@ -287,6 +289,7 @@ export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
   dailyProtein: null,
   dailyCarbs: null,
   dailyFibre: null,
+  monthlyBudget: null,
 };
 
 /**
@@ -319,7 +322,91 @@ export interface MealsState {
    * takes out exactly what it put in and never touches your own food.
    */
   demoIds: string[];
+  /** Shops you buy from — named once, then chosen. */
+  stores: Store[];
+  /** What you bought: typed in, or read off a receipt or an invoice and checked. */
+  purchases: Purchase[];
+  /** A price per base unit, per food and shop, from each confirmed purchase line. */
+  prices: PriceRecord[];
+  /** What you said about a shopping line: not in the shop, skipped, or bought as something else. */
+  shoppingMarks: ShoppingMark[];
 }
+
+export interface Store {
+  id: string;
+  name: string;
+}
+
+export type PurchaseSource = "manual" | "pdf" | "photo";
+
+/**
+ * Where a purchase is: waiting for you to check its lines ("review"),
+ * applied to the pantry ("imported"), or kept only for its prices and
+ * total ("history").
+ */
+export type PurchaseStatus = "review" | "imported" | "history";
+
+/** One line of a receipt: what it said, which food it is, and what it cost. */
+export interface PurchaseLine {
+  id: string;
+  /** As printed ("COXA FRANGO KG") or as you typed it. */
+  raw: string;
+  ingredientId: string | null;
+  /** A bag, a battery: kept in the total, never in the kitchen. */
+  notFood: boolean;
+  quantity: number | null;
+  unit: string | null;
+  /** What the line cost, in euros, after its discounts. */
+  price: number | null;
+  /** How sure the match is, 0–1. Anything under 0.8 is outlined for a look. */
+  confidence: number;
+  /** You looked at it (or typed it): no longer a guess. */
+  confirmed: boolean;
+}
+
+export interface Purchase {
+  id: string;
+  storeId: string | null;
+  /** The day of the purchase (YYYY-MM-DD). */
+  date: string;
+  source: PurchaseSource;
+  status: PurchaseStatus;
+  lines: PurchaseLine[];
+  /** The total as printed, when there is one — the lines are checked against it. */
+  total: number | null;
+  /** The file it was read from, for reference only. */
+  fileName: string | null;
+  addedAt: string;
+  updatedAt: string;
+}
+
+export interface PriceRecord {
+  ingredientId: string;
+  storeId: string | null;
+  /** €/g, €/ml or €/piece. */
+  pricePerBase: number;
+  date: string;
+  purchaseId: string | null;
+}
+
+export type ShoppingMarkKind = "unavailable" | "skip" | "substitute";
+
+/** A note on one food of this week's list. Kept a week, then forgotten. */
+export interface ShoppingMark {
+  ingredientId: string;
+  kind: ShoppingMarkKind;
+  /** For "substitute": the food used instead. */
+  substituteId: string | null;
+  /** For "unavailable": the shop it wasn't in. */
+  storeId: string | null;
+  at: string;
+}
+
+export const MAX_STORES = 50;
+export const MAX_PURCHASES = 2000;
+export const MAX_PURCHASE_LINES = 200;
+export const MAX_PRICES = 20000;
+export const MAX_SHOPPING_MARKS = 300;
 
 /** The store the service writes through — the same shape as the shelf's and the collection's. */
 export interface MealsStore {

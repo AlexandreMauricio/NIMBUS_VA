@@ -20,6 +20,34 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.17 — 2026-09-23
+
+Meals, step 3 of 4 towards the "Meals v3" design: purchases, shops and
+prices.
+
+- **Purchases & imports**, a new view. Type in what you bought; each line
+  is matched to one of your foods (receipt abbreviations and Portuguese
+  food names understood) and waits for review — uncertain lines
+  outlined, anything can be pointed at a food, a new food, or "not food".
+  **Confirm import** applies only the lines you checked, to what you tick:
+  prices, the pantry, the shopping list. Confirmed lines teach the match,
+  so the same receipt line is certain next time.
+- **Prices per shop.** A food costs its cheapest recent price at any shop,
+  so recipe and plan costs follow what you actually pay. A **price watch**
+  compares one food across shops.
+- **Shopping by store**: where each line is cheapest and where that price
+  came from, how much two shops save over one, and — for something not in
+  the shop — a substitute from the pantry, the next shop, or skip it this
+  week. **Bought** records the shop.
+- **Money spent**: Today's spend panel shows the week's plan against what
+  was actually spent, and the month against a monthly budget (Settings).
+- The demo kitchen includes two shops and two purchases, one waiting for
+  review.
+- Receipt text — weights, multiples, discounts, totals, VAT and payment
+  lines — is parsed on the PC, ready for reading PDFs and photos next.
+
+---
+
 ## 0.6.16 — 2026-09-23
 
 Meals, step 2 of 4 towards the "Meals v3" design: what a recipe can hold.

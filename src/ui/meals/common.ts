@@ -56,6 +56,7 @@ export interface MealsSnapshot {
     dailyProtein: number | null;
     dailyCarbs: number | null;
     dailyFibre: number | null;
+    monthlyBudget: number | null;
   };
   ingredients: Array<{ id: string; name: string; aliases: string[]; unit: string; lastPrice: number | null }>;
   recipes: Array<{
@@ -124,7 +125,20 @@ export interface MealsSnapshot {
       cost: number | null;
       manual: boolean;
       itemId: string | null;
+      /** Latest price per shop, cheapest first. */
+      prices: StorePriceUI[];
+      /** The cheapest shop, and where its price came from. */
+      shop: string | null;
+      priceSource: string | null;
+      mark: {
+        kind: "unavailable" | "skip" | "substitute";
+        storeId: string | null;
+        substituteId: string | null;
+      } | null;
+      substitutes: Array<{ id: string; name: string }>;
     }>;
+    setAside: Array<{ name: string; ingredientId: string | null; kind: string; substitute: string | null }>;
+    saving: { mainStore: string; otherStores: string[]; saving: number } | null;
     toBuy: number;
     covered: Array<{ name: string; value: number | null }>;
     cost: number | null;
@@ -132,6 +146,16 @@ export interface MealsSnapshot {
     unknown: number;
   };
   hasDemoData: boolean;
+  stores: Array<{ id: string; name: string }>;
+  purchases: PurchaseUI[];
+  spent: {
+    byDay: Array<{ date: string; amount: number }>;
+    week: number;
+    month: number;
+    monthlyBudget: number | null;
+    toReview: number;
+  };
+  priceWatch: Array<{ ingredientId: string; name: string; prices: StorePriceUI[] }>;
   weekCost: {
     value: number | null;
     known: number;
@@ -140,6 +164,40 @@ export interface MealsSnapshot {
     budget: number | null;
     overBudget: boolean;
   };
+}
+
+export interface StorePriceUI {
+  storeId: string | null;
+  storeName: string;
+  pricePerBase: number;
+  date: string;
+  manual: boolean;
+}
+
+export interface PurchaseLineUI {
+  id: string;
+  raw: string;
+  ingredientId: string | null;
+  notFood: boolean;
+  quantity: number | null;
+  unit: string | null;
+  price: number | null;
+  confidence: number;
+  confirmed: boolean;
+}
+
+export interface PurchaseUI {
+  id: string;
+  storeId: string | null;
+  storeName: string | null;
+  date: string;
+  source: "manual" | "pdf" | "photo";
+  status: "review" | "imported" | "history";
+  lines: PurchaseLineUI[];
+  total: number | null;
+  fileName: string | null;
+  check: { sum: number; matches: boolean | null; unpriced: number };
+  spent: number;
 }
 
 /** What cooking would take, package by package (MealService.previewCook). */
@@ -201,6 +259,12 @@ export interface MealsBridge {
   }>;
   previewCook(recipeId: string, servings: number): Promise<CookPreviewUI>;
   addMissingToShopping(recipeId: string, servings: number): Promise<number>;
+  createPurchase(input: Record<string, unknown>): Promise<PurchaseUI>;
+  updatePurchase(id: string, changes: Record<string, unknown>): Promise<unknown>;
+  updatePurchaseLine(id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown>;
+  confirmPurchase(id: string, apply: Record<string, boolean>): Promise<unknown>;
+  removePurchase(id: string): Promise<void>;
+  markShopping(ingredientId: string, kind: string | null, extra?: Record<string, unknown>): Promise<void>;
   eatLeftover(mealId: string, leftoverId: string, portions: number): Promise<unknown>;
   updateMealPreferences(changes: Record<string, unknown>): Promise<unknown>;
   addShoppingItem(input: Record<string, unknown>): Promise<unknown>;
@@ -214,7 +278,7 @@ export interface MealsBridge {
 
 export const bridge = (): MealsBridge => (window as unknown as { nimbus: MealsBridge }).nimbus;
 
-export type MealsView = "today" | "plan" | "recipes" | "shopping" | "pantry" | "settings";
+export type MealsView = "today" | "plan" | "recipes" | "shopping" | "pantry" | "purchases" | "settings";
 export type RecipeFilter =
   "all" | "home" | "quick" | "cheap" | "favourites" | "imported" | "single" | "multi" | "batch";
 
@@ -230,7 +294,12 @@ export interface MealsUiState {
   /** The servings the open recipe page is scaled to. */
   recipeServings: number | null;
   pantryFilter: "all" | StoragePlace | "expiring" | "unconfirmed";
-  shoppingGroup: "category" | "meal";
+  shoppingGroup: "category" | "meal" | "store";
+  purchaseFilter: "all" | "review" | "receipts" | "manual";
+  /** The purchase open in the review drawer. */
+  reviewing: string | null;
+  /** The food whose prices the price watch shows. */
+  watching: string | null;
   planning: { date: string; slot: MealSlot; mealId: string | null } | null;
   message: string;
   error: string;
@@ -248,6 +317,9 @@ export const state: MealsUiState = {
   recipeServings: null,
   pantryFilter: "all",
   shoppingGroup: "category",
+  purchaseFilter: "all",
+  reviewing: null,
+  watching: null,
   planning: null,
   message: "",
   error: "",

@@ -306,6 +306,13 @@ export function spendPanel(data: MealsSnapshot): HTMLElement {
     "Food spend · this week",
     budget === null ? "no budget set" : `${euro(budget)}/day budget`
   );
+  // The headline, as the design has it: what the week's plan comes to, and what was actually spent.
+  const headline = make("div", "meals-big-row");
+  headline.append(
+    make("span", "meals-big", data.weekCost.value === null ? "—" : `≈ ${euro(data.weekCost.value)}`),
+    make("span", "meals-line-meta", `planned · ${euro(data.spent.week)} spent`)
+  );
+  body.appendChild(headline);
   const peak = Math.max(1, ...data.spend.map((entry) => entry.total ?? 0), budget ?? 0);
   const chart = make("div", "meals-spend");
   for (const entry of data.spend) {
@@ -335,6 +342,14 @@ export function spendPanel(data: MealsSnapshot): HTMLElement {
       "p",
       "meals-note",
       `Hatched = estimated from ingredient prices · ${week.value === null ? "nothing costed" : `week ≈ ${euro(week.value)}`}${week.budget === null ? "" : ` of ${euro(week.budget)}`}`
+    )
+  );
+  const monthName = new Date(`${data.today}T00:00:00`).toLocaleDateString("en-GB", { month: "short" });
+  body.appendChild(
+    make(
+      "p",
+      "meals-note",
+      `${monthName}: ${euro(data.spent.month)} spent${data.spent.monthlyBudget === null ? "" : ` of ${euro(data.spent.monthlyBudget)}`}`
     )
   );
   if (week.overBudget)
