@@ -388,18 +388,25 @@ beside its own `NIMBUS.exe`, at `%APPDATA%\nimbus\.env`, or wherever
 An installed NIMBUS updates itself from this repository's GitHub
 Releases: it checks shortly after starting and every 6 hours, downloads
 a newer version in the background, and Settings → Updates offers
-**Restart to update**. To publish one, bump the version and run:
+**Restart to update**. Nothing installs until you press it. To publish
+one, bump the version and run:
 
 ```bash
 npm run release
 ```
 
-with a GitHub token (`GH_TOKEN`, repo scope) in the environment — it
-builds the installer and publishes it with `latest.yml` as a GitHub
-release straight away (`releaseType: "release"` in `build.publish`). Updating needs the
+with a GitHub token (`GH_TOKEN`) in the environment — it builds the
+installer and publishes it with `latest.yml` as a GitHub release straight
+away (`releaseType: "release"` in `build.publish`). Updating needs the
 releases to be readable without signing in, so the repository (or a
 separate releases repository set in `build.publish`) must be public.
 Running a newer installer by hand still works too.
+
+**Guard that token.** The installer isn't code-signed, and the checksum
+an installed NIMBUS checks comes from the same release, so anyone who
+can publish a release can ship code to every copy. Use a fine-grained
+token limited to this one repository with only **Contents: read and
+write**, give it an expiry, and keep it out of files and shell history.
 
 ### Run from source
 

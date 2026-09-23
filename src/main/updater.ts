@@ -8,14 +8,19 @@ import { logger } from "../logging/logger";
  * Only an installed build updates itself: `npm start` runs from source,
  * which is updated with git or a ZIP instead. An installed build checks
  * shortly after starting and every 6 hours, downloads a newer release in
- * the background, and asks before restarting — or installs it the next
- * time NIMBUS quits. Settings and data live in %APPDATA%\nimbus, which
- * the installer never touches, so an update keeps them.
+ * the background, and installs it only when you press "Restart to
+ * update" — never by itself when NIMBUS quits. Settings and data live in
+ * %APPDATA%\nimbus, which the installer never touches, so an update
+ * keeps them.
  *
  * Nothing here takes input from the renderer besides "check" and
  * "restart": where updates come from is fixed in package.json
- * (build.publish), and electron-updater verifies the download against
- * the release's latest.yml checksum before installing it.
+ * (build.publish). electron-updater checks the download against the
+ * release's latest.yml checksum, which catches a corrupted download — but
+ * the installer isn't code-signed and latest.yml comes from the same
+ * release, so it can't tell a genuine release from one published by
+ * someone else with access to the repository. Whoever holds the release
+ * token can ship code to every install; see README → Updates.
  */
 
 export type UpdateStatus =
@@ -60,7 +65,8 @@ export function startUpdater(): void {
     return;
   }
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // Installed only when asked (installUpdate), never silently on quit.
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.logger = null;
   autoUpdater.on("checking-for-update", () => set({ status: "checking", error: null }));
   autoUpdater.on("update-not-available", () =>

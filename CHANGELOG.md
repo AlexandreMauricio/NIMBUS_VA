@@ -18,6 +18,23 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.12 — 2026-09-23
+
+- **Fixed: an installed NIMBUS was a different app to Windows than its own
+  shortcuts.** It named itself `com.nimbus.desktop` while the installer
+  stamps the shortcuts with `com.alexandremauricio.nimbus`, so the
+  taskbar button didn't group with a pinned NIMBUS and notifications
+  could lose its name. It now uses the installer's id, read from
+  `package.json`.
+- **Updates install only when you say so.** A downloaded update still
+  waits in Settings → Updates, but no longer installs by itself when
+  NIMBUS quits — only on **Restart to update**.
+- The README explains why the release token matters (an unsigned
+  installer means whoever can publish a release can update every copy)
+  and how to scope it.
+
+---
+
 ## 0.6.11 — 2026-09-23
 
 - **Fixed: an unreadable `settings.json` could wipe your settings and

@@ -21,8 +21,20 @@ export const APP_FULL_NAME = "Navigation & Intelligent Monitoring Base for User 
  * rather than require(): ESLint forbids require-style imports, and an ES
  * import of a file outside src/ would break tsc's rootDir.
  */
-export const APP_VERSION: string = (
-  JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf-8")) as {
-    version: string;
-  }
-).version;
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf-8")
+) as { version: string; build?: { appId?: string } };
+
+export const APP_VERSION: string = packageJson.version;
+
+/**
+ * Windows' identity for NIMBUS (its AppUserModelID) — the installer's
+ * `build.appId`, read from the same file for the same reason as the
+ * version. The installer stamps it on the Start-menu and desktop
+ * shortcuts; a running app that claims a different one is, to Windows, a
+ * different app: its taskbar button doesn't group with a pinned shortcut
+ * and its notifications don't carry NIMBUS's name. Never change
+ * `build.appId` itself — the installer keys its uninstall entry on it, so
+ * an update would install as a second app.
+ */
+export const APP_ID: string = packageJson.build?.appId ?? "com.alexandremauricio.nimbus";

@@ -35,7 +35,7 @@ export function initUpdateSettings(): void {
       checking: `Version ${view.currentVersion} — checking GitHub…`,
       upToDate: `Version ${view.currentVersion} — the latest.${checked}`,
       downloading: `Version ${view.version} is downloading${view.percent !== null ? ` (${view.percent}%)` : ""}…`,
-      ready: `Version ${view.version} is ready. Restart NIMBUS to update — or it installs the next time NIMBUS quits.`,
+      ready: `Version ${view.version} is ready. It installs when you press Restart to update — never by itself.`,
       error: `Version ${view.currentVersion}. ${view.error ?? "The update check failed."}${checked}`,
     };
     status.textContent = text[view.status];

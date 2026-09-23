@@ -276,7 +276,8 @@ src/
                                    dialog, resized, saved in book-covers/,
                                    served only as nimbus-cover://cover/<id>.jpg
     updater.ts                    In-app updates from GitHub Releases
-                                   (electron-updater); installed builds only
+                                   (electron-updater); installed builds only;
+                                   installs only on "Restart to update"
     memoryStore.ts                Memory, one file per tier
                                    (memory/*.json)
     network/
@@ -571,8 +572,9 @@ native toast can't render two real buttons and a dynamic action list.
 Both are frameless, always-on-top, shown with `showInactive()` and
 positioned in the primary display's work area. The timer popup polls
 `nimbus:get-timer-state` once a second. `main.ts` still sets
-`app.setAppUserModelId()` so any simple native notification carries the
-NIMBUS identity.
+`app.setAppUserModelId()` — to the installer's `build.appId`, read by
+`appInfo.ts` — so any simple native notification carries the NIMBUS
+identity and the running app groups with its own shortcuts.
 
 ## Calendar/Email/Tasks/Spotify integration boundary
 

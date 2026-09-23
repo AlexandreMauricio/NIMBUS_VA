@@ -2,6 +2,7 @@ import { app, protocol } from "electron";
 import * as path from "path";
 import { logger, configureFileLogging } from "../logging/logger";
 import { configureLocale } from "../common/locale";
+import { APP_ID } from "../common/appInfo";
 import { startApp } from "./lifecycle";
 import { installNavigationGuard } from "./navigationGuard";
 
@@ -24,8 +25,9 @@ configureFileLogging(() => path.join(app.getPath("userData"), "logs"));
 // for any simple native notification NIMBUS uses; rich, interactive
 // suggestions use the NIMBUS-owned popup window instead (see
 // src/main/suggestionWindow.ts) since native toasts can't render those well
-// regardless of identity.
-app.setAppUserModelId("com.nimbus.desktop");
+// regardless of identity. It is the installer's appId (see appInfo.ts), so
+// an installed NIMBUS and its shortcuts are one app to Windows.
+app.setAppUserModelId(APP_ID);
 
 // Covers you choose for books are kept in NIMBUS's own folder and shown
 // through this scheme (see coverStore.ts) — never as file:// paths.
