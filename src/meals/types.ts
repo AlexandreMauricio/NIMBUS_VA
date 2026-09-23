@@ -150,6 +150,8 @@ export interface Recipe {
   /** When it was last cooked, and how often — filled in by cooking, not by hand. */
   lastCookedAt: string | null;
   timesCooked: number;
+  /** How much effort it takes, when you've said; the planner can keep to easy ones. */
+  difficulty: RecipeDifficulty | null;
   addedAt: string;
   updatedAt: string;
 }
@@ -217,7 +219,35 @@ export interface Leftover {
 }
 
 /** What a planned meal actually is. */
-export type PlannedMealKind = "recipe" | "leftover" | "custom" | "out";
+export type PlannedMealKind = "recipe" | "leftover" | "custom" | "out" | "takeaway" | "friends" | "skip";
+
+export const PLANNED_MEAL_KINDS: PlannedMealKind[] = [
+  "recipe",
+  "leftover",
+  "custom",
+  "out",
+  "takeaway",
+  "friends",
+  "skip",
+];
+
+export type RecipeDifficulty = "easy" | "medium" | "hard";
+
+export const RECIPE_DIFFICULTIES: RecipeDifficulty[] = ["easy", "medium", "hard"];
+
+/** What the planner aims for, as the design's chips name them. */
+export type PlanObjective = "pantry" | "leftovers" | "money" | "quick" | "easy" | "protein";
+
+export const PLAN_OBJECTIVES: PlanObjective[] = ["pantry", "leftovers", "money", "quick", "easy", "protein"];
+
+export const PLAN_OBJECTIVE_LABELS: Record<PlanObjective, string> = {
+  pantry: "Use pantry first",
+  leftovers: "Use leftovers",
+  money: "Save money",
+  quick: "Quick ≤30 min",
+  easy: "Easy",
+  protein: "High protein",
+};
 
 /** One meal in one slot on one day. */
 export interface PlannedMeal {
@@ -243,6 +273,14 @@ export interface PlannedMeal {
   notes: string | null;
   /** Set when the meal was cooked or eaten; a cooked meal is never re-deducted. */
   cookedAt: string | null;
+  /** Kept as it is when the planner regenerates — your "Lock". */
+  locked: boolean;
+  /** Who put it there: you, or the planner. A meal you chose is "Your pick", kept on regenerating. */
+  origin: "user" | "generator";
+  /** Why the planner suggested it — the drawer's "Why this was suggested". */
+  reasons: string[];
+  /** A budget swap: what it saved against the meal it replaced, in euros. */
+  swapSaving: number | null;
   addedAt: string;
   updatedAt: string;
 }
@@ -277,6 +315,18 @@ export interface MealPreferences {
   dailyFibre: number | null;
   /** A month's food budget in euros, or null. */
   monthlyBudget: number | null;
+  /** What the planner does first when a plan goes over budget. */
+  overBudget: "swap" | "warn";
+  /** The longest you want to cook, in minutes, on weekdays and at weekends; null for no limit. */
+  cookingTime: { weekday: number | null; weekend: number | null };
+  /** The hardest recipe the planner picks: "easy", "medium" (easy or medium) or "any". */
+  difficulty: "easy" | "medium" | "any";
+  /** Pre-selected in the planner. */
+  objectives: PlanObjective[];
+  /** Put extra portions into a later meal, within their safe window, when you cook. */
+  autoLeftovers: boolean;
+  /** The most times one recipe comes up in a week. */
+  maxRepeats: number;
 }
 
 export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
@@ -290,6 +340,12 @@ export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
   dailyCarbs: null,
   dailyFibre: null,
   monthlyBudget: null,
+  overBudget: "swap",
+  cookingTime: { weekday: 30, weekend: 90 },
+  difficulty: "medium",
+  objectives: ["pantry", "leftovers", "money"],
+  autoLeftovers: true,
+  maxRepeats: 2,
 };
 
 /**
@@ -322,6 +378,8 @@ export interface MealsState {
    * takes out exactly what it put in and never touches your own food.
    */
   demoIds: string[];
+  /** A plan the planner proposed, held until you accept or discard it. */
+  proposal: PlanProposal | null;
   /** Shops you buy from — named once, then chosen. */
   stores: Store[];
   /** What you bought: typed in, or read off a receipt or an invoice and checked. */
@@ -423,3 +481,40 @@ export const MAX_RECIPE_INGREDIENTS = 60;
 export const MAX_RECIPE_STEPS = 60;
 export const MAX_EATERS = 20;
 export const MAX_SHOPPING_ITEMS = 300;
+
+/** What the planner was asked for. */
+export interface PlanRequest {
+  /** First day (YYYY-MM-DD). */
+  from: string;
+  days: number;
+  slots: MealSlot[];
+  /** Servings each meal is for. */
+  eating: number;
+  budgetPerDay: number | null;
+  budgetTotal: number | null;
+  objectives: PlanObjective[];
+  /** Relax "max repeats" — one of the over-budget fixes. */
+  allowRepeats: boolean;
+}
+
+/** One way out of an over-budget plan, as the banner offers it. */
+export type BudgetFix =
+  | { kind: "raise"; to: number }
+  | { kind: "repeats" }
+  | { kind: "swap"; mealId: string; name: string; saving: number };
+
+export interface PlanProposal {
+  request: PlanRequest;
+  /** The meals proposed, for the empty slots and the planner's own earlier picks. */
+  meals: PlannedMeal[];
+  cost: number | null;
+  budget: number | null;
+  over: number | null;
+  fixes: BudgetFix[];
+  /** Figures for the header: how much comes from the pantry, leftovers used, lines to buy. */
+  fromPantry: number;
+  leftoverPortions: number;
+  leftoverMeals: number;
+  toBuy: number;
+  createdAt: string;
+}

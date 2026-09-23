@@ -55,6 +55,7 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
   let eating = Math.min(planned, cooking);
   let place: "fridge" | "freezer" = "fridge";
   let schedule: { date: string; slot: MealSlot } | null = null;
+  let scheduleTouched = false;
   const { box, body } = panel(`Cook · ${entry.recipe.name}`);
   box.classList.add("meals-dialog");
 
@@ -159,6 +160,8 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
     );
     leftovers.appendChild(places);
     const options = freeSlotsUntil(eatBy, meal?.date ?? data.today);
+    // "Plan leftovers automatically": the first free slot is chosen until you choose otherwise.
+    if (!scheduleTouched && data.preferences.autoLeftovers) schedule = options[0] ?? null;
     if (schedule && !options.some((o) => o.date === schedule!.date && o.slot === schedule!.slot))
       schedule = null;
     const when = make("div", "meals-chips");
@@ -170,6 +173,7 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
           on,
           () => {
             schedule = option;
+            scheduleTouched = true;
             drawLeftovers();
           }
         )
@@ -178,6 +182,7 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
     when.appendChild(
       chip("Don't schedule", schedule === null, () => {
         schedule = null;
+        scheduleTouched = true;
         drawLeftovers();
       })
     );

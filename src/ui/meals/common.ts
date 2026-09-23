@@ -1,5 +1,5 @@
 /** Shared by the Meals views: the snapshot's shapes, the bridge, the UI state, small DOM builders, and loading. */
-import type { MealSlot, PlannedMeal, StoragePlace } from "../../meals/types";
+import type { MealSlot, PlanObjective, PlannedMeal, StoragePlace } from "../../meals/types";
 
 export type Confidence = "confirmed" | "estimated";
 
@@ -33,6 +33,7 @@ export interface RecipeUI {
   }>;
   steps: Array<{ text: string; minutes: number | null; componentId: string | null }>;
   batch: boolean;
+  difficulty: "easy" | "medium" | "hard" | null;
   photo: string | null;
   tags: string[];
   source: string | null;
@@ -57,6 +58,12 @@ export interface MealsSnapshot {
     dailyCarbs: number | null;
     dailyFibre: number | null;
     monthlyBudget: number | null;
+    overBudget: "swap" | "warn";
+    cookingTime: { weekday: number | null; weekend: number | null };
+    difficulty: "easy" | "medium" | "any";
+    objectives: PlanObjective[];
+    autoLeftovers: boolean;
+    maxRepeats: number;
   };
   ingredients: Array<{ id: string; name: string; aliases: string[]; unit: string; lastPrice: number | null }>;
   recipes: Array<{
@@ -105,13 +112,33 @@ export interface MealsSnapshot {
     expiry: "expired" | "urgent" | "soon" | "later" | "none";
   }>;
   leftovers: Array<{ id: string; name: string; portions: number; place: StoragePlace; eatBy: string | null }>;
-  plan: Array<{
-    meal: PlannedMeal;
-    name: string;
+  plan: PlanEntryUI[];
+  /** A plan the planner proposed, until accepted or discarded. */
+  proposal: {
+    request: {
+      from: string;
+      days: number;
+      slots: MealSlot[];
+      eating: number;
+      budgetPerDay: number | null;
+      budgetTotal: number | null;
+      objectives: PlanObjective[];
+      allowRepeats: boolean;
+    };
+    meals: PlanEntryUI[];
     cost: number | null;
-    nutrition: NutritionUI | null;
-    badge: { kind: "leftover" | "pantry" | "pick" | "swap"; label: string } | null;
-  }>;
+    budget: number | null;
+    over: number | null;
+    fixes: Array<
+      | { kind: "raise"; to: number }
+      | { kind: "repeats" }
+      | { kind: "swap"; mealId: string; name: string; saving: number }
+    >;
+    fromPantry: number;
+    leftoverPortions: number;
+    leftoverMeals: number;
+    toBuy: number;
+  } | null;
   spend: Array<{ date: string; total: number | null; confirmed: number; estimated: number; over: boolean }>;
   days: string[];
   shopping: {
@@ -164,6 +191,27 @@ export interface MealsSnapshot {
     budget: number | null;
     overBudget: boolean;
   };
+}
+
+/** One meal as the tab draws it. */
+export interface PlanEntryUI {
+  meal: PlannedMeal;
+  name: string;
+  cost: number | null;
+  nutrition: NutritionUI | null;
+  badge: { kind: "leftover" | "pantry" | "pick" | "swap"; label: string } | null;
+}
+
+/** A recipe the replace drawer offers (generator.replaceOptions). */
+export interface ReplaceOptionUI {
+  recipeId: string;
+  name: string;
+  delta: number | null;
+  minutes: number | null;
+  coverage: { have: number; total: number };
+  favourite: boolean;
+  note: string | null;
+  score: number;
 }
 
 export interface StorePriceUI {
@@ -261,6 +309,19 @@ export interface MealsBridge {
   addMissingToShopping(recipeId: string, servings: number): Promise<number>;
   createPurchase(input: Record<string, unknown>): Promise<PurchaseUI>;
   importReceipt(): Promise<PurchaseUI | null>;
+  generatePlan(options: Record<string, unknown>): Promise<unknown>;
+  acceptPlan(): Promise<unknown>;
+  discardPlan(): Promise<void>;
+  replaceOptions(mealId: string): Promise<ReplaceOptionUI[]>;
+  replaceEffect(
+    mealId: string,
+    recipeId: string | null,
+    cost?: number | null
+  ): Promise<{ before: number; after: number; less: string[]; more: string[] }>;
+  replaceMeal(mealId: string, choice: Record<string, unknown>): Promise<unknown>;
+  lockMeal(mealId: string, locked: boolean): Promise<unknown>;
+  regenerateSlot(mealId: string): Promise<unknown>;
+  keepPlannedVersion(recipeId: string): Promise<number>;
   updatePurchase(id: string, changes: Record<string, unknown>): Promise<unknown>;
   updatePurchaseLine(id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown>;
   confirmPurchase(id: string, apply: Record<string, boolean>): Promise<unknown>;
@@ -301,6 +362,18 @@ export interface MealsUiState {
   reviewing: string | null;
   /** The food whose prices the price watch shows. */
   watching: string | null;
+  /** The meal open in the replace drawer. */
+  replacing: string | null;
+  replaceTab: "suggestions" | "mine" | "custom";
+  /** What the planner is asked for, as the controls bar sets it. */
+  planner: {
+    days: number;
+    eating: number | null;
+    slots: MealSlot[] | null;
+    budgetPerDay: number | null | undefined;
+    budgetTotal: number | null;
+    objectives: PlanObjective[] | null;
+  };
   planning: { date: string; slot: MealSlot; mealId: string | null } | null;
   message: string;
   error: string;
@@ -321,6 +394,16 @@ export const state: MealsUiState = {
   purchaseFilter: "all",
   reviewing: null,
   watching: null,
+  replacing: null,
+  replaceTab: "suggestions",
+  planner: {
+    days: 7,
+    eating: null,
+    slots: null,
+    budgetPerDay: undefined,
+    budgetTotal: null,
+    objectives: null,
+  },
   planning: null,
   message: "",
   error: "",

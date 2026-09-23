@@ -133,7 +133,13 @@ export function mealName(
     if (leftover) return `${leftover.name} (leftovers)`;
   }
   if (meal.name) return meal.name;
-  return meal.kind === "out" ? "Eating out" : "Meal";
+  const byKind: Partial<Record<PlannedMeal["kind"], string>> = {
+    out: "Eating out",
+    takeaway: "Takeaway",
+    friends: "At friends'",
+    skip: "Skipped",
+  };
+  return byKind[meal.kind] ?? "Meal";
 }
 
 /** How far a planned leftover meal goes: portions there against servings wanted. */
@@ -163,10 +169,15 @@ export interface MealBadge {
 export function mealBadge(
   meal: PlannedMeal,
   leftovers: Map<string, { portions: number }>,
-  atHome: { have: number; total: number } | null
+  atHome: { have: number; total: number } | null,
+  /** Show "Your pick" for meals you chose — only beside the planner's own. */
+  picks = false
 ): MealBadge | null {
   const coverage = leftoverCoverage(meal, leftovers);
   if (coverage) return { kind: "leftover", label: `↺ ${coverage.portions}/${coverage.needed}` };
+  if (meal.swapSaving !== null && meal.swapSaving > 0)
+    return { kind: "swap", label: `€ −${meal.swapSaving.toFixed(2).replace(".", ",")}` };
+  if (picks && meal.origin === "user" && !meal.cookedAt) return { kind: "pick", label: "✎ Your pick" };
   if (meal.kind === "recipe" && !meal.cookedAt && atHome && atHome.total > 0 && atHome.have === atHome.total)
     return { kind: "pantry", label: "◦ Pantry" };
   return null;

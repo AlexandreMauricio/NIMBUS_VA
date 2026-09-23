@@ -425,6 +425,20 @@ contextBridge.exposeInMainWorld("nimbus", {
   createPurchase: (input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:create-purchase", input),
   importReceipt: (): Promise<unknown> => ipcRenderer.invoke("nimbus:import-receipt"),
+  generatePlan: (options: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:generate-plan", options),
+  acceptPlan: (): Promise<unknown> => ipcRenderer.invoke("nimbus:accept-plan"),
+  discardPlan: (): Promise<void> => ipcRenderer.invoke("nimbus:discard-plan"),
+  replaceOptions: (mealId: string): Promise<unknown> => ipcRenderer.invoke("nimbus:replace-options", mealId),
+  replaceEffect: (mealId: string, recipeId: string | null, cost?: number | null): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:replace-effect", mealId, recipeId, cost ?? null),
+  replaceMeal: (mealId: string, choice: Record<string, unknown>): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:replace-meal", mealId, choice),
+  lockMeal: (mealId: string, locked: boolean): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:lock-meal", mealId, locked),
+  regenerateSlot: (mealId: string): Promise<unknown> => ipcRenderer.invoke("nimbus:regenerate-slot", mealId),
+  keepPlannedVersion: (recipeId: string): Promise<number> =>
+    ipcRenderer.invoke("nimbus:keep-planned-version", recipeId),
   updatePurchase: (id: string, changes: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:update-purchase", id, changes),
   updatePurchaseLine: (id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown> =>

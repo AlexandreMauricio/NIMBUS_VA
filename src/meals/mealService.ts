@@ -19,8 +19,10 @@ import { randomUUID } from "crypto";
 import { logger } from "../logging/logger";
 import { buildDemoData } from "./demoData";
 import { isoDate, mergeInto, planDeductions, suggestEatBy } from "./pantry";
-import { pricePerBaseUnit, scaleFor } from "./recipes";
-import { linePricePerBase, matchLine } from "./purchases";
+import { pricePerBaseUnit, recipeCost, scaleFor } from "./recipes";
+import { effectOfReplacing, generatePlan, proposalFigures, replaceOptions } from "./generator";
+import type { PlannerInput, ReplaceOption } from "./generator";
+import { currentPrice, linePricePerBase, matchLine } from "./purchases";
 import { buildShoppingList } from "./shopping";
 import type { ShoppingList } from "./shopping";
 import {
@@ -64,6 +66,13 @@ import {
   PlannedMealKind,
   Recipe,
   MAX_COMPONENTS,
+  PLAN_OBJECTIVES,
+  PLANNED_MEAL_KINDS,
+  PlanObjective,
+  PlanProposal,
+  PlanRequest,
+  RECIPE_DIFFICULTIES,
+  RecipeDifficulty,
   RecipeComponent,
   RecipeIngredient,
   RecipeStep,
@@ -72,7 +81,8 @@ import {
   StoragePlace,
 } from "./types";
 import { ingredientKey, matchIngredient } from "./names";
-import { servingsNeeded } from "./plan";
+import { dayRange, servingsNeeded } from "./plan";
+import { parseAmountText } from "./recipeImport";
 import { normaliseUnit, toBase } from "./units";
 
 function text(value: unknown, max: number): string | null {
@@ -247,6 +257,9 @@ export function parseRecipe(raw: unknown): Recipe | null {
     favourite: r.favourite === true,
     lastCookedAt: typeof r.lastCookedAt === "string" ? r.lastCookedAt : null,
     timesCooked: typeof r.timesCooked === "number" && r.timesCooked >= 0 ? Math.floor(r.timesCooked) : 0,
+    difficulty: RECIPE_DIFFICULTIES.includes(r.difficulty as RecipeDifficulty)
+      ? (r.difficulty as RecipeDifficulty)
+      : null,
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -312,7 +325,7 @@ export function parseLeftover(raw: unknown): Leftover | null {
   };
 }
 
-const MEAL_KINDS: PlannedMealKind[] = ["recipe", "leftover", "custom", "out"];
+const MEAL_KINDS: PlannedMealKind[] = PLANNED_MEAL_KINDS;
 
 export function parsePlannedMeal(raw: unknown): PlannedMeal | null {
   if (!raw || typeof raw !== "object") return null;
@@ -335,6 +348,10 @@ export function parsePlannedMeal(raw: unknown): PlannedMeal | null {
     cost: typeof r.cost === "number" && Number.isFinite(r.cost) && r.cost >= 0 ? r.cost : null,
     notes: text(r.notes, 1000),
     cookedAt: typeof r.cookedAt === "string" ? r.cookedAt : null,
+    locked: r.locked === true,
+    origin: r.origin === "generator" ? "generator" : "user",
+    reasons: list(r.reasons, 6, 200),
+    swapSaving: money(r.swapSaving),
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -351,6 +368,12 @@ function parseEater(raw: unknown): Eater | null {
     portionFactor: Math.min(5, positive(r.portionFactor, 1)!),
     notes: text(r.notes, 200),
   };
+}
+
+function parseCookingTime(raw: unknown): MealPreferences["cookingTime"] {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_MEAL_PREFERENCES.cookingTime };
+  const r = raw as Record<string, unknown>;
+  return { weekday: positive(r.weekday), weekend: positive(r.weekend) };
 }
 
 export function parsePreferences(raw: unknown): MealPreferences {
@@ -375,6 +398,18 @@ export function parsePreferences(raw: unknown): MealPreferences {
     dailyCarbs: positive(r.dailyCarbs),
     dailyFibre: positive(r.dailyFibre),
     monthlyBudget: positive(r.monthlyBudget),
+    overBudget: r.overBudget === "warn" ? "warn" : "swap",
+    cookingTime: parseCookingTime(r.cookingTime),
+    difficulty: r.difficulty === "easy" || r.difficulty === "any" ? r.difficulty : "medium",
+    objectives: Array.isArray(r.objectives)
+      ? [
+          ...new Set(
+            r.objectives.filter((o): o is PlanObjective => PLAN_OBJECTIVES.includes(o as PlanObjective))
+          ),
+        ]
+      : [...DEFAULT_MEAL_PREFERENCES.objectives],
+    autoLeftovers: r.autoLeftovers !== false,
+    maxRepeats: Math.min(7, Math.max(1, Math.round(positive(r.maxRepeats, 2)!))),
   };
 }
 
@@ -410,6 +445,7 @@ export function parseState(raw: unknown): MealsState {
     purchases: [],
     prices: [],
     shoppingMarks: [],
+    proposal: null,
   };
   if (!raw || typeof raw !== "object") return empty;
   const r = raw as Record<string, unknown>;
@@ -436,6 +472,47 @@ export function parseState(raw: unknown): MealsState {
     purchases: take(r.purchases, parsePurchase, MAX_PURCHASES),
     prices: take(r.prices, parsePriceRecord, MAX_PRICES),
     shoppingMarks: take(r.shoppingMarks, parseShoppingMark, MAX_SHOPPING_MARKS),
+    proposal: parseProposal(r.proposal),
+  };
+}
+
+/** A held proposal, checked like the plan it would become. */
+function parseProposal(raw: unknown): PlanProposal | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const q = (r.request ?? {}) as Record<string, unknown>;
+  const from = isoDay(q.from);
+  if (!from || !Array.isArray(r.meals)) return null;
+  const count = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return {
+    request: {
+      from,
+      days: Math.min(14, Math.max(1, Math.round(positive(q.days, 7)!))),
+      slots: Array.isArray(q.slots)
+        ? q.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot))
+        : [],
+      eating: positive(q.eating, 1)!,
+      budgetPerDay: positive(q.budgetPerDay),
+      budgetTotal: positive(q.budgetTotal),
+      objectives: Array.isArray(q.objectives)
+        ? q.objectives.filter((o): o is PlanObjective => PLAN_OBJECTIVES.includes(o as PlanObjective))
+        : [],
+      allowRepeats: q.allowRepeats === true,
+    },
+    meals: r.meals
+      .map(parsePlannedMeal)
+      .filter((meal): meal is PlannedMeal => meal !== null)
+      .slice(0, 200),
+    cost: money(r.cost),
+    budget: money(r.budget),
+    over: money(r.over),
+    fixes: [],
+    fromPantry: count(r.fromPantry),
+    leftoverPortions: count(r.leftoverPortions),
+    leftoverMeals: count(r.leftoverMeals),
+    toBuy: count(r.toBuy),
+    createdAt: stamp(r.createdAt),
   };
 }
 
@@ -769,6 +846,12 @@ export class MealService {
       favourite: r.favourite === undefined ? (existing?.favourite ?? false) : r.favourite === true,
       lastCookedAt: existing?.lastCookedAt ?? null,
       timesCooked: existing?.timesCooked ?? 0,
+      difficulty:
+        r.difficulty === undefined
+          ? (existing?.difficulty ?? null)
+          : RECIPE_DIFFICULTIES.includes(r.difficulty as RecipeDifficulty)
+            ? (r.difficulty as RecipeDifficulty)
+            : null,
       addedAt: existing?.addedAt ?? this.now(),
       updatedAt: this.now(),
     };
@@ -1018,6 +1101,11 @@ export class MealService {
       cost: typeof r.cost === "number" && Number.isFinite(r.cost) && r.cost >= 0 ? r.cost : null,
       notes: text(r.notes, 1000),
       cookedAt: existing?.cookedAt ?? null,
+      locked: existing?.locked ?? false,
+      // Anything you place or change yourself is "Your pick".
+      origin: "user",
+      reasons: [],
+      swapSaving: null,
       addedAt: existing?.addedAt ?? this.now(),
       updatedAt: this.now(),
     };
@@ -1536,6 +1624,277 @@ export class MealService {
     return this.state.shoppingMarks.filter((mark) => mark.at >= weekAgo);
   }
 
+  // ---------- The planner ----------
+
+  /** What the planner reads: the state, with every food at its current price. */
+  private plannerInput(): PlannerInput {
+    const today = this.today();
+    const priced = new Map(
+      this.state.ingredients.map((i) => [
+        i.id,
+        { ...i, lastPrice: currentPrice(this.state.prices, i, this.state.stores, today) },
+      ])
+    );
+    return {
+      recipes: this.state.recipes,
+      ingredients: this.state.ingredients,
+      lookup: (id: string) => priced.get(id),
+      pantry: this.state.pantry,
+      leftovers: this.state.leftovers,
+      plan: this.state.plan,
+      preferences: this.state.preferences,
+      today,
+      id: () => randomUUID(),
+      now: this.now(),
+    };
+  }
+
+  getProposal(): PlanProposal | null {
+    return this.state.proposal ? (JSON.parse(JSON.stringify(this.state.proposal)) as PlanProposal) : null;
+  }
+
+  /**
+   * Proposes a plan for the days asked, from the Household defaults for
+   * anything not given. Nothing in the plan changes until it's accepted.
+   */
+  generatePlan(options: unknown): PlanProposal {
+    const o = (options ?? {}) as Record<string, unknown>;
+    const prefs = this.state.preferences;
+    const request: PlanRequest = {
+      from: isoDay(o.from) ?? this.today(),
+      days: Math.min(14, Math.max(1, Math.round(positive(o.days, 7)!))),
+      slots: Array.isArray(o.slots)
+        ? MEAL_SLOTS.filter((slot) => (o.slots as unknown[]).includes(slot))
+        : [...prefs.slots],
+      eating: positive(o.eating, servingsNeeded(prefs.eaters))!,
+      budgetPerDay: o.budgetPerDay === undefined ? prefs.dailyBudget : positive(o.budgetPerDay),
+      budgetTotal: positive(o.budgetTotal),
+      objectives: Array.isArray(o.objectives)
+        ? PLAN_OBJECTIVES.filter((objective) => (o.objectives as unknown[]).includes(objective))
+        : [...prefs.objectives],
+      allowRepeats: o.allowRepeats === true,
+    };
+    if (!request.slots.length) throw new Error("Choose at least one meal to plan.");
+    if (!this.state.recipes.length) throw new Error("There are no recipes to plan from yet.");
+    this.state.proposal = generatePlan(this.plannerInput(), request);
+    this.save();
+    logger.info("Plan proposed", { meals: this.state.proposal.meals.length, over: this.state.proposal.over });
+    return this.getProposal()!;
+  }
+
+  /** Accepting: the proposed meals go into the plan, replacing the planner's own earlier ones in those days. */
+  acceptProposal(): PlannedMeal[] {
+    const proposal = this.state.proposal;
+    if (!proposal) throw new Error("There's no proposed plan.");
+    const days = dayRange(new Date(`${proposal.request.from}T12:00:00`), proposal.request.days);
+    this.state.plan = this.state.plan.filter(
+      (meal) => !(days.includes(meal.date) && meal.origin === "generator" && !meal.locked && !meal.cookedAt)
+    );
+    if (this.state.plan.length + proposal.meals.length > MAX_PLANNED_MEALS)
+      throw new Error("The plan is full.");
+    this.state.plan.push(...proposal.meals);
+    this.state.proposal = null;
+    this.save();
+    return proposal.meals;
+  }
+
+  discardProposal(): void {
+    this.state.proposal = null;
+    this.save();
+  }
+
+  /** After a proposed meal changes, the proposal's figures follow it. */
+  private refreshProposal(): void {
+    const proposal = this.state.proposal;
+    if (!proposal) return;
+    Object.assign(proposal, proposalFigures(this.plannerInput(), proposal.request, proposal.meals));
+  }
+
+  /** A planned or proposed meal, and the list it lives in. */
+  private findMeal(mealId: unknown): { meal: PlannedMeal; proposed: boolean } {
+    const proposed = this.state.proposal?.meals.find((meal) => meal.id === mealId);
+    if (proposed) return { meal: proposed, proposed: true };
+    const planned = this.state.plan.find((meal) => meal.id === mealId);
+    if (planned) return { meal: planned, proposed: false };
+    throw new Error("That meal is gone.");
+  }
+
+  /** What a meal could become: the recipes for its slot, best first, with how the cost changes. */
+  replaceOptionsFor(mealId: unknown): ReplaceOption[] {
+    const { meal } = this.findMeal(mealId);
+    return replaceOptions(
+      this.plannerInput(),
+      meal,
+      this.state.proposal?.request.objectives ?? this.state.preferences.objectives
+    );
+  }
+
+  /** What replacing a meal with a recipe (or a custom meal at a cost) would change. */
+  effectOfReplacing(mealId: unknown, recipeId: unknown, cost: unknown = null) {
+    const { meal, proposed } = this.findMeal(mealId);
+    const days = new Set(
+      proposed && this.state.proposal
+        ? dayRange(new Date(`${this.state.proposal.request.from}T12:00:00`), this.state.proposal.request.days)
+        : dayRange(new Date(`${this.today()}T12:00:00`), 7)
+    );
+    const meals = [
+      ...this.state.plan.filter((m) => days.has(m.date)),
+      ...(proposed ? (this.state.proposal?.meals ?? []) : []),
+    ];
+    return effectOfReplacing(
+      this.plannerInput(),
+      meals,
+      meal,
+      typeof recipeId === "string" && this.getRecipe(recipeId) ? recipeId : null,
+      money(cost)
+    );
+  }
+
+  /**
+   * Replacing a meal: with a recipe, or with something that isn't one —
+   * something you'll make, eating out, takeaway, at friends', or skipping
+   * it. The result is "your pick", kept when the planner regenerates. A
+   * meal you'll make can bring its ingredients to the shopping list and
+   * be saved as a recipe.
+   */
+  replaceMeal(mealId: unknown, choice: unknown): PlannedMeal {
+    const { meal } = this.findMeal(mealId);
+    if (meal.cookedAt) throw new Error("That meal is already cooked.");
+    const c = (choice ?? {}) as Record<string, unknown>;
+    const kind = PLANNED_MEAL_KINDS.includes(c.kind as PlannedMealKind)
+      ? (c.kind as PlannedMealKind)
+      : "recipe";
+    if (kind === "recipe") {
+      const recipe = this.getRecipe(c.recipeId);
+      if (!recipe) throw new Error("Choose a recipe.");
+      Object.assign(meal, { kind, recipeId: recipe.id, leftoverId: null, name: null, cost: null });
+    } else if (kind === "leftover") {
+      throw new Error("Leftovers are placed from the pantry or the cook dialog.");
+    } else {
+      const labels: Partial<Record<PlannedMealKind, string>> = {
+        out: "Eating out",
+        takeaway: "Takeaway",
+        friends: "At friends'",
+        skip: "Skipped",
+      };
+      Object.assign(meal, {
+        kind,
+        recipeId: null,
+        leftoverId: null,
+        name: text(c.name, 200) ?? labels[kind] ?? "Something I'll make",
+        cost: kind === "skip" ? 0 : money(c.cost),
+      });
+      if (kind === "custom" && typeof c.ingredients === "string" && c.ingredients.trim()) {
+        const lines = c.ingredients
+          .split(/[,;\n]/)
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .slice(0, MAX_RECIPE_INGREDIENTS);
+        if (c.addMissing === true)
+          for (const line of lines) {
+            if (this.state.shopping.length >= MAX_SHOPPING_ITEMS) break;
+            const parsed = parseAmountText(line);
+            const name = parsed ? line.replace(/^[\d.,½¼¾\s]+[a-zA-Z]*\s+/, "").trim() || line : line;
+            const food = this.findIngredient(name);
+            if (food && this.state.pantry.some((item) => item.ingredientId === food.id)) continue;
+            this.state.shopping.push({
+              id: randomUUID(),
+              name: food?.name ?? name,
+              ingredientId: food?.id ?? null,
+              quantity: parsed?.quantity ?? null,
+              unit: parsed?.unit ?? null,
+              note: `for ${meal.name}`,
+              addedAt: this.now(),
+            });
+          }
+        if (c.saveAsRecipe === true) {
+          const recipe = this.saveRecipe({
+            name: meal.name,
+            servings: meal.servings,
+            slots: [meal.slot],
+            ingredients: lines.map((line) => {
+              const parsed = parseAmountText(line);
+              const name = parsed ? line.replace(/^[\d.,½¼¾\s]+[a-zA-Z]*\s+/, "").trim() || line : line;
+              return { name, quantity: parsed?.quantity ?? 1, unit: parsed?.unit ?? "piece" };
+            }),
+          });
+          Object.assign(meal, { kind: "recipe", recipeId: recipe.id, name: null, cost: meal.cost });
+        }
+      }
+    }
+    Object.assign(meal, { origin: "user", reasons: [], swapSaving: null, updatedAt: this.now() });
+    this.refreshProposal();
+    this.save();
+    return meal;
+  }
+
+  /** "Lock": the planner leaves this meal as it is. */
+  lockMeal(mealId: unknown, locked: unknown): PlannedMeal {
+    const { meal } = this.findMeal(mealId);
+    meal.locked = locked === true;
+    meal.updatedAt = this.now();
+    this.refreshProposal();
+    this.save();
+    return meal;
+  }
+
+  /** "Regenerate this slot": the next-best recipe for it, with its reasons. */
+  regenerateSlot(mealId: unknown): PlannedMeal {
+    const { meal } = this.findMeal(mealId);
+    if (meal.cookedAt) throw new Error("That meal is already cooked.");
+    const options = this.replaceOptionsFor(meal.id).filter((option) => !option.note);
+    const next = options[0];
+    if (!next) throw new Error("No other recipe fits this meal.");
+    Object.assign(meal, {
+      kind: "recipe",
+      recipeId: next.recipeId,
+      leftoverId: null,
+      name: null,
+      cost: null,
+      origin: "generator",
+      swapSaving: null,
+      reasons: [
+        next.delta === null
+          ? "The next best fit"
+          : `The next best fit (${next.delta >= 0 ? "+" : "−"}${Math.abs(next.delta).toFixed(2).replace(".", ",")} €)`,
+        next.coverage.total
+          ? `${next.coverage.have} of ${next.coverage.total} ingredients already at home`
+          : null,
+      ].filter((reason): reason is string => Boolean(reason)),
+      updatedAt: this.now(),
+    });
+    this.refreshProposal();
+    this.save();
+    return meal;
+  }
+
+  /**
+   * Before a recipe changes: its planned meals still to come can keep the
+   * version they were planned with — snapshotted as a meal of their own,
+   * with the name and cost it had — instead of following the edit.
+   */
+  keepPlannedVersion(recipeId: unknown): number {
+    const recipe = this.getRecipe(recipeId);
+    if (!recipe) throw new Error("That recipe is gone.");
+    const today = this.today();
+    const input = this.plannerInput();
+    let kept = 0;
+    for (const meal of this.state.plan) {
+      if (meal.recipeId !== recipe.id || meal.cookedAt || meal.date < today) continue;
+      const cost = recipeCost(recipe, meal.cookServings ?? meal.servings, input.lookup).value;
+      Object.assign(meal, {
+        kind: "custom",
+        recipeId: null,
+        name: `${recipe.name} (as planned)`,
+        cost,
+        updatedAt: this.now(),
+      });
+      kept += 1;
+    }
+    if (kept) this.save();
+    return kept;
+  }
+
   // ---------- Demo data ----------
 
   /** True when the demo kitchen is loaded — the button says "Remove" instead. */
@@ -1660,6 +2019,14 @@ export class MealService {
     if (c.dailyCarbs !== undefined) current.dailyCarbs = positive(c.dailyCarbs);
     if (c.dailyFibre !== undefined) current.dailyFibre = positive(c.dailyFibre);
     if (c.monthlyBudget !== undefined) current.monthlyBudget = positive(c.monthlyBudget);
+    // The Household panel's planning defaults — each checked like the file is on load.
+    const parsed = parsePreferences({ ...current, ...c });
+    if (c.overBudget !== undefined) current.overBudget = parsed.overBudget;
+    if (c.cookingTime !== undefined) current.cookingTime = parsed.cookingTime;
+    if (c.difficulty !== undefined) current.difficulty = parsed.difficulty;
+    if (c.objectives !== undefined) current.objectives = parsed.objectives;
+    if (c.autoLeftovers !== undefined) current.autoLeftovers = parsed.autoLeftovers;
+    if (c.maxRepeats !== undefined) current.maxRepeats = parsed.maxRepeats;
     this.save();
     return this.getPreferences();
   }

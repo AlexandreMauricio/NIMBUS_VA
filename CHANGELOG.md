@@ -20,6 +20,35 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.20 — 2026-09-23
+
+- **The planner.** Above the plan, a controls bar — how long, how many
+  eating, which meals, a budget per day or for the whole plan, and the
+  objectives — and **Propose a plan**. It's deterministic, not a model:
+  leftovers go in first before they expire; restrictions, the cooking-time
+  limit, difficulty and max repeats are never broken; the rest is scored
+  on what's at home, what's expiring, cost, your objectives, favourites
+  and variety, and every meal says why it was chosen. Over budget, the
+  dearest choices are swapped for cheaper ones (marked "€ −3,10"), and
+  what's still over becomes fixes: raise to X, allow repeats, swap a meal.
+- **Proposed, then accepted.** The plan comes back dashed, "Proposed · not
+  yet accepted", with its cost, pantry lines used, leftovers and lines to
+  buy. Accept replaces only the planner's own earlier meals; your picks,
+  locked meals and cooked ones are always kept.
+- **The replace drawer**, from any meal or Today's Swap: why it was
+  suggested, leftover coverage, Suggestions / My recipes / Custom meal
+  (eating out, takeaway, at friends', skip, or something you'll make —
+  its ingredients can go on the shopping list and it can be saved as a
+  recipe), the effect on the plan's cost and the shopping list,
+  Regenerate this slot and Lock.
+- **Settings is now Household**, with what to do when a plan goes over,
+  restrictions and dislikes as chips, cooking time for weekdays and
+  weekends, difficulty, default objectives, "plan leftovers automatically"
+  (the cook dialog then preselects the next free slot) and max repeats.
+- **Recipes have a difficulty**, and editing a planned recipe asks whether
+  the planned meals follow the edit or keep the version they were planned
+  with.
+
 ## 0.6.19 — 2026-09-23
 
 - **Receipt photos are read on the PC.** Upload file now takes a photo

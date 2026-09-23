@@ -145,8 +145,8 @@ export function heroCard(data: MealsSnapshot, entry: MealsSnapshot["plan"][numbe
   }
   actions.appendChild(
     button("Swap", "btn btn-ghost", () => {
-      state.view = "plan";
-      state.planning = { date: entry.meal.date, slot: entry.meal.slot, mealId: entry.meal.id };
+      state.replacing = entry.meal.id;
+      state.replaceTab = "suggestions";
       rerender();
     })
   );
@@ -289,8 +289,8 @@ export function nutritionPanel(data: MealsSnapshot, todays: MealsSnapshot["plan"
       "meals-note",
       [
         targets.dailyKcal || targets.dailyProtein || targets.dailyCarbs || targets.dailyFibre
-          ? "% of the daily target set in Settings"
-          : "Set a daily target in Settings to see how far through the day this is",
+          ? "% of the daily target set in Household"
+          : "Set a daily target in Household to see how far through the day this is",
         withoutData ? `${withoutData} of today's meals have no nutrition data` : null,
       ]
         .filter(Boolean)

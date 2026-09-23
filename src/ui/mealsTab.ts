@@ -3,7 +3,7 @@
  * shopping list and what's in the kitchen.
  *
  * Six views behind one row of tabs — Today, Plan, Recipes, Shopping,
- * Pantry and Settings — all drawn from one snapshot (`nimbus:get-meals`),
+ * Pantry and Household — all drawn from one snapshot (`nimbus:get-meals`),
  * which the main process works out in full: costs, nutrition, what's at
  * home for each recipe, how urgent each expiry date is, and what each day
  * of the week costs. This file is DOM wiring and layout.
@@ -33,6 +33,7 @@ import {
 import { pantryView } from "./meals/pantry";
 import { planView } from "./meals/plan";
 import { purchasesView, reviewDrawer } from "./meals/purchases";
+import { replaceDrawer } from "./meals/replace";
 import { recipesView } from "./meals/recipes";
 import { settingsView } from "./meals/settings";
 import { shoppingView } from "./meals/shopping";
@@ -86,7 +87,7 @@ function render(): void {
       "purchases",
       data.spent.toReview ? `Purchases & imports · ${data.spent.toReview}` : "Purchases & imports",
     ],
-    ["settings", "Settings"],
+    ["settings", "Household"],
   ];
   const nav = make("div", "meals-tabs");
   for (const [view, label] of views) {
@@ -115,7 +116,9 @@ function render(): void {
   else if (state.view === "purchases") root.appendChild(purchasesView(data));
   else root.appendChild(settingsView(data));
 
-  // The purchase review drawer sits over whichever view is open.
+  // The replace drawer and the purchase review drawer sit over whichever view is open.
+  const replacing = replaceDrawer(data);
+  if (replacing) root.appendChild(replacing);
   if (state.reviewing) {
     const drawer = reviewDrawer(data);
     if (drawer) root.appendChild(drawer);

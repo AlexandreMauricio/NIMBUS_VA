@@ -5,20 +5,21 @@ tab, and `src/meals/` behind it. Everything is on this PC: no service is
 called, nothing about your food leaves the machine.
 
 What exists today: **recipes** (typed or imported from a URL), the
-**pantry**, **leftovers**, a **plan you fill in yourself**, and the
-**shopping list** that falls out of the two. The meal generator, nutrition
-lookups, purchases and price history are not built — see
-[Not yet](#not-yet). Settings can load **demo data** to try all of it on.
+**pantry**, **leftovers**, a **plan** — filled in yourself or proposed by
+the [planner](#the-planner) — the **shopping list** that falls out of the
+two, and **purchases** with prices per shop. Nutrition lookups are not
+built — see [Not yet](#not-yet). Household can load **demo data** to try
+all of it on.
 
 ## The three things, and why they're separate
 
-| Thing          | What it is                                                      | Where                       |
-| -------------- | --------------------------------------------------------------- | --------------------------- |
-| **Ingredient** | A food you buy and cook with ("Chicken thighs")                 | `types.ts`, `mealService.ts` |
-| **Pantry item**| How much of it you have, where, and until when                  | `pantry.ts`                 |
-| **Leftover**   | Food already cooked, counted in portions                        | `pantry.ts`                 |
-| **Recipe**     | What to make, in ingredients and steps — one dish, or several   | `recipes.ts`                |
-| **Planned meal**| One meal, in one slot, on one day                              | `plan.ts`                   |
+| Thing            | What it is                                                    | Where                        |
+| ---------------- | ------------------------------------------------------------- | ---------------------------- |
+| **Ingredient**   | A food you buy and cook with ("Chicken thighs")               | `types.ts`, `mealService.ts` |
+| **Pantry item**  | How much of it you have, where, and until when                | `pantry.ts`                  |
+| **Leftover**     | Food already cooked, counted in portions                      | `pantry.ts`                  |
+| **Recipe**       | What to make, in ingredients and steps — one dish, or several | `recipes.ts`                 |
+| **Planned meal** | One meal, in one slot, on one day                             | `plan.ts`                    |
 
 A recipe line and a pantry item both point at the same **ingredient id**,
 which is why the app can say "6 of 9 at home". `ensureIngredient` is the
@@ -143,8 +144,10 @@ for the shopping list and the pantry:
   amber over budget. A cell takes a recipe, leftovers, something you'll
   make, or a night out with its own price, and carries a badge: **↺ 2/3**
   when leftovers feed two of three people, **◦ Pantry** when everything
-  it needs is at home (judged at the servings it's cooked for). Nothing
-  is generated: you put meals in slots.
+  it needs is at home (judged at the servings it's cooked for), **€ −3,10**
+  when the planner swapped it in to save money, **✎ Your pick** beside the
+  planner's own. Above the grid, the [planner](#the-planner)'s controls;
+  a click on any meal opens the **replace drawer**.
 - **Recipes** — chips for the meal and for filters (all at home, ≤ 30 min,
   ≤ 2 €/serving, favourites, imported), each with a count, sorted by what's
   at home, time, cost, name or **recently cooked**; cards showing
@@ -167,8 +170,11 @@ for the shopping list and the pantry:
   Correcting takes the amount as you'd say it ("250 g", "3 pcs"), offers
   None left / Half / Full package, and keeps why (estimate was off, used
   outside a recipe, thrown away, found more).
-- **Settings** — who eats and how much (a label, a multiplier and a note —
-  no profiles), restrictions, dislikes, the meal slots, and a daily budget.
+- **Household** — who eats and how much (a label, a multiplier and a note —
+  no profiles), budgets and targets, what happens when a plan goes over,
+  restrictions and dislikes as chips, the meal slots, and the planning
+  defaults: cooking time on weekdays and weekends, difficulty, default
+  objectives, "plan leftovers automatically" and max repeats a week.
 
 ## The shopping list
 
@@ -234,8 +240,60 @@ With prices from more than one shop:
 
 **Bought** on the shopping list asks which shop too, and Today's spend
 panel shows what the plan costs against what was actually **spent** this
-week and this month (Settings takes a monthly budget). Deleting a purchase
+week and this month (Household takes a monthly budget). Deleting a purchase
 forgets its prices; the food it put in the pantry stays.
+
+## The planner
+
+`src/meals/generator.ts`, pure and deterministic: the same kitchen and
+the same days always give the same plan, and nothing is asked of a model.
+The controls bar above the plan says what to fill — 1 day, 3 days or a
+week, how many are eating, which meals, a budget per day or for the whole
+plan, and the objectives — and anything left alone comes from Household.
+
+1. **What stays.** Anything in those days you placed yourself ("Your
+   pick"), locked, or already cooked is kept and counted.
+2. **Leftovers first.** With "use leftovers", each unscheduled leftover
+   goes into the earliest free lunch or dinner before its eat-by date,
+   saying how far it goes ("Only covers 2 of 3 — 1 more portion needed").
+3. **Rules that are never broken.** Restrictions (matched against the
+   recipe's foods, their categories and its tags), the cooking-time limit
+   for weekdays or weekends, the difficulty, and max repeats a week. A
+   slot stays empty rather than break one.
+4. **A score for the rest**, each part written down as a reason: the share
+   of ingredients at home, food expiring within 48 h or the week, cost
+   against what's left of the day's budget, quick / easy / high protein
+   when asked, **favourites +0.8**, **a penalty for recipes planned or
+   cooked in the last few days**, and dislikes pushing a recipe right down.
+   The best goes in, the pantry is used up as it goes, and the next slot
+   is scored against what's left.
+5. **Over budget.** With "swap in cheaper meals", the planner's dearest
+   choices are swapped for the cheapest that still fit, each marked
+   "Budget swap: −3,10 €". What's still over becomes the banner's fixes:
+   raise the budget to the cost, allow repeats, or swap a named meal.
+
+The result is a **proposal** — dashed, "Proposed · not yet accepted",
+with its cost, pantry lines used, leftovers placed and lines to buy — kept
+in `meals.json` until **Accept plan** (which replaces only the planner's
+own earlier meals in those days) or **Discard**.
+
+**The replace drawer** opens from any meal (and from Today's **Swap**): why
+it was suggested, how far leftovers go and what's all at home to go with
+them, then three tabs — **Suggestions** (the best three), **My recipes**
+(fits budget, uses pantry, favourites; recipes a rule would normally keep
+out are shown with why), and **Custom meal** (eating out, takeaway, at
+friends', skip, or something you'll make — its ingredients can go on the
+shopping list and it can be saved as a recipe). **Effect of replacing**
+shows the plan's cost before and after and what the shopping list gains or
+loses. **Regenerate this slot** takes the next-best recipe; **Lock** keeps
+a meal through every regenerate. Whatever you choose is your pick.
+
+When a recipe that's planned is edited, the editor asks whether the
+planned meals follow the edit or **keep the version they were planned
+with** (snapshotted as a meal of their own, with the cost it had).
+
+With **plan leftovers automatically** on, the cook dialog preselects the
+next free slot for the extra portions.
 
 ## Importing a recipe from a URL
 
@@ -261,7 +319,7 @@ and only the first megabyte is read. The page is parsed, never rendered.
 
 ## Demo data
 
-Settings → **Load demo data** fills the tab with a kitchen to try it on:
+Household → **Load demo data** fills the tab with a kitchen to try it on:
 foods with real prices and nutrition, four recipes, a stocked pantry with
 something going off tomorrow, leftovers in the fridge, and meals planned
 around today — so every state (urgent, soon, estimated, cooked, eating
@@ -282,6 +340,7 @@ src/meals/            [1] Core — no Electron, no filesystem
   pantry.ts              Stock summaries, expiry, coverage, deductions
   recipes.ts             Cost, nutrition, timings
   plan.ts                Servings needed, a day's meals, plan cost
+  generator.ts           The planner: proposals, replace options, effects
   shopping.ts            The plan minus the pantry, plus manual items
   recipeImport.ts        schema.org Recipe metadata into a draft
   demoData.ts            A removable demo kitchen
@@ -290,10 +349,11 @@ src/main/mealStore.ts [2] meals.json (atomic write, set aside if unreadable)
 src/meals/names.ts    [1] How food names are compared (shared with the editor)
 src/ui/mealsTab.ts    [5] The tab: header, view switch, render
 src/ui/meals/         [5] One module per view (today, plan, cook, recipes,
-                          shopping, pantry, settings) and common.ts
+                          shopping, pantry, purchases, replace, settings)
+                          and common.ts
 ```
 
-Servings for the household come from the people in Settings: each one's
+Servings for the household come from the people in Household: each one's
 factor added up and **rounded up** — you can't cook 2.8 portions, and that
 rounding is where most leftovers come from.
 
@@ -308,13 +368,9 @@ Deliberately absent, and the order they're planned in:
 2. **Scanned PDFs** — a PDF that is only a picture is refused with a
    note to upload it as a photo; reading its pages as images directly
    would join them up.
-3. **The generator** — filling a week against the objectives (use the
-   pantry first, use leftovers, save money, quick, high protein) and the
-   budget, with the "why this was suggested" explanation. Restrictions,
-   dislikes and the budget are already stored for it; nothing filters
-   recipes today.
-4. **The briefing and Attention** — `meals` already exists as a briefing
+3. **The briefing and Attention** — `meals` already exists as a briefing
    category, unused. "Take the chicken out of the freezer" is the obvious
    first signal.
-5. Leftovers scheduled into the plan automatically (by hand, from the
-   cook dialog, already works).
+4. **Side dishes as meals of their own** — the replace drawer names what's
+   all at home to go with leftovers that don't feed everyone, but adding
+   one puts it in its own slot rather than beside the leftovers.

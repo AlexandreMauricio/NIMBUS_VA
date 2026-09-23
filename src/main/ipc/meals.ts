@@ -20,7 +20,7 @@ import { currentPrice, pricesByStore, splitShopSaving } from "../../meals/purcha
 import type { StorePrice } from "../../meals/purchases";
 import { reconcile } from "../../meals/receiptText";
 import type { ShoppingList } from "../../meals/shopping";
-import type { MealsState, Purchase } from "../../meals/types";
+import type { MealsState, PlannedMeal, Purchase } from "../../meals/types";
 import { toBase } from "../../meals/units";
 import { handle } from "./handle";
 import type { IpcContext } from "./context";
@@ -50,6 +50,30 @@ export function registerMealsIpc(ctx: IpcContext): void {
     const lookup = (id: string) => priced.get(id);
     const needed = servingsNeeded(state.preferences.eaters);
     const leftoverMap = new Map(state.leftovers.map((leftover) => [leftover.id, leftover]));
+    // "Your pick" means something only beside the planner's own choices.
+    const planPicks = Boolean(state.proposal) || state.plan.some((meal) => meal.origin === "generator");
+    /** One meal as the tab draws it: its name, badge, cost and nutrition. */
+    const planEntry = (meal: PlannedMeal, picks: boolean) => {
+      const recipe = meal.kind === "recipe" && meal.recipeId ? recipes.get(meal.recipeId) : undefined;
+      const servings = meal.cookServings ?? meal.servings;
+      return {
+        meal,
+        name: mealName(meal, recipes, leftoverMap),
+        // "Nothing to buy" is judged at the servings this meal is cooked for.
+        badge: mealBadge(
+          meal,
+          leftoverMap,
+          recipe
+            ? coverageCount(coverRecipe(recipe.ingredients, state.pantry, scaleFor(recipe, servings)))
+            : null,
+          picks
+        ),
+        cost:
+          meal.cost ??
+          (meal.kind === "leftover" ? 0 : recipe ? recipeCost(recipe, servings, lookup).value : null),
+        nutrition: recipe ? perServing(recipeNutrition(recipe, servings, lookup), servings) : null,
+      };
+    };
     // The package of a food that would be used first — what "Home · exp. tomorrow" describes.
     const firstPackage = (ingredientId: string) =>
       state.pantry
@@ -103,36 +127,14 @@ export function registerMealsIpc(ctx: IpcContext): void {
         category: ingredients.get(entry.ingredientId)?.category ?? null,
       })),
       leftovers: usableLeftovers(state.leftovers, now),
-      plan: state.plan.map((meal) => ({
-        meal,
-        name: mealName(meal, recipes, leftoverMap),
-        // "Nothing to buy" is judged at the servings this meal is cooked for.
-        badge: mealBadge(
-          meal,
-          leftoverMap,
-          meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
-            ? coverageCount(
-                coverRecipe(
-                  recipes.get(meal.recipeId)!.ingredients,
-                  state.pantry,
-                  scaleFor(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings)
-                )
-              )
-            : null
-        ),
-        cost:
-          meal.cost ??
-          (meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
-            ? recipeCost(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup).value
-            : null),
-        nutrition:
-          meal.kind === "recipe" && meal.recipeId && recipes.has(meal.recipeId)
-            ? perServing(
-                recipeNutrition(recipes.get(meal.recipeId)!, meal.cookServings ?? meal.servings, lookup),
-                meal.cookServings ?? meal.servings
-              )
-            : null,
-      })),
+      plan: state.plan.map((meal) => planEntry(meal, planPicks)),
+      // A plan the planner proposed, drawn over the plan until accepted or discarded.
+      proposal: state.proposal
+        ? {
+            ...state.proposal,
+            meals: state.proposal.meals.map((meal) => planEntry(meal, true)),
+          }
+        : null,
       // Per day, for the week's spend bars: what's typed is a fact, what
       // comes from ingredient prices is drawn as an estimate.
       spend: days.map((date) => {
@@ -309,6 +311,24 @@ export function registerMealsIpc(ctx: IpcContext): void {
   );
   handle("nimbus:import-recipe-url", (_event, url: unknown) => fetchRecipePage(url));
   handle("nimbus:load-demo-meals", () => ctx.mealService.loadDemoData());
+  // The planner: a proposal held until accepted, and the replace drawer's options and effects.
+  handle("nimbus:generate-plan", (_event, options: unknown) => ctx.mealService.generatePlan(options));
+  handle("nimbus:accept-plan", () => ctx.mealService.acceptProposal());
+  handle("nimbus:discard-plan", () => ctx.mealService.discardProposal());
+  handle("nimbus:replace-options", (_event, mealId: unknown) => ctx.mealService.replaceOptionsFor(mealId));
+  handle("nimbus:replace-effect", (_event, mealId: unknown, recipeId: unknown, cost: unknown) =>
+    ctx.mealService.effectOfReplacing(mealId, recipeId, cost)
+  );
+  handle("nimbus:replace-meal", (_event, mealId: unknown, choice: unknown) =>
+    ctx.mealService.replaceMeal(mealId, choice)
+  );
+  handle("nimbus:lock-meal", (_event, mealId: unknown, locked: unknown) =>
+    ctx.mealService.lockMeal(mealId, locked)
+  );
+  handle("nimbus:regenerate-slot", (_event, mealId: unknown) => ctx.mealService.regenerateSlot(mealId));
+  handle("nimbus:keep-planned-version", (_event, recipeId: unknown) =>
+    ctx.mealService.keepPlannedVersion(recipeId)
+  );
   handle("nimbus:remove-demo-meals", () => ctx.mealService.removeDemoData());
 }
 

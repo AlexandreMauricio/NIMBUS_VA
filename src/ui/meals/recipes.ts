@@ -180,7 +180,7 @@ export function recipesView(data: MealsSnapshot): HTMLElement {
   );
   if (!recipes.length)
     wrap.appendChild(
-      make("p", "feed-empty", "Nothing matches. Add a recipe, or load the demo data in Settings.")
+      make("p", "feed-empty", "Nothing matches. Add a recipe, or load the demo data in Household.")
     );
 
   const grid = make("div", "meals-recipe-grid");
@@ -508,6 +508,15 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
   const tags = input("text");
   tags.value = existing?.tags.join(", ") ?? "";
   tags.placeholder = "comma separated";
+  const difficulty = select(
+    [
+      ["", "Not set"],
+      ["easy", "Easy"],
+      ["medium", "Medium"],
+      ["hard", "Hard"],
+    ],
+    existing?.difficulty ?? ""
+  );
 
   const form = make("div", "meals-form");
   form.append(
@@ -515,6 +524,7 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     field("Servings", servings),
     field("Prep (min)", prep),
     field("Cook (min)", cook),
+    field("Difficulty", difficulty),
     field("Tags", tags)
   );
   body.appendChild(form);
@@ -705,6 +715,20 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
   );
   drawDishes();
 
+  // A recipe already planned: the planned meals can follow the edit, or stay as they were.
+  const planned = existing
+    ? data.plan.filter((entry) => entry.meal.recipeId === existing.id && !entry.meal.cookedAt).length
+    : 0;
+  const keep = select(
+    [
+      ["update", "Update them to this version"],
+      ["keep", "Keep them as planned"],
+    ],
+    "update"
+  );
+  if (planned)
+    body.appendChild(field(`${planned} planned meal${planned === 1 ? " uses" : "s use"} this recipe`, keep));
+
   const actions = make("div", "meals-row");
   actions.append(
     button(
@@ -712,6 +736,7 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
       "btn btn-primary",
       () =>
         void act(async () => {
+          if (existing && planned && keep.value === "keep") await bridge().keepPlannedVersion(existing.id);
           await bridge().saveRecipe(
             {
               name: name.value,
@@ -727,6 +752,7 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
                 .map((tag) => tag.trim())
                 .filter(Boolean),
               batch: batchBox.checked,
+              difficulty: difficulty.value || null,
               components: dishes,
               ingredients: lineRows
                 .filter((row) => row.name.value.trim() && row.quantity.value)

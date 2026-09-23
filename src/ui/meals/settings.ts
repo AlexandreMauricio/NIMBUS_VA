@@ -1,5 +1,5 @@
-import { MEAL_SLOTS, MEAL_SLOT_LABELS } from "../../meals/types";
-import type { MealSlot } from "../../meals/types";
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, PLAN_OBJECTIVES, PLAN_OBJECTIVE_LABELS } from "../../meals/types";
+import type { MealSlot, PlanObjective } from "../../meals/types";
 import {
   MealsSnapshot,
   act,
@@ -12,10 +12,48 @@ import {
   make,
   panel,
   pill,
+  select,
   stepper,
 } from "./common";
 
-// ---------- Settings ----------
+// ---------- Household ----------
+
+/** Words as removable chips, with a box to add one — restrictions and dislikes. */
+function chipList(values: string[], placeholder: string): { box: HTMLElement; values: () => string[] } {
+  const items = [...values];
+  const box = make("div", "meals-chips meals-chip-list");
+  const add = input("text");
+  add.placeholder = placeholder;
+  add.maxLength = 60;
+  const draw = () => {
+    box.replaceChildren();
+    items.forEach((item, index) =>
+      box.appendChild(
+        button(`${item} ✕`, "meals-chip is-on", () => {
+          items.splice(index, 1);
+          draw();
+        })
+      )
+    );
+    box.appendChild(add);
+  };
+  const commit = () => {
+    const value = add.value.trim();
+    if (value && !items.some((item) => item.toLowerCase() === value.toLowerCase())) items.push(value);
+    add.value = "";
+    draw();
+    add.focus();
+  };
+  add.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      commit();
+    }
+  });
+  draw();
+  // A word typed but not yet entered still counts when saving.
+  return { box, values: () => [...items, ...(add.value.trim() ? [add.value.trim()] : [])] };
+}
 
 export function settingsView(data: MealsSnapshot): HTMLElement {
   const wrap = make("div", "meals-view");
@@ -97,12 +135,15 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
   fibre.min = "0";
   fibre.placeholder = "none";
   fibre.value = data.preferences.dailyFibre === null ? "" : String(data.preferences.dailyFibre);
-  const restrictions = input("text");
-  restrictions.value = data.preferences.restrictions.join(", ");
-  restrictions.placeholder = "No pork, Gluten-free";
-  const dislikes = input("text");
-  dislikes.value = data.preferences.dislikes.join(", ");
-  dislikes.placeholder = "Mushrooms, coriander";
+  const restrictions = chipList(data.preferences.restrictions, "+ e.g. No pork");
+  const dislikes = chipList(data.preferences.dislikes, "+ e.g. Mushrooms");
+  const overBudget = select(
+    [
+      ["swap", "Swap in cheaper meals"],
+      ["warn", "Only warn me"],
+    ],
+    data.preferences.overBudget
+  );
   const form = make("div", "meals-form");
   form.append(
     field("Budget €/day", budget),
@@ -111,8 +152,7 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
     field("Protein g/day", protein),
     field("Carbs g/day", carbs),
     field("Fibre g/day", fibre),
-    field("Never suggest", restrictions),
-    field("Avoid when possible", dislikes)
+    field("When a plan goes over", overBudget)
   );
   rules.body.appendChild(form);
   if (data.preferences.dailyBudget !== null)
@@ -123,12 +163,9 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
         `${euro(data.preferences.dailyBudget)} a day is about ${euro(Math.round(data.preferences.dailyBudget * 30 * 100) / 100)} a month.`
       )
     );
-  rules.body.appendChild(
-    make(
-      "p",
-      "meals-note",
-      "Restrictions and dislikes are kept for the meal generator, which isn't built yet — nothing filters recipes today."
-    )
+  rules.body.append(
+    field("Never suggest · by food, category or tag", restrictions.box),
+    field("Avoid when possible", dislikes.box)
   );
 
   const chosenSlots = new Map<MealSlot, boolean>();
@@ -152,14 +189,9 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
         void act(
           () =>
             bridge().updateMealPreferences({
-              restrictions: restrictions.value
-                .split(",")
-                .map((v) => v.trim())
-                .filter(Boolean),
-              dislikes: dislikes.value
-                .split(",")
-                .map((v) => v.trim())
-                .filter(Boolean),
+              restrictions: restrictions.values(),
+              dislikes: dislikes.values(),
+              overBudget: overBudget.value,
               dailyBudget: budget.value ? Number(budget.value) : null,
               monthlyBudget: monthly.value ? Number(monthly.value) : null,
               dailyKcal: kcal.value ? Number(kcal.value) : null,
@@ -173,6 +205,7 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
     )
   );
   wrap.appendChild(rules.box);
+  wrap.appendChild(plannerDefaults(data));
 
   const demo = panel("Demo data", data.hasDemoData ? pill("loaded", "accent") : undefined);
   demo.body.appendChild(
@@ -199,4 +232,91 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
   );
   wrap.appendChild(demo.box);
   return wrap;
+}
+
+/** What the planner does unless the controls bar says otherwise. */
+function plannerDefaults(data: MealsSnapshot): HTMLElement {
+  const prefs = data.preferences;
+  const { box, body } = panel("Planning defaults");
+  const minutes = (value: number | null) => {
+    const box = input("number");
+    box.min = "5";
+    box.step = "5";
+    box.placeholder = "no limit";
+    box.value = value === null ? "" : String(value);
+    return box;
+  };
+  const weekday = minutes(prefs.cookingTime.weekday);
+  const weekend = minutes(prefs.cookingTime.weekend);
+  const difficulty = select(
+    [
+      ["easy", "Easy only"],
+      ["medium", "Up to medium"],
+      ["any", "Anything"],
+    ],
+    prefs.difficulty
+  );
+  let repeats = prefs.maxRepeats;
+  const form = make("div", "meals-form");
+  form.append(
+    field("Cooking time · weekdays (min)", weekday),
+    field("Cooking time · weekends (min)", weekend),
+    field("Difficulty", difficulty),
+    field(
+      "Max repeats per week",
+      stepper(repeats, 1, 1, (next) => (repeats = Math.min(7, Math.max(1, Math.round(next)))))
+    )
+  );
+  body.appendChild(form);
+
+  const objectives = new Set<PlanObjective>(prefs.objectives);
+  const chips = make("div", "meals-chips");
+  for (const objective of PLAN_OBJECTIVES) {
+    const on = chip(PLAN_OBJECTIVE_LABELS[objective], objectives.has(objective), () => {
+      if (objectives.has(objective)) objectives.delete(objective);
+      else objectives.add(objective);
+      on.classList.toggle("is-on", objectives.has(objective));
+      on.setAttribute("aria-pressed", String(objectives.has(objective)));
+    });
+    chips.appendChild(on);
+  }
+  body.append(make("p", "meals-field-label", "Default objectives"), chips);
+
+  const auto = input("checkbox", "");
+  auto.checked = prefs.autoLeftovers;
+  const autoLabel = make("label", "meals-check");
+  autoLabel.append(
+    auto,
+    document.createTextNode(" Plan leftovers automatically — cooking offers the next free slot")
+  );
+  body.appendChild(autoLabel);
+  body.appendChild(
+    make(
+      "p",
+      "meals-note",
+      "The planner never uses a restriction, keeps within these times and difficulty, and favours your favourites without repeating a recipe more than this in a week."
+    )
+  );
+  body.appendChild(
+    button(
+      "Save",
+      "btn btn-primary",
+      () =>
+        void act(
+          () =>
+            bridge().updateMealPreferences({
+              cookingTime: {
+                weekday: weekday.value ? Number(weekday.value) : null,
+                weekend: weekend.value ? Number(weekend.value) : null,
+              },
+              difficulty: difficulty.value,
+              objectives: [...objectives],
+              autoLeftovers: auto.checked,
+              maxRepeats: repeats,
+            }),
+          "Saved."
+        )
+    )
+  );
+  return box;
 }
