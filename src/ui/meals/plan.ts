@@ -1,3 +1,4 @@
+import { servingsSlider } from "./servings";
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, PLAN_OBJECTIVES, PLAN_OBJECTIVE_LABELS } from "../../meals/types";
 import type { MealSlot } from "../../meals/types";
 import {
@@ -275,7 +276,12 @@ export function planView(data: MealsSnapshot): HTMLElement {
     grid.appendChild(label);
 
     for (const date of data.days) {
-      const entry = row.find((p) => p.meal.date === date);
+      // Leftovers first, then anything cooked alongside them for whoever they don't feed.
+      const here = row
+        .filter((p) => p.meal.date === date)
+        .sort((a, b) => Number(b.meal.kind === "leftover") - Number(a.meal.kind === "leftover"));
+      const entry = here[0];
+      const beside = here.slice(1);
       const classes = ["meals-pcell"];
       if (date === data.today) classes.push("is-today");
       if (!entry) classes.push("is-empty");
@@ -299,9 +305,11 @@ export function planView(data: MealsSnapshot): HTMLElement {
             "span",
             "meals-cell-meta",
             [
-              entry.meal.cookServings && entry.meal.cookServings > entry.meal.servings
-                ? `cook ×${entry.meal.cookServings}`
-                : `${entry.meal.servings}p`,
+              entry.cooks !== null && entry.cooks > entry.meal.servings
+                ? `cook ${entry.cooks} · eat ${entry.meal.servings}`
+                : entry.meal.kind === "leftover" && entry.meal.portions !== null
+                  ? `${entry.meal.portions} of ${entry.meal.servings}p`
+                  : `${entry.meal.servings}p`,
               entry.meal.kind === "out" && entry.cost === null
                 ? "not budgeted"
                 : entry.cost === null
@@ -314,6 +322,17 @@ export function planView(data: MealsSnapshot): HTMLElement {
           )
         );
         cell.appendChild(foot);
+        for (const other of beside) {
+          // Its own click: the dish alongside opens its own drawer.
+          const part = make("span", "meals-pcell-beside", `+ ${other.name} · ${other.meal.servings}p`);
+          part.title = "Cooked alongside the leftovers for whoever they don't feed";
+          part.addEventListener("click", (event) => {
+            event.stopPropagation();
+            state.replacing = other.meal.id;
+            rerender();
+          });
+          cell.appendChild(part);
+        }
       } else {
         cell.appendChild(make("span", "meals-cell-add", "+ Add"));
       }
@@ -381,10 +400,33 @@ export function planEditor(
   const servings = input("number");
   servings.min = "1";
   servings.value = String(existing?.servings ?? data.servingsNeeded);
-  const cookServings = input("number");
-  cookServings.min = "1";
-  cookServings.placeholder = "same";
-  cookServings.value = existing?.cookServings ? String(existing.cookServings) : "";
+  // How much to cook: the recipe as written unless moved; the slider shows every amount as it moves.
+  const recipeOf = () => data.recipes.find((r) => r.recipe.id === recipePicker.value)?.recipe;
+  const eatingNow = () => Number(servings.value) || 1;
+  const defaultCook = () => Math.max(recipeOf()?.servings ?? eatingNow(), eatingNow());
+  let cooking = existing?.cookServings ?? defaultCook();
+  let moved = existing?.cookServings !== null && existing?.cookServings !== undefined;
+  const cookBox = make("div", "meals-cook-slider");
+  let slider: ReturnType<typeof servingsSlider> | null = null;
+  const drawSlider = () => {
+    const recipe = recipeOf();
+    cookBox.replaceChildren();
+    slider = null;
+    if (!recipe || kind.value !== "recipe") return;
+    if (!moved) cooking = defaultCook();
+    slider = servingsSlider(recipe, cooking, eatingNow, (next) => {
+      cooking = next;
+      moved = true;
+    });
+    cookBox.appendChild(slider.box);
+  };
+  const planLeftovers = input("checkbox", "");
+  planLeftovers.checked = data.preferences.autoLeftovers;
+  const planLeftoversLabel = make("label", "meals-check");
+  planLeftoversLabel.append(
+    planLeftovers,
+    document.createTextNode(" Plan the extra portions as leftovers in the next free meals")
+  );
   const time = input("time");
   time.value = existing?.time ?? "";
   const cost = input("number");
@@ -402,8 +444,7 @@ export function planEditor(
     recipeField,
     leftoverField,
     nameField,
-    field("Servings", servings),
-    field("Cook servings", cookServings),
+    field("Eating", servings),
     field("Time", time),
     field("Cost €", cost)
   );
@@ -412,9 +453,19 @@ export function planEditor(
     leftoverField.hidden = kind.value !== "leftover";
     nameField.hidden = kind.value === "recipe" || kind.value === "leftover";
   };
-  kind.addEventListener("change", applyKind);
+  kind.addEventListener("change", () => {
+    applyKind();
+    drawSlider();
+  });
+  recipePicker.addEventListener("change", () => {
+    moved = false;
+    drawSlider();
+  });
+  servings.addEventListener("input", () => (moved ? slider?.set(cooking) : drawSlider()));
   applyKind();
   body.appendChild(rows);
+  body.append(cookBox, planLeftoversLabel);
+  drawSlider();
   if (!data.recipes.length) body.appendChild(make("p", "meals-note", "No recipes yet — add one in Recipes."));
 
   const actions = make("div", "meals-row");
@@ -433,7 +484,9 @@ export function planEditor(
               leftoverId: kind.value === "leftover" ? leftoverPicker.value : null,
               name: name.value || null,
               servings: Number(servings.value) || 1,
-              cookServings: cookServings.value ? Number(cookServings.value) : null,
+              // Left where the recipe put it, it follows the recipe; moved, it's yours.
+              cookServings: kind.value === "recipe" && moved ? cooking : null,
+              planLeftovers: planLeftovers.checked,
               time: time.value || null,
               cost: cost.value ? Number(cost.value) : null,
             },

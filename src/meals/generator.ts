@@ -30,12 +30,13 @@
  */
 
 import { ingredientKey } from "./names";
-import { coverRecipe, coverageCount, expiryState, planDeductions, usableLeftovers } from "./pantry";
+import { coverRecipe, coverageCount, expiryState, isoDate, planDeductions, usableLeftovers } from "./pantry";
 import type { Family } from "./pantry";
-import { dayRange } from "./plan";
+import { LEFTOVER_SLOTS, cookServingsOf, dayRange, spreadLeftovers } from "./plan";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "./recipes";
 import type { IngredientLookup } from "./recipes";
 import { formatAmount } from "./units";
+import { MEAL_SLOTS } from "./types";
 import type {
   BudgetFix,
   Ingredient,
@@ -222,7 +223,9 @@ export function scoreRecipe(
 ): Candidate {
   const reasons: string[] = [];
   let score = 0;
-  const scale = scaleFor(recipe, servings);
+  // A recipe cooks as written (at least for everyone eating); the extra is leftovers.
+  const cooked = Math.max(recipe.servings, servings);
+  const scale = scaleFor(recipe, cooked);
   const coverage = coverageCount(coverRecipe(recipe.ingredients, pantry, scale, input.family));
   const share = coverage.total ? coverage.have / coverage.total : 0;
   if (objectives.has("pantry")) {
@@ -243,13 +246,14 @@ export function scoreRecipe(
       reasons.push(`Uses ${soon.map((item) => item.name.toLowerCase()).join(", ")} before it goes off`);
     }
   }
-  const cost = recipeCost(recipe, servings, input.lookup).value;
+  const cost = recipeCost(recipe, cooked, input.lookup).value;
   if (objectives.has("money") && cost !== null) {
-    const perServing = cost / Math.max(1, servings);
+    const perServing = cost / Math.max(1, cooked);
     score += Math.max(-2, 2 - perServing);
     if (perServing <= 2) reasons.push(`≈ ${euro(perServing)} a serving`);
   }
-  if (budgetLeft !== null && cost !== null && cost > budgetLeft) score -= 2;
+  // Against the day's budget, only the servings eaten that day count.
+  if (budgetLeft !== null && cost !== null && (cost * servings) / cooked > budgetLeft) score -= 2;
   const minutes = totalMinutes(recipe);
   if (objectives.has("quick") && minutes !== null && minutes <= 30) {
     score += 1;
@@ -321,6 +325,8 @@ function blankMeal(input: PlannerInput, date: string, slot: MealSlot, servings: 
     origin: "generator",
     reasons: [],
     swapSaving: null,
+    portions: null,
+    fromMealId: null,
     addedAt: input.now,
     updatedAt: input.now,
   };
@@ -331,7 +337,23 @@ function mealCost(meal: PlannedMeal, input: PlannerInput): number | null {
   if (meal.cost !== null) return meal.cost;
   if (meal.kind === "leftover") return 0;
   const recipe = input.recipes.find((r) => r.id === meal.recipeId);
-  return recipe ? recipeCost(recipe, meal.cookServings ?? meal.servings, input.lookup).value : null;
+  return recipe ? recipeCost(recipe, cookServingsOf(meal, recipe), input.lookup).value : null;
+}
+
+/** "Thu", for saying which meal leftovers come from. */
+function weekdayOf(date: string): string {
+  return new Date(`${date}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short" });
+}
+
+/** How long cooked food keeps in the fridge, for planning a batch's leftovers. */
+const FRIDGE_DAYS = 3;
+
+/** What a meal costs the day it's eaten: a batch counts for the servings eaten then, the rest is leftovers. */
+function mealShare(meal: PlannedMeal, input: PlannerInput): number | null {
+  const cost = mealCost(meal, input);
+  if (cost === null || meal.kind !== "recipe") return cost;
+  const recipe = input.recipes.find((r) => r.id === meal.recipeId);
+  return recipe ? (cost * meal.servings) / cookServingsOf(meal, recipe) : cost;
 }
 
 /** Fills the request's empty slots with the best meals, day by day. */
@@ -354,50 +376,148 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
       lastPlanned.set(meal.recipeId, meal.date);
     }
 
+  const allowRepeats = request.allowRepeats;
   let pantry = input.pantry.map((item) => ({ ...item }));
   const proposed: PlannedMeal[] = [];
-  // Leftovers first: each into the earliest free lunch or dinner before it has to be eaten.
+  const key = (option: { date: string; slot: MealSlot }) => `${option.date}|${option.slot}`;
+  const slotOrder = (slot: MealSlot) => MEAL_SLOTS.indexOf(slot);
+  /** The free lunches and dinners after a meal, up to an eat-by date. */
+  const freeAfter = (after: { date: string; slot: MealSlot }, until: string | null) =>
+    days
+      .flatMap((date) =>
+        LEFTOVER_SLOTS.filter((slot) => request.slots.includes(slot)).map((slot) => ({ date, slot }))
+      )
+      .filter(
+        (option) =>
+          (option.date > after.date ||
+            (option.date === after.date && slotOrder(option.slot) > slotOrder(after.slot))) &&
+          !taken.has(key(option)) &&
+          (!until || option.date <= until)
+      );
+  /** What a batch cooks, and what it costs a serving — leftovers make the rest of the batch worth it. */
+  const batchOf = (recipe: Recipe, servings: number) => {
+    const cooked = Math.max(recipe.servings, servings);
+    return { cooked, extra: Math.round((cooked - servings) * 100) / 100 };
+  };
+
+  /**
+   * Leftovers into the next free meals: as many portions as eat each time,
+   * and where they don't feed everyone, something alongside for the rest.
+   */
+  const spreadInto = (
+    source: {
+      name: string;
+      portions: number;
+      eatBy: string | null;
+      leftoverId?: string;
+      fromMealId?: string;
+    },
+    after: { date: string; slot: MealSlot },
+    depth: number
+  ) => {
+    for (const share of spreadLeftovers(source.portions, request.eating, freeAfter(after, source.eatBy))) {
+      const meal = blankMeal(input, share.date, share.slot, request.eating);
+      meal.kind = "leftover";
+      meal.leftoverId = source.leftoverId ?? null;
+      meal.fromMealId = source.fromMealId ?? null;
+      meal.portions = share.portions;
+      meal.name = `${source.name} (leftovers)`;
+      meal.reasons = [
+        source.fromMealId
+          ? `Leftovers of the ${source.name.toLowerCase()} cooked ${weekdayOf(after.date)} ${after.slot} — ${share.portions} of ${source.portions} extra portion${source.portions === 1 ? "" : "s"}`
+          : `Uses ${share.portions === source.portions ? "" : `${share.portions} of `}${source.portions} cooked portion${source.portions === 1 ? "" : "s"} before they expire`,
+        share.short > 0
+          ? `Only covers ${share.portions} of ${request.eating} — ${share.short} more portion${share.short === 1 ? "" : "s"} needed`
+          : `Covers all ${request.eating}`,
+      ];
+      proposed.push(meal);
+      taken.add(key(share));
+      if (share.short > 0 && depth < 3) topUp(share, share.short, meal, depth);
+    }
+  };
+
+  /** A recipe placed in a slot — and, cooked as a batch, its extra portions planned after it. */
+  const place = (
+    date: string,
+    slot: MealSlot,
+    candidate: Candidate,
+    servings: number,
+    depth: number,
+    reasons?: string[]
+  ): PlannedMeal => {
+    const meal = blankMeal(input, date, slot, servings);
+    meal.recipeId = candidate.recipe.id;
+    meal.reasons =
+      reasons ?? (candidate.reasons.length ? candidate.reasons : ["The best fit left for this meal"]);
+    proposed.push(meal);
+    taken.add(key({ date, slot }));
+    counts.set(candidate.recipe.id, (counts.get(candidate.recipe.id) ?? 0) + 1);
+    lastPlanned.set(candidate.recipe.id, date);
+    const batch = batchOf(candidate.recipe, servings);
+    pantry = useUp(pantry, candidate.recipe, batch.cooked, input.family);
+    if (batch.extra > 0 && input.preferences.autoLeftovers)
+      spreadInto(
+        {
+          name: candidate.recipe.name,
+          portions: batch.extra,
+          eatBy: isoDate(new Date(Date.parse(`${date}T12:00:00`) + FRIDGE_DAYS * 86_400_000)),
+          fromMealId: meal.id,
+        },
+        { date, slot },
+        depth + 1
+      );
+    return meal;
+  };
+
+  /** Leftovers that don't feed everyone: the best recipe for the rest, in the same meal. */
+  const topUp = (
+    at: { date: string; slot: MealSlot },
+    short: number,
+    leftovers: PlannedMeal,
+    depth: number
+  ) => {
+    const best = input.recipes
+      .filter((recipe) => !allowed(recipe, at.slot, at.date, input, counts, allowRepeats))
+      .map((recipe) => scoreRecipe(recipe, at.date, short, input, pantry, objectives, lastPlanned, null))
+      // Something small alongside, rather than another big batch and more leftovers after it.
+      .map((candidate) => ({
+        ...candidate,
+        fit: candidate.score - 0.3 * batchOf(candidate.recipe, short).extra,
+      }))
+      .sort((a, b) => b.fit - a.fit || a.recipe.name.localeCompare(b.recipe.name))[0];
+    if (!best) return;
+    const beside = place(at.date, at.slot, best, short, depth, [
+      `Alongside ${leftovers.name?.toLowerCase() ?? "the leftovers"}: ${short} more serving${short === 1 ? "" : "s"} needed`,
+      ...best.reasons.slice(0, 2),
+    ]);
+    // Planned because of those leftovers: it goes when they do.
+    beside.fromMealId = leftovers.id;
+  };
+
+  // Leftovers first: spread over the earliest free lunches and dinners before they have to be eaten.
   if (objectives.has("leftovers")) {
     const promised = new Set(
       input.plan.filter((m) => m.kind === "leftover" && !m.cookedAt).map((m) => m.leftoverId)
     );
     for (const leftover of usableLeftovers(input.leftovers, new Date(`${input.today}T12:00:00`))) {
       if (promised.has(leftover.id)) continue;
-      const slot = days
-        .flatMap((date) =>
-          (["lunch", "dinner"] as MealSlot[])
-            .filter((s) => request.slots.includes(s))
-            .map((s) => ({ date, slot: s }))
-        )
-        .find(
-          (option) =>
-            !taken.has(`${option.date}|${option.slot}`) && (!leftover.eatBy || option.date <= leftover.eatBy)
-        );
-      if (!slot) continue;
-      const meal = blankMeal(input, slot.date, slot.slot, request.eating);
-      meal.kind = "leftover";
-      meal.leftoverId = leftover.id;
-      const covers = Math.min(leftover.portions, request.eating);
-      meal.reasons = [
-        `Uses ${leftover.portions} cooked portion${leftover.portions === 1 ? "" : "s"} before they expire`,
-        covers < request.eating
-          ? `Only covers ${covers} of ${request.eating} — ${request.eating - covers} more portion${request.eating - covers === 1 ? "" : "s"} needed`
-          : `Covers all ${request.eating}`,
-      ];
-      proposed.push(meal);
-      taken.add(`${slot.date}|${slot.slot}`);
+      spreadInto(
+        { name: leftover.name, portions: leftover.portions, eatBy: leftover.eatBy, leftoverId: leftover.id },
+        { date: days[0], slot: "breakfast" },
+        0
+      );
     }
   }
 
   const perDayBudget =
     request.budgetPerDay ?? (request.budgetTotal !== null ? request.budgetTotal / days.length : null);
-  const allowRepeats = request.allowRepeats;
   for (const date of days) {
-    let spent = [...kept, ...proposed]
-      .filter((meal) => meal.date === date)
-      .reduce((sum, meal) => sum + (mealCost(meal, input) ?? 0), 0);
     for (const slot of request.slots) {
-      if (taken.has(`${date}|${slot}`)) continue;
+      if (taken.has(key({ date, slot }))) continue;
+      // Today's share of what's planned: a batch counts for the servings eaten now.
+      const spent = [...kept, ...proposed]
+        .filter((meal) => meal.date === date)
+        .reduce((sum, meal) => sum + (mealShare(meal, input) ?? 0), 0);
       const budgetLeft = perDayBudget === null ? null : perDayBudget - spent;
       const candidates = input.recipes
         .filter((recipe) => !allowed(recipe, slot, date, input, counts, allowRepeats))
@@ -411,16 +531,7 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
             a.recipe.id.localeCompare(b.recipe.id)
         );
       const best = candidates[0];
-      if (!best) continue;
-      const meal = blankMeal(input, date, slot, request.eating);
-      meal.recipeId = best.recipe.id;
-      meal.reasons = best.reasons.length ? best.reasons : ["The best fit left for this meal"];
-      proposed.push(meal);
-      taken.add(`${date}|${slot}`);
-      counts.set(best.recipe.id, (counts.get(best.recipe.id) ?? 0) + 1);
-      lastPlanned.set(best.recipe.id, date);
-      pantry = useUp(pantry, best.recipe, request.eating, input.family);
-      spent += best.cost ?? 0;
+      if (best) place(date, slot, best, request.eating, 0);
     }
   }
 
@@ -430,6 +541,21 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
   const total = () =>
     Math.round([...kept, ...proposed].reduce((sum, meal) => sum + (mealCost(meal, input) ?? 0), 0) * 100) /
     100;
+
+  /** A swapped batch's planned leftovers, and whatever was planned alongside them, go with it. */
+  const dropChain = (mealId: string) => {
+    for (const leftover of proposed.filter((meal) => meal.fromMealId === mealId)) {
+      const beside = proposed.filter(
+        (meal) => meal !== leftover && meal.date === leftover.date && meal.slot === leftover.slot
+      );
+      for (const meal of [leftover, ...beside]) {
+        proposed.splice(proposed.indexOf(meal), 1);
+        if (meal.recipeId) counts.set(meal.recipeId, (counts.get(meal.recipeId) ?? 1) - 1);
+        dropChain(meal.id);
+      }
+      taken.delete(key(leftover));
+    }
+  };
 
   // Over budget: swap the planner's most expensive choices for the cheapest that still fit.
   if (budget !== null && input.preferences.overBudget === "swap") {
@@ -448,7 +574,10 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
               recipe.id !== meal.recipeId &&
               !allowed(recipe, meal.slot, meal.date, input, others, allowRepeats)
           )
-          .map((recipe) => ({ recipe, cost: recipeCost(recipe, meal.servings, input.lookup).value }))
+          .map((recipe) => ({
+            recipe,
+            cost: recipeCost(recipe, batchOf(recipe, meal.servings).cooked, input.lookup).value,
+          }))
           .filter(
             (option): option is { recipe: Recipe; cost: number } => option.cost !== null && option.cost < cost
           )
@@ -458,6 +587,7 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
         const saving = Math.round((cost - cheaper.cost) * 100) / 100;
         counts.set(before.id, (counts.get(before.id) ?? 1) - 1);
         counts.set(cheaper.recipe.id, (counts.get(cheaper.recipe.id) ?? 0) + 1);
+        dropChain(meal.id);
         meal.recipeId = cheaper.recipe.id;
         meal.swapSaving = saving;
         meal.reasons = [
@@ -473,6 +603,18 @@ export function generatePlan(input: PlannerInput, request: PlanRequest): PlanPro
             null
           ).reasons.slice(0, 2),
         ];
+        const batch = batchOf(cheaper.recipe, meal.servings);
+        if (batch.extra > 0 && input.preferences.autoLeftovers)
+          spreadInto(
+            {
+              name: cheaper.recipe.name,
+              portions: batch.extra,
+              eatBy: isoDate(new Date(Date.parse(`${meal.date}T12:00:00`) + FRIDGE_DAYS * 86_400_000)),
+              fromMealId: meal.id,
+            },
+            meal,
+            1
+          );
         swapped = true;
         break;
       }
@@ -533,20 +675,21 @@ export function proposalFigures(
   for (const meal of proposed.filter((m) => m.kind === "recipe")) {
     const recipe = input.recipes.find((r) => r.id === meal.recipeId);
     if (!recipe) continue;
-    const plan = planDeductions(recipe.ingredients, stock, scaleFor(recipe, meal.servings), {
+    const cooked = cookServingsOf(meal, recipe);
+    const plan = planDeductions(recipe.ingredients, stock, scaleFor(recipe, cooked), {
       family: input.family,
     });
     fromPantry += new Set(plan.deductions.map((d) => d.itemId)).size;
     toBuy += plan.short.length;
-    stock = useUp(stock, recipe, meal.servings, input.family);
+    stock = useUp(stock, recipe, cooked, input.family);
   }
 
   let leftoverPortions = 0;
   let leftoverMeals = 0;
   for (const meal of proposed.filter((m) => m.kind === "leftover")) {
     const leftover = input.leftovers.find((l) => l.id === meal.leftoverId);
-    if (!leftover) continue;
-    leftoverPortions += Math.min(leftover.portions, meal.servings);
+    if (!leftover && !meal.fromMealId) continue;
+    leftoverPortions += meal.portions ?? Math.min(leftover?.portions ?? 0, meal.servings);
     leftoverMeals += 1;
   }
 

@@ -466,6 +466,8 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       origin: "user",
       reasons: [],
       swapSaving: null,
+      portions: null,
+      fromMealId: null,
       cost: isOut ? 6.5 : null,
       notes: null,
       cookedAt: null,

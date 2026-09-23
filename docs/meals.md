@@ -64,6 +64,37 @@ leaves "0.6 kg", so the pantry still reads the way the package does.
 Scaling a recipe is linear, and a line counted in pieces rounds **up** —
 three eggs for two people is five eggs for three, not 4.5.
 
+## Batches and leftovers
+
+A meal has two numbers: how many are **eating** (from Household, or 12
+when family is over) and how much it **cooks** — the recipe as written
+unless you move it, never less than who's eating. Rice and beans written
+for 5 cooks 5 for the 2 of you; the other 3 are leftovers.
+
+- **The servings slider** (plan editor and cook dialog) moves how much is
+  cooked, with every ingredient line following it, rounded to amounts
+  you'd measure ([units.ts](../src/meals/units.ts) `practicalAmount`):
+  whole pieces rounded up, spoons to the half, grams and millilitres in
+  steps of 1 / 5 / 10 / 50 as the amount grows — never 0.1 g of meat. The
+  recipe's own servings are left exactly as written.
+- **The extra portions are planned**: into the next free lunches and
+  dinners within three days, as many as eat each time — 3 extra for 2
+  people is 2 at the next meal and 1 at the one after. That last one
+  doesn't feed everyone, so the planner puts **something alongside** in
+  the same meal for the rest (the grid shows it under the leftovers), and
+  prefers something small rather than another big batch.
+- Leftovers planned from a meal not cooked yet point at that meal;
+  **cooking it** makes them real leftovers and gives each planned meal its
+  share, in order, as far as what was actually cooked goes. Removing or
+  replacing the meal takes its planned leftovers (and what was alongside
+  them) with it.
+- The cook dialog offers to **spread** new leftovers over the next free
+  meals, one meal, or none; "Plan leftovers automatically" in Household
+  picks the spread for you.
+- Costs follow the batch: the meal costs what cooking all of it costs,
+  its leftovers cost nothing, and a day's budget counts only the servings
+  eaten that day.
+
 ## Food families
 
 Some foods stand in for others: soy milk for milk, a brand of passata for

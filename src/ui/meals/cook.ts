@@ -1,3 +1,5 @@
+import { servingsSlider } from "./servings";
+import { cookServingsOf, spreadLeftovers } from "../../meals/plan";
 import { suggestEatBy } from "../../meals/pantry";
 import { MEAL_SLOT_LABELS } from "../../meals/types";
 import type { MealSlot, PlannedMeal } from "../../meals/types";
@@ -52,11 +54,17 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
   const entry = data.recipes.find((r) => r.recipe.id === recipeId);
   if (!entry) return;
   const planned = meal?.servings ?? data.servingsNeeded;
-  let cooking = meal?.cookServings ?? planned;
+  let cooking = cookServingsOf(meal ?? { cookServings: null, servings: planned }, entry.recipe);
   let eating = Math.min(planned, cooking);
   let place: "fridge" | "freezer" = "fridge";
   let schedule: { date: string; slot: MealSlot } | null = null;
   let scheduleTouched = false;
+  // Or spread over the next meals, as many portions as eat each time.
+  let spreading = false;
+  let spreadPlan: Array<{ date: string; slot: MealSlot; portions: number; short: number }> = [];
+  const alreadyPlanned = meal
+    ? data.plan.filter((p) => p.meal.kind === "leftover" && p.meal.fromMealId === meal.id && !p.meal.cookedAt)
+    : [];
   const { box, body } = panel(`Cook · ${entry.recipe.name}`);
   box.classList.add("meals-dialog");
 
@@ -64,15 +72,7 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
   const skip = input("checkbox", "");
   counts.append(
     field("Planned servings", make("span", "meals-fact-value", String(planned))),
-    field(
-      "Actually cooking",
-      stepper(cooking, 1, 1, (next) => {
-        cooking = next;
-        eating = Math.min(eating, cooking);
-        void refreshPreview();
-        drawLeftovers();
-      })
-    ),
+
     field(
       "Eaten now",
       stepper(eating, 1, 1, (next) => {
@@ -83,6 +83,19 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
     field("Don't touch the pantry", skip)
   );
   body.appendChild(counts);
+  body.appendChild(
+    servingsSlider(
+      entry.recipe,
+      cooking,
+      () => eating,
+      (next) => {
+        cooking = next;
+        eating = Math.min(eating, cooking);
+        void refreshPreview();
+        drawLeftovers();
+      }
+    ).box
+  );
 
   // Milk or soy milk: when more than one food at home will do, you say which.
   const choose: Record<string, string> = {};
@@ -183,9 +196,49 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
       })
     );
     leftovers.appendChild(places);
+    // Planned with the meal already: cooking fills those, as far as the portions go.
+    if (alreadyPlanned.length) {
+      schedule = null;
+      spreading = false;
+      leftovers.appendChild(
+        make(
+          "p",
+          "meals-note",
+          `Already planned: ${alreadyPlanned
+            .map(
+              (p) =>
+                `${dayLabel(p.meal.date)} ${MEAL_SLOT_LABELS[p.meal.slot].toLowerCase()} (${p.meal.portions ?? p.meal.servings})`
+            )
+            .join(" · ")} — cooking fills them, as far as the portions go.`
+        )
+      );
+      return;
+    }
     const options = freeSlotsUntil(eatBy, meal?.date ?? data.today);
-    // "Plan leftovers automatically": the first free slot is chosen until you choose otherwise.
-    if (!scheduleTouched && data.preferences.autoLeftovers) schedule = options[0] ?? null;
+    spreadPlan = place === "fridge" ? spreadLeftovers(extra, data.servingsNeeded, options, eatBy) : [];
+    // "Plan leftovers automatically": spread over the next meals (or the first one) until you choose otherwise.
+    if (!scheduleTouched && data.preferences.autoLeftovers) {
+      spreading = spreadPlan.length > 1;
+      schedule = spreading ? null : (options[0] ?? null);
+    }
+    if (spreadPlan.length > 1) {
+      const spreadChips = make("div", "meals-chips");
+      spreadChips.appendChild(
+        chip(
+          `Spread: ${spreadPlan
+            .map((s) => `${dayLabel(s.date)} ${MEAL_SLOT_LABELS[s.slot].toLowerCase()} (${s.portions})`)
+            .join(" · ")}`,
+          spreading,
+          () => {
+            spreading = true;
+            schedule = null;
+            scheduleTouched = true;
+            drawLeftovers();
+          }
+        )
+      );
+      leftovers.appendChild(spreadChips);
+    }
     if (schedule && !options.some((o) => o.date === schedule!.date && o.slot === schedule!.slot))
       schedule = null;
     const when = make("div", "meals-chips");
@@ -197,6 +250,7 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
           on,
           () => {
             schedule = option;
+            spreading = false;
             scheduleTouched = true;
             drawLeftovers();
           }
@@ -204,13 +258,23 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
       );
     }
     when.appendChild(
-      chip("Don't schedule", schedule === null, () => {
+      chip("Don't schedule", schedule === null && !spreading, () => {
         schedule = null;
+        spreading = false;
         scheduleTouched = true;
         drawLeftovers();
       })
     );
     leftovers.appendChild(when);
+    const lastShort = spreading ? (spreadPlan[spreadPlan.length - 1]?.short ?? 0) : 0;
+    if (lastShort > 0)
+      leftovers.appendChild(
+        make(
+          "p",
+          "meals-note",
+          `The last of those will need ${lastShort} more portion(s) — add a side in the plan.`
+        )
+      );
     if (schedule && extra < data.servingsNeeded)
       leftovers.appendChild(
         make(
@@ -236,7 +300,8 @@ export function openCook(recipeId: string, meal?: PlannedMeal): void {
             eatServings: eating,
             leftoverPlace: place,
             skipPantry: skip.checked,
-            scheduleLeftoverFor: schedule,
+            scheduleLeftoverFor: spreading ? null : schedule,
+            scheduleLeftovers: spreading ? spreadPlan : null,
             choose,
           });
           const parts = [

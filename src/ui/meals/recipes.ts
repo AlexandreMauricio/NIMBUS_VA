@@ -1,3 +1,4 @@
+import { cookServingsOf } from "../../meals/plan";
 import { MEAL_SLOTS, MEAL_SLOT_LABELS } from "../../meals/types";
 import { matchIngredient } from "../../meals/names";
 import type { MealSlot } from "../../meals/types";
@@ -378,7 +379,7 @@ export function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][
           undefined,
           `${dayLabel(planned.meal.date)} · ${MEAL_SLOT_LABELS[planned.meal.slot].toLowerCase()}`
         ),
-        make("span", "meals-line-meta", `×${planned.meal.cookServings ?? planned.meal.servings}`),
+        make("span", "meals-line-meta", `×${cookServingsOf(planned.meal, entry.recipe)}`),
         planned.meal.cookedAt ? pill("cooked", "ok") : pill("planned")
       );
       list.appendChild(row);

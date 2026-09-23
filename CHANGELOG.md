@@ -20,6 +20,24 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.24 — 2026-09-23
+
+- **Meals cook the recipe as written.** Eating (from Household, or 12 when
+  family's over) and cooking are separate: rice and beans for 5 cooks 5
+  for the 2 of you, never fewer than are eating.
+- **A servings slider** in the plan editor and the cook dialog, with every
+  ingredient following it — rounded to what you'd measure (whole pieces,
+  half spoons, grams in sensible steps), so there's never 0.1 g of meat.
+- **Leftovers are planned in a chain.** A batch's extra portions go into
+  the next free meals within three days, as many as eat each time: 3
+  extra for 2 people is 2 at the next meal and 1 at the one after, which
+  gets something alongside for the rest (the planner chooses it, shown
+  under the leftovers in the grid). Cooking turns planned leftovers into
+  real ones, each meal getting its share; removing or replacing the meal
+  takes them away. The cook dialog can spread new leftovers the same way.
+- Costs follow the batch: the meal costs the whole batch, its leftovers
+  nothing, and a day's budget counts the servings eaten that day.
+
 ## 0.6.23 — 2026-09-23
 
 - **Food families.** A food can count as a more general one — Soy milk

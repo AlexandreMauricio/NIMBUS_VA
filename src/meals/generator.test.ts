@@ -41,7 +41,7 @@ test("planner: the same kitchen and the same days give the same plan, with a rea
     first.meals.map((m) => [m.date, m.slot, m.kind, m.recipeId ?? m.leftoverId]),
     again.meals.map((m) => [m.date, m.slot, m.kind, m.recipeId ?? m.leftoverId])
   );
-  assert.equal(first.meals.length, 6, "every empty slot filled");
+  assert.equal(new Set(first.meals.map((m) => `${m.date}|${m.slot}`)).size, 6, "every empty slot filled");
   for (const meal of first.meals) {
     assert.equal(meal.origin, "generator");
     assert.ok(meal.reasons.length > 0, "every choice explains itself");
@@ -57,7 +57,8 @@ test("planner: leftovers go in first, before they expire, saying how far they go
   assert.ok(leftover!.reasons[0].startsWith("Uses 2 cooked portions"));
   assert.ok(leftover!.reasons[1].includes("Only covers 2 of 3"));
   // The demo keeps two: the chilli (2 portions) and the bolognese in the freezer (4).
-  assert.equal(proposal.leftoverMeals, 2);
+  const existing = new Set(proposal.meals.filter((m) => m.leftoverId).map((m) => m.leftoverId));
+  assert.equal(existing.size, 2);
 });
 
 test("planner: restrictions never appear, and max repeats holds", () => {
@@ -92,6 +93,7 @@ test("planner: your picks and locked meals are kept, and accepting replaces only
     kind: "recipe",
     recipeId: recipes[0].id,
     servings: 2,
+    planLeftovers: false,
   });
   const proposal = meals.generatePlan({ from: first, days: 2, slots: ["dinner"], eating: 2 });
   assert.equal(proposal.meals.length, 1, "only the free dinner is filled");
@@ -198,10 +200,11 @@ test("planner: changing a proposed meal brings the proposal's figures up to date
   const meal = proposal.meals[0];
   meals.replaceMeal(meal.id, { kind: "out", cost: 40 });
   const after = meals.getProposal()!;
-  const others = proposal.meals.slice(1);
+  // What was planned from that dinner (its leftovers) goes with it; the rest stays.
+  const others = proposal.meals.slice(1).filter((m) => m.fromMealId === null);
   assert.ok(after.cost !== null && after.cost > (proposal.cost ?? 0), "the dinner out costs more");
-  assert.equal(after.meals.length, proposal.meals.length);
   assert.ok(others.every((m) => after.meals.some((a) => a.id === m.id)));
+  assert.ok(!after.meals.some((m) => m.fromMealId === meal.id));
   meals.replaceMeal(meal.id, { kind: "skip" });
   assert.ok((meals.getProposal()!.cost ?? 0) < (after.cost ?? 0));
 });

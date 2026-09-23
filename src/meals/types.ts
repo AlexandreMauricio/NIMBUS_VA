@@ -287,6 +287,16 @@ export interface PlannedMeal {
   reasons: string[];
   /** A budget swap: what it saved against the meal it replaced, in euros. */
   swapSaving: number | null;
+  /**
+   * For leftovers: how many portions this meal takes from them — a batch of
+   * 5 eaten 2 at a time is spread over meals. Null for "as many as needed".
+   */
+  portions: number | null;
+  /**
+   * For leftovers of a meal not cooked yet: the planned meal they'll come
+   * from. Cooking it turns them into real leftovers (`leftoverId`).
+   */
+  fromMealId: string | null;
   addedAt: string;
   updatedAt: string;
 }

@@ -82,7 +82,7 @@ import {
   StoragePlace,
 } from "./types";
 import { ingredientKey, matchIngredient } from "./names";
-import { dayRange, servingsNeeded } from "./plan";
+import { cookServingsOf, dayRange, freeMealsAfter, servingsNeeded, spreadLeftovers } from "./plan";
 import { parseAmountText } from "./recipeImport";
 import { normaliseUnit, subtract, toBase } from "./units";
 
@@ -354,6 +354,8 @@ export function parsePlannedMeal(raw: unknown): PlannedMeal | null {
     origin: r.origin === "generator" ? "generator" : "user",
     reasons: list(r.reasons, 6, 200),
     swapSaving: money(r.swapSaving),
+    portions: r.kind === "leftover" ? positive(r.portions) : null,
+    fromMealId: typeof r.fromMealId === "string" && r.fromMealId ? r.fromMealId : null,
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
   };
@@ -630,6 +632,8 @@ export interface CookInput {
   skipPantry?: boolean;
   /** Put the leftovers straight into this slot of the plan. */
   scheduleLeftoverFor?: { date: string; slot: MealSlot } | null;
+  /** Or spread them: this many portions into each of these meals. */
+  scheduleLeftovers?: Array<{ date: string; slot: MealSlot; portions: number }> | null;
 }
 
 /** What cooking would take out of the pantry, package by package — shown before anything moves. */
@@ -1138,9 +1142,14 @@ export class MealService {
     const recipeId = typeof r.recipeId === "string" && r.recipeId ? r.recipeId : null;
     const leftoverId = typeof r.leftoverId === "string" && r.leftoverId ? r.leftoverId : null;
     if (kind === "recipe" && !this.getRecipe(recipeId)) throw new Error("Choose a recipe.");
-    if (kind === "leftover" && !this.state.leftovers.some((l) => l.id === leftoverId))
-      throw new Error("Choose which leftovers.");
     const existing = id ? this.state.plan.find((meal) => meal.id === id) : undefined;
+    // Leftovers of a batch not cooked yet have nothing to point at until it is.
+    if (
+      kind === "leftover" &&
+      !existing?.fromMealId &&
+      !this.state.leftovers.some((l) => l.id === leftoverId)
+    )
+      throw new Error("Choose which leftovers.");
     if (id && !existing) throw new Error("That planned meal is gone.");
     if (!existing && this.state.plan.length >= MAX_PLANNED_MEALS) throw new Error("The plan is full.");
     const meal: PlannedMeal = {
@@ -1162,18 +1171,87 @@ export class MealService {
       origin: "user",
       reasons: [],
       swapSaving: null,
+      portions: kind === "leftover" ? positive(r.portions) : null,
+      fromMealId: existing?.fromMealId ?? null,
       addedAt: existing?.addedAt ?? this.now(),
       updatedAt: this.now(),
     };
     this.state.plan = existing
       ? this.state.plan.map((entry) => (entry.id === meal.id ? meal : entry))
       : [...this.state.plan, meal];
+    // A batch: its extra portions go into the next free meals, unless asked not to.
+    this.dropLeftoversOf(meal.id);
+    if (r.planLeftovers !== false && this.state.preferences.autoLeftovers) this.planLeftoversOf(meal);
     this.save();
     return meal;
   }
 
+  /** The planned leftovers of a meal not cooked yet — taken out when it changes or goes. */
+  private dropLeftoversOf(mealId: string): void {
+    // Its leftovers not cooked yet, and what was planned alongside them — and so on down.
+    const gone = [...this.state.plan, ...(this.state.proposal?.meals ?? [])].filter(
+      (entry) =>
+        entry.fromMealId === mealId && !entry.cookedAt && !(entry.kind === "leftover" && entry.leftoverId)
+    );
+    if (!gone.length) return;
+    const ids = new Set(gone.map((entry) => entry.id));
+    this.state.plan = this.state.plan.filter((entry) => !ids.has(entry.id));
+    if (this.state.proposal)
+      this.state.proposal.meals = this.state.proposal.meals.filter((entry) => !ids.has(entry.id));
+    for (const id of ids) this.dropLeftoversOf(id);
+  }
+
+  /**
+   * A recipe cooked as a batch — 5 servings for 2 people — leaves 3
+   * portions: 2 go into the next free lunch or dinner, 1 into the one after
+   * (which then needs something alongside). Within three days.
+   */
+  private planLeftoversOf(meal: PlannedMeal): PlannedMeal[] {
+    if (meal.kind !== "recipe" || meal.cookedAt) return [];
+    const recipe = this.getRecipe(meal.recipeId);
+    if (!recipe) return [];
+    const extra = Math.round((cookServingsOf(meal, recipe) - meal.servings) * 100) / 100;
+    if (extra <= 0) return [];
+    const eatBy = isoDate(new Date(Date.parse(`${meal.date}T12:00:00`) + 3 * 86_400_000));
+    const free = freeMealsAfter(this.state.plan, meal, 4, this.state.preferences.slots);
+    const eating = servingsNeeded(this.state.preferences.eaters);
+    const planned: PlannedMeal[] = [];
+    for (const share of spreadLeftovers(extra, eating, free, eatBy)) {
+      if (this.state.plan.length >= MAX_PLANNED_MEALS) break;
+      const leftover: PlannedMeal = {
+        ...meal,
+        id: randomUUID(),
+        date: share.date,
+        slot: share.slot,
+        kind: "leftover",
+        recipeId: null,
+        leftoverId: null,
+        fromMealId: meal.id,
+        portions: share.portions,
+        name: `${recipe.name} (leftovers)`,
+        servings: eating,
+        cookServings: null,
+        time: null,
+        cost: null,
+        notes: null,
+        cookedAt: null,
+        locked: false,
+        reasons: [
+          `Leftovers of the ${recipe.name.toLowerCase()} — ${share.portions} of ${extra} extra portion${extra === 1 ? "" : "s"}`,
+        ],
+        swapSaving: null,
+        addedAt: this.now(),
+        updatedAt: this.now(),
+      };
+      this.state.plan.push(leftover);
+      planned.push(leftover);
+    }
+    return planned;
+  }
+
   removePlannedMeal(id: unknown): void {
     this.state.plan = this.state.plan.filter((meal) => meal.id !== id);
+    if (typeof id === "string") this.dropLeftoversOf(id);
     this.save();
   }
 
@@ -1280,7 +1358,41 @@ export class MealService {
         portions: extra,
         place,
       });
-      const target = r.scheduleLeftoverFor;
+      // Leftovers already planned from this meal now point at the real ones — as far as they go.
+      const promised = planned
+        ? this.state.plan
+            .filter(
+              (entry) => entry.kind === "leftover" && entry.fromMealId === planned.id && !entry.cookedAt
+            )
+            .sort(
+              (a, b) =>
+                a.date.localeCompare(b.date) || MEAL_SLOTS.indexOf(a.slot) - MEAL_SLOTS.indexOf(b.slot)
+            )
+        : [];
+      let left = extra;
+      for (const entry of promised) {
+        entry.leftoverId = result.leftover.id;
+        entry.portions = Math.max(0, Math.min(entry.portions ?? entry.servings, left));
+        left = Math.round((left - entry.portions) * 100) / 100;
+        entry.updatedAt = this.now();
+      }
+      if (promised.length) result.scheduled = promised[0];
+      const spread = Array.isArray(r.scheduleLeftovers) ? r.scheduleLeftovers : [];
+      for (const share of promised.length ? [] : spread.slice(0, 8)) {
+        if (!isoDay(share?.date) || !MEAL_SLOTS.includes(share?.slot) || left <= 0) continue;
+        const portions = Math.min(left, positive(share.portions, 1)!);
+        const scheduled = this.planMeal({
+          date: share.date,
+          slot: share.slot,
+          kind: "leftover",
+          leftoverId: result.leftover.id,
+          portions,
+          servings: servingsNeeded(this.state.preferences.eaters),
+        });
+        left = Math.round((left - portions) * 100) / 100;
+        result.scheduled ??= scheduled;
+      }
+      const target = promised.length || spread.length ? null : r.scheduleLeftoverFor;
       if (target && isoDay(target.date) && MEAL_SLOTS.includes(target.slot)) {
         result.scheduled = this.planMeal({
           date: target.date,
@@ -1892,6 +2004,7 @@ export class MealService {
   replaceMeal(mealId: unknown, choice: unknown): PlannedMeal {
     const { meal } = this.findMeal(mealId);
     if (meal.cookedAt) throw new Error("That meal is already cooked.");
+    this.dropLeftoversOf(meal.id);
     const c = (choice ?? {}) as Record<string, unknown>;
     const kind = PLANNED_MEAL_KINDS.includes(c.kind as PlannedMealKind)
       ? (c.kind as PlannedMealKind)
@@ -2013,7 +2126,7 @@ export class MealService {
     let kept = 0;
     for (const meal of this.state.plan) {
       if (meal.recipeId !== recipe.id || meal.cookedAt || meal.date < today) continue;
-      const cost = recipeCost(recipe, meal.cookServings ?? meal.servings, input.lookup).value;
+      const cost = recipeCost(recipe, cookServingsOf(meal, recipe), input.lookup).value;
       Object.assign(meal, {
         kind: "custom",
         recipeId: null,

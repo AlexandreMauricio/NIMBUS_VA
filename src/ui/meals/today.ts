@@ -1,3 +1,4 @@
+import { cookServingsOf } from "../../meals/plan";
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, STORAGE_LABELS } from "../../meals/types";
 import { formatAmount } from "../../meals/units";
 import {
@@ -94,7 +95,7 @@ export function heroCard(data: MealsSnapshot, entry: MealsSnapshot["plan"][numbe
   head.appendChild(make("h1", "meals-hero-title", entry.name));
 
   // The sentence under the title says what is actually about to happen.
-  const cookServings = entry.meal.cookServings ?? entry.meal.servings;
+  const cookServings = cookServingsOf(entry.meal, recipe?.recipe);
   const extra = cookServings - entry.meal.servings;
   const start = entry.meal.time && recipe ? startTime(entry.meal.time, recipe.minutes) : null;
   const sentence = [
@@ -137,7 +138,13 @@ export function heroCard(data: MealsSnapshot, entry: MealsSnapshot["plan"][numbe
         "btn btn-primary",
         () =>
           void act(
-            () => bridge().eatLeftover(entry.meal.id, entry.meal.leftoverId!, entry.meal.servings),
+            // This meal's share of them, when a batch is spread over several.
+            () =>
+              bridge().eatLeftover(
+                entry.meal.id,
+                entry.meal.leftoverId!,
+                entry.meal.portions ?? entry.meal.servings
+              ),
             "Leftovers eaten."
           )
       )

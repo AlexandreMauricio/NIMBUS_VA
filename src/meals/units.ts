@@ -188,8 +188,31 @@ function number(value: number, locale: string): string {
  */
 export function scaleAmount(amount: Amount, base: number, wanted: number): Amount {
   if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(wanted) || wanted <= 0) return amount;
-  const scaled = (amount.quantity * wanted) / base;
+  // The recipe's own servings are the recipe as written, untouched.
+  if (wanted === base) return { quantity: amount.quantity, unit: amount.unit };
+  return practicalAmount({ quantity: (amount.quantity * wanted) / base, unit: amount.unit });
+}
+
+/**
+ * A scaled amount as you'd actually measure it: whole pieces (rounded up —
+ * nobody cooks 2.4 chicken breasts), spoons to the half, cups to the
+ * quarter, and grams and millilitres in steps that grow with the amount —
+ * 1 under 10, 5 under 100, 10 under a kilo, 50 above — never below one
+ * step. No 0.1 g of meat.
+ */
+export function practicalAmount(amount: Amount): Amount {
   const unit = normaliseUnit(amount.unit);
-  if (unit && UNITS[unit].base === "piece") return { quantity: Math.ceil(round(scaled)), unit: amount.unit };
-  return { quantity: round(scaled), unit: amount.unit };
+  if (!unit || !Number.isFinite(amount.quantity) || amount.quantity <= 0) return amount;
+  const def = UNITS[unit];
+  if (def.base === "piece")
+    return { quantity: Math.max(1, Math.ceil(round(amount.quantity))), unit: amount.unit };
+  const spoonStep: Record<string, number> = { tsp: 0.5, tbsp: 0.5, cup: 0.25 };
+  if (spoonStep[unit]) {
+    const step = spoonStep[unit];
+    return { quantity: Math.max(step, Math.round(amount.quantity / step) * step), unit: amount.unit };
+  }
+  const base = amount.quantity * def.factor;
+  const step = base < 10 ? 1 : base < 100 ? 5 : base < 1000 ? 10 : 50;
+  const rounded = Math.max(step, Math.round(base / step) * step);
+  return { quantity: round(rounded / def.factor), unit: amount.unit };
 }

@@ -206,6 +206,8 @@ export interface MealsSnapshot {
 export interface PlanEntryUI {
   meal: PlannedMeal;
   name: string;
+  /** How many servings it cooks — the recipe as written unless set; null when nothing is cooked. */
+  cooks: number | null;
   cost: number | null;
   nutrition: NutritionUI | null;
   badge: { kind: "leftover" | "pantry" | "pick" | "swap"; label: string } | null;

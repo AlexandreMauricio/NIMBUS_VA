@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { add, formatAmount, normaliseUnit, scaleAmount, subtract, toBase } from "./units";
+import { add, formatAmount, normaliseUnit, practicalAmount, scaleAmount, subtract, toBase } from "./units";
 import {
   coverRecipe,
   coverageCount,
@@ -13,7 +13,9 @@ import {
 } from "./pantry";
 import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCookingAt } from "./recipes";
 import {
+  cookServingsOf,
   dayRange,
+  freeMealsAfter,
   leftoverCoverage,
   mealBadge,
   mealName,
@@ -21,6 +23,7 @@ import {
   nextMeal,
   planCost,
   servingsNeeded,
+  spreadLeftovers,
 } from "./plan";
 import { MealService, ingredientKey, parseState } from "./mealService";
 import { durationMinutes, parseAmountText, parseIngredientLine, parseRecipePage } from "./recipeImport";
@@ -812,6 +815,8 @@ test("step 1: plan badges — leftovers covering 2 of 3, and a recipe that's all
     origin: "user",
     reasons: [],
     swapSaving: null,
+    portions: null,
+    fromMealId: null,
     addedAt: "",
     updatedAt: "",
     ...over,
@@ -1040,4 +1045,105 @@ test("families: cooking uses the food you chose, and the shopping list counts th
   const left = new Map(meals.listPantry().map((item) => [item.name, item.quantity]));
   assert.equal(left.get("Soy milk"), 700);
   assert.equal(left.get("Milk"), 1000);
+});
+
+test("batches: scaled amounts are ones you'd measure — no 0.1 g of meat", () => {
+  assert.deepEqual(practicalAmount({ quantity: 0.1, unit: "g" }), { quantity: 1, unit: "g" });
+  assert.deepEqual(practicalAmount({ quantity: 123, unit: "g" }), { quantity: 120, unit: "g" });
+  assert.deepEqual(practicalAmount({ quantity: 0.737, unit: "kg" }), { quantity: 0.74, unit: "kg" });
+  assert.deepEqual(practicalAmount({ quantity: 2.4, unit: "piece" }), { quantity: 3, unit: "piece" });
+  assert.deepEqual(practicalAmount({ quantity: 1.3, unit: "tbsp" }), { quantity: 1.5, unit: "tbsp" });
+  // The recipe as written is left alone: 7 g of yeast stays 7 g.
+  assert.deepEqual(scaleAmount({ quantity: 7, unit: "g" }, 4, 4), { quantity: 7, unit: "g" });
+  assert.deepEqual(scaleAmount({ quantity: 500, unit: "g" }, 5, 2), { quantity: 200, unit: "g" });
+});
+
+test("batches: a meal cooks the recipe as written, never less than who's eating", () => {
+  assert.equal(cookServingsOf({ cookServings: null, servings: 2 }, { servings: 5 }), 5);
+  assert.equal(cookServingsOf({ cookServings: null, servings: 12 }, { servings: 5 }), 12);
+  assert.equal(cookServingsOf({ cookServings: 3, servings: 2 }, { servings: 5 }), 3);
+});
+
+test("batches: 3 extra portions for 2 people — 2 at the next meal, 1 at the one after, short 1", () => {
+  const free = freeMealsAfter(
+    [{ date: "2026-09-22", slot: "lunch" }],
+    { date: "2026-09-21", slot: "dinner" },
+    3
+  );
+  assert.deepEqual(free.slice(0, 3), [
+    { date: "2026-09-22", slot: "dinner" },
+    { date: "2026-09-23", slot: "lunch" },
+    { date: "2026-09-23", slot: "dinner" },
+  ]);
+  assert.deepEqual(spreadLeftovers(3, 2, free), [
+    { date: "2026-09-22", slot: "dinner", portions: 2, short: 0 },
+    { date: "2026-09-23", slot: "lunch", portions: 1, short: 1 },
+  ]);
+  assert.deepEqual(spreadLeftovers(3, 2, free, "2026-09-22").length, 1, "not past the eat-by");
+});
+
+test("batches: planning a batch plans its leftovers; cooking makes them real; removing takes them away", () => {
+  const { service: meals } = service();
+  meals.updatePreferences({
+    eaters: [
+      { name: "A", portionFactor: 1 },
+      { name: "B", portionFactor: 1 },
+    ],
+  });
+  const recipe = meals.saveRecipe({
+    name: "Rice and beans",
+    servings: 5,
+    slots: ["dinner"],
+    ingredients: [{ name: "Rice", quantity: 500, unit: "g" }],
+  });
+  const dinner = meals.planMeal({
+    date: "2026-10-05",
+    slot: "dinner",
+    kind: "recipe",
+    recipeId: recipe.id,
+    servings: 2,
+  });
+  const chain = () => meals.listPlan().filter((m) => m.fromMealId === dinner.id);
+  assert.deepEqual(
+    chain().map((m) => [m.date, m.slot, m.portions, m.servings]),
+    [
+      ["2026-10-06", "lunch", 2, 2],
+      ["2026-10-06", "dinner", 1, 2],
+    ]
+  );
+  // Planned for 12 (family over): no leftovers to plan.
+  meals.planMeal(
+    { date: "2026-10-05", slot: "dinner", kind: "recipe", recipeId: recipe.id, servings: 12 },
+    dinner.id
+  );
+  assert.equal(chain().length, 0);
+  meals.planMeal(
+    { date: "2026-10-05", slot: "dinner", kind: "recipe", recipeId: recipe.id, servings: 2 },
+    dinner.id
+  );
+  assert.equal(chain().length, 2);
+
+  // Cooking 4 instead of 5: 2 extra — the first planned meal gets both, the second none.
+  const result = meals.cook({
+    mealId: dinner.id,
+    recipeId: recipe.id,
+    cookServings: 4,
+    eatServings: 2,
+    skipPantry: true,
+  });
+  const [first, second] = chain();
+  assert.equal(first.leftoverId, result.leftover!.id);
+  assert.equal(first.portions, 2);
+  assert.equal(second.portions, 0);
+
+  const other = meals.planMeal({
+    date: "2026-10-08",
+    slot: "dinner",
+    kind: "recipe",
+    recipeId: recipe.id,
+    servings: 2,
+  });
+  assert.ok(meals.listPlan().some((m) => m.fromMealId === other.id));
+  meals.removePlannedMeal(other.id);
+  assert.ok(!meals.listPlan().some((m) => m.fromMealId === other.id));
 });

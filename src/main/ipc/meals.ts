@@ -9,7 +9,7 @@ import {
   usableLeftovers,
 } from "../../meals/pantry";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../../meals/recipes";
-import { dayRange, mealBadge, mealName, planCost, servingsNeeded } from "../../meals/plan";
+import { cookServingsOf, dayRange, mealBadge, mealName, planCost, servingsNeeded } from "../../meals/plan";
 import { parseRecipePage } from "../../meals/recipeImport";
 import { PublicFetchError, fetchPublicPage } from "../publicFetch";
 import type { PublicPage } from "../publicFetch";
@@ -58,10 +58,11 @@ export function registerMealsIpc(ctx: IpcContext): void {
     /** One meal as the tab draws it: its name, badge, cost and nutrition. */
     const planEntry = (meal: PlannedMeal, picks: boolean) => {
       const recipe = meal.kind === "recipe" && meal.recipeId ? recipes.get(meal.recipeId) : undefined;
-      const servings = meal.cookServings ?? meal.servings;
+      const servings = recipe ? cookServingsOf(meal, recipe) : meal.servings;
       return {
         meal,
         name: mealName(meal, recipes, leftoverMap),
+        cooks: recipe ? cookServingsOf(meal, recipe) : null,
         // "Nothing to buy" is judged at the servings this meal is cooked for.
         badge: mealBadge(
           meal,

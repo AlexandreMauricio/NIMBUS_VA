@@ -96,7 +96,7 @@ export function planCost(
       continue;
     }
     const recipe = meal.kind === "recipe" && meal.recipeId ? recipes.get(meal.recipeId) : undefined;
-    const cost = recipe ? recipeCost(recipe, meal.cookServings ?? meal.servings, lookup) : null;
+    const cost = recipe ? recipeCost(recipe, cookServingsOf(meal, recipe), lookup) : null;
     if (cost?.value === null || cost === null) {
       unknown += 1;
       continue;
@@ -147,8 +147,10 @@ export function leftoverCoverage(
   meal: PlannedMeal,
   leftovers: Map<string, { portions: number }>
 ): { portions: number; needed: number; short: number } | null {
-  if (meal.kind !== "leftover" || !meal.leftoverId) return null;
-  const portions = leftovers.get(meal.leftoverId)?.portions ?? 0;
+  if (meal.kind !== "leftover" || (!meal.leftoverId && !meal.fromMealId)) return null;
+  const there = meal.leftoverId ? (leftovers.get(meal.leftoverId)?.portions ?? 0) : Infinity;
+  // A meal given its share of a batch takes that share, if it's still there.
+  const portions = meal.portions !== null ? Math.min(meal.portions, there) : there;
   const needed = meal.servings;
   return { portions: Math.min(portions, needed), needed, short: Math.max(0, needed - portions) };
 }
@@ -181,4 +183,64 @@ export function mealBadge(
   if (meal.kind === "recipe" && !meal.cookedAt && atHome && atHome.total > 0 && atHome.have === atHome.total)
     return { kind: "pantry", label: "◦ Pantry" };
   return null;
+}
+
+/**
+ * How many servings a planned meal cooks: what you set, else the recipe as
+ * written — a recipe for 5 cooks 5 — and never fewer than are eating.
+ */
+export function cookServingsOf(
+  meal: Pick<PlannedMeal, "cookServings" | "servings">,
+  recipe: { servings: number } | null | undefined
+): number {
+  if (meal.cookServings !== null) return meal.cookServings;
+  return Math.max(recipe?.servings ?? meal.servings, meal.servings);
+}
+
+/** Lunch and dinner — the meals leftovers go into. */
+export const LEFTOVER_SLOTS: MealSlot[] = ["lunch", "dinner"];
+
+/**
+ * Where a batch's extra portions go: into the next free meals, as many
+ * as eat each time — 3 extra for 2 people is 2 at the next meal and 1 at
+ * the one after, which then needs something alongside (`short`). Only
+ * meals up to `eatBy` (inclusive), in order.
+ */
+export function spreadLeftovers(
+  extra: number,
+  eating: number,
+  free: Array<{ date: string; slot: MealSlot }>,
+  eatBy: string | null = null
+): Array<{ date: string; slot: MealSlot; portions: number; short: number }> {
+  const out: Array<{ date: string; slot: MealSlot; portions: number; short: number }> = [];
+  let left = Math.round(extra * 100) / 100;
+  for (const option of free) {
+    if (left <= 0 || eating <= 0) break;
+    if (eatBy && option.date > eatBy) break;
+    const portions = Math.min(left, eating);
+    out.push({ ...option, portions, short: Math.round((eating - portions) * 100) / 100 });
+    left = Math.round((left - portions) * 100) / 100;
+  }
+  return out;
+}
+
+/**
+ * The lunches and dinners after a meal, in order, that nothing is planned
+ * in yet — for its leftovers. `days` counts from the meal's own day.
+ */
+export function freeMealsAfter(
+  plan: Array<Pick<PlannedMeal, "date" | "slot">>,
+  after: { date: string; slot: MealSlot },
+  days: number,
+  slots: MealSlot[] = LEFTOVER_SLOTS
+): Array<{ date: string; slot: MealSlot }> {
+  const taken = new Set(plan.map((meal) => `${meal.date}|${meal.slot}`));
+  const order = (slot: MealSlot) => MEAL_SLOTS.indexOf(slot);
+  const free: Array<{ date: string; slot: MealSlot }> = [];
+  for (const date of dayRange(new Date(`${after.date}T12:00:00`), days))
+    for (const slot of slots.filter((s) => LEFTOVER_SLOTS.includes(s)).sort((a, b) => order(a) - order(b))) {
+      if (date === after.date && order(slot) <= order(after.slot)) continue;
+      if (!taken.has(`${date}|${slot}`)) free.push({ date, slot });
+    }
+  return free;
 }

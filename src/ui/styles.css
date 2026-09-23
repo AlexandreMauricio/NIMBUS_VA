@@ -6443,3 +6443,67 @@ button.meals-alt-btn:hover {
 .meals-cook-choices[hidden] {
   display: none;
 }
+
+/* A dish cooked alongside leftovers that don't feed everyone. */
+.meals-pcell-beside {
+  display: block;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--color-divider);
+  color: var(--color-neutral-300);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.meals-pcell-beside:hover {
+  color: var(--color-neutral-100);
+}
+
+/* The servings slider: how much to cook, with every amount following it. */
+.meals-servings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.meals-servings-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.meals-servings-range {
+  width: 100%;
+  accent-color: var(--color-accent-600);
+}
+
+.meals-servings-lines {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 2px var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.meals-servings-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-neutral-300);
+}
+
+.meals-servings-lines li strong {
+  color: var(--color-neutral-100);
+  font-variant-numeric: tabular-nums;
+}
+
+.meals-servings-lines li.is-optional {
+  opacity: 0.6;
+}

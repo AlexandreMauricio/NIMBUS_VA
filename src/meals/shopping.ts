@@ -18,6 +18,7 @@
  * Pure.
  */
 
+import { cookServingsOf } from "./plan";
 import { familyOf, stockOf } from "./pantry";
 import { scaleFor } from "./recipes";
 import type { Amount } from "./units";
@@ -80,7 +81,7 @@ export function buildShoppingList(
     if (meal.cookedAt || meal.kind !== "recipe" || !meal.recipeId) continue;
     const recipe = recipes.get(meal.recipeId);
     if (!recipe) continue;
-    const scale = scaleFor(recipe, meal.cookServings ?? meal.servings);
+    const scale = scaleFor(recipe, cookServingsOf(meal, recipe));
     for (const line of recipe.ingredients) {
       if (line.optional) continue;
       const amount = scale(line);
