@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseReceiptText, readDate, reconcile, sizeFromDescription } from "./receiptText";
+import { parseReceiptText, readDate, reconcile, repairOcrLine, sizeFromDescription } from "./receiptText";
 import { linePricePerBase, matchLine, pricesByStore, splitShopSaving } from "./purchases";
 import { MealService } from "./mealService";
 import type { MealsState, MealsStore, PriceRecord } from "./types";
@@ -222,4 +222,39 @@ test("purchases: the demo brings two shops and two purchases, and takes exactly 
   );
   assert.equal(after.purchases.length, 0);
   assert.equal(after.prices.length, 0);
+});
+
+test("purchases: text read off a photo — prices repaired where OCR slips, and no line lost", () => {
+  assert.equal(repairOcrLine("LIMAD REDE IKE      1286"), "LIMAD REDE IKE      12,86");
+  assert.equal(repairOcrLine("IOG GREGO NAT 4X1256 2,484"), "IOG GREGO NAT 4X1256 2,48");
+  assert.equal(repairOcrLine("PAO FORMA      1,O9"), "PAO FORMA      1,09");
+  assert.equal(
+    repairOcrLine("OVOS CLASSE M 12"),
+    "OVOS CLASSE M 12",
+    "a single space before a short number is a size"
+  );
+  // What tesseract made of a rendered test receipt.
+  const receipt = parseReceiptText(
+    [
+      "CONTINENTE HIPERMERCADOS",
+      "19-09-2076 18:42",
+      "",
+      "COXA FRANGO KG      E.B5 6",
+      "LIMAD REDE IKE = 1286",
+      "IDG GREGO NAT 4X1256 2,484",
+      "TOTAL           10,48",
+    ].join("\n"),
+    { ocr: true }
+  );
+  assert.equal(receipt.store, "Continente");
+  assert.equal(receipt.total, 10.48);
+  assert.deepEqual(
+    receipt.lines.map((line) => [line.raw, line.price]),
+    [
+      // Nothing to repair here: kept, with its price left for you to type.
+      ["COXA FRANGO KG E.B5 6", null],
+      ["LIMAD REDE IKE =", 12.86],
+      ["IDG GREGO NAT 4X1256", 2.48],
+    ]
+  );
 });

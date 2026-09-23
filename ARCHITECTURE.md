@@ -298,6 +298,11 @@ src/
     pdfText.ts                    A PDF's text via pdfjs-dist (ES module,
                                    loaded with a native import; unpacked
                                    from app.asar) — no Electron, tested
+    ocrText.ts                    A photo's text via tesseract.js, Portuguese
+                                   model bundled; its worker, wasm core,
+                                   data and the worker's own dependencies
+                                   are unpacked from app.asar (a worker
+                                   thread can't read the archive)
     updater.ts                    In-app updates from GitHub Releases
                                    (electron-updater); installed builds only;
                                    installs only on "Restart to update"

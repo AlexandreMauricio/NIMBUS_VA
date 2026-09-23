@@ -211,6 +211,10 @@ marks anything.
 - **dotenv** — loads `.env` for environment-driven configuration.
 - **imapflow** — the IMAP client behind the email provider.
 - **pdfjs-dist** — reads the text of invoice PDFs, on the PC.
+- **tesseract.js** with **@tesseract.js-data/por** — reads receipt
+  photos, on the PC, with the Portuguese model bundled (together with
+  pdfjs, about 60 MB more on disk once installed; the parts NIMBUS
+  doesn't use are left out of the installer).
 
 ## Project structure
 

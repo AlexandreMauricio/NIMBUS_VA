@@ -134,12 +134,12 @@ function addPanel(data: MealsSnapshot): HTMLElement {
     data.spent.toReview ? pill(`● ${data.spent.toReview} waiting for review`, "soon") : undefined
   );
   box.classList.add("meals-drop");
-  body.appendChild(pill("PDF"));
+  body.appendChild(pill("JPG · PNG · PDF"));
   body.appendChild(
     make(
       "p",
       "meals-note",
-      "An invoice PDF is read here on the PC, or type what you bought. Each line is matched to your foods and waits for you to check it — nothing changes until you confirm."
+      "A receipt photo or an invoice PDF is read here on the PC — nothing is sent anywhere — or type what you bought. Each line is matched to your foods and waits for you to check it; nothing changes until you confirm."
     )
   );
   const actions = make("div", "meals-row");

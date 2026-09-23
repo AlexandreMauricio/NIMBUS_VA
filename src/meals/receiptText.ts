@@ -108,10 +108,31 @@ export function readDate(text: string): string | null {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function parseReceiptText(text: string): ParsedReceipt {
+/**
+ * OCR's usual misreads at the end of a receipt line, where the price is:
+ * letters for digits ("O" for 0, "l" for 1, "S" for 5, "B" for 8), a
+ * missing decimal comma ("1286" for 12,86 — a number set apart after a
+ * wide gap, three or four digits), and a VAT letter read as a digit
+ * ("2,484" for 2,48 A). Only the last word of a line is touched, and every
+ * line read from a photo is checked by you anyway.
+ */
+export function repairOcrLine(row: string): string {
+  const match = /^(.*?\S)(\s{2,}|\s+[=:]?\s*)(\S+)$/.exec(row.trimEnd());
+  if (!match) return row;
+  const [, head, gap] = match;
+  let last = match[3];
+  if (/^[\dOoIlSBEs.,]+$/.test(last) && /\d/.test(last))
+    last = last.replace(/[Oo]/g, "0").replace(/[Il]/g, "1").replace(/[Ss]/g, "5").replace(/B/g, "8");
+  if (/^\d+[.,]\d{3}$/.test(last)) last = last.slice(0, -1);
+  else if (/^\d{3,4}$/.test(last) && gap.length >= 2) last = `${last.slice(0, -2)},${last.slice(-2)}`;
+  return `${head}${gap}${last}`;
+}
+
+export function parseReceiptText(text: string, options: { ocr?: boolean } = {}): ParsedReceipt {
   const rows = text
     .split(/\r?\n/)
     .map((row) => row.replace(/\t/g, "  ").replace(/\s+$/, ""))
+    .map((row) => (options.ocr ? repairOcrLine(row) : row))
     .filter((row) => row.trim());
 
   let store: string | null = null;
@@ -144,6 +165,13 @@ export function parseReceiptText(text: string): ParsedReceipt {
   for (const row of rows) {
     const trimmed = row.trim();
     if (afterTotal) continue;
+    // Read off a photo, a price may be lost: after the date line, a line
+    // without one is still a line to fill in, not the shop's header.
+    if (options.ocr && !seenItem && readDate(trimmed)) {
+      seenItem = true;
+      pending = null;
+      continue;
+    }
     if (/^\s*total\b/i.test(trimmed) && !/sub-?total/i.test(trimmed)) {
       const money = TRAILING_PRICE.exec(trimmed) ?? MONEY.exec(trimmed);
       if (money) total = num(money[1]);

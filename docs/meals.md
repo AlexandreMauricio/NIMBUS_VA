@@ -197,11 +197,15 @@ shops for a pinch of salt.
 ## Purchases, shops and prices
 
 **Purchases & imports** keeps what you bought. A purchase is typed in
-line by line, or read from an **invoice PDF** — chosen in NIMBUS's own
-dialog and read on this PC with pdfjs, its text parsed the same way typed
-text is ([receiptText.ts](../src/meals/receiptText.ts): weights,
+line by line, or read from an **invoice PDF** or a **receipt photo** —
+chosen in NIMBUS's own dialog and read on this PC (the PDF's text with
+pdfjs, the photo with tesseract.js and its bundled Portuguese model),
+then parsed the same way typed text is ([receiptText.ts](../src/meals/receiptText.ts): weights,
 multiples, discounts, and the header, total, VAT and payment lines left
-out). Each line is **matched** to one of your foods — by its words, receipt
+out). OCR on thermal paper is rough, so a photo's lines all arrive
+unchecked, the usual misreads of a price are repaired ("1286" is 12,86),
+and a line whose price couldn't be read is kept for you to fill in
+rather than dropped. Each line is **matched** to one of your foods — by its words, receipt
 abbreviations spelled out ("IOG" is iogurte) and common Portuguese food
 names understood ("COXA FRANGO" is chicken thighs) — with how sure the
 match is. Nothing changes yet: the purchase waits in **review**, where
@@ -301,8 +305,9 @@ Deliberately absent, and the order they're planned in:
    values by name or barcode, cached locally. Until then, values are
    typed (or come from the demo data), and a recipe says how many of its
    ingredients it could use.
-2. **Photographed receipts** — read on the PC into the same review.
-   Invoice PDFs already are; a scanned PDF (a picture, no text) needs this.
+2. **Scanned PDFs** — a PDF that is only a picture is refused with a
+   note to upload it as a photo; reading its pages as images directly
+   would join them up.
 3. **The generator** — filling a week against the objectives (use the
    pantry first, use leftovers, save money, quick, high protein) and the
    budget, with the "why this was suggested" explanation. Restrictions,

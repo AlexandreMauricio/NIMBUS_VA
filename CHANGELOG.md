@@ -20,6 +20,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.19 — 2026-09-23
+
+- **Receipt photos are read on the PC.** Upload file now takes a photo
+  (JPG, PNG, WebP, BMP) as well as a PDF, and reads it with tesseract.js
+  and the Portuguese model bundled with NIMBUS — nothing is downloaded or
+  sent. OCR on thermal paper is rough, so every line arrives unchecked,
+  the usual price misreads are repaired ("1286" → 12,86, "2,484" → 2,48),
+  and a line whose price couldn't be read is kept for you to fill in.
+- New dependencies: `tesseract.js`, `@tesseract.js-data/por` (with pdfjs, about 60 MB
+  in the installer). After updating from source, run `npm install` once.
+
+---
+
 ## 0.6.18 — 2026-09-23
 
 - **Invoice PDFs are read on the PC.** Purchases & imports → **Upload
