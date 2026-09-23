@@ -437,6 +437,9 @@ contextBridge.exposeInMainWorld("nimbus", {
   lockMeal: (mealId: string, locked: boolean): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:lock-meal", mealId, locked),
   regenerateSlot: (mealId: string): Promise<unknown> => ipcRenderer.invoke("nimbus:regenerate-slot", mealId),
+  planLeftovers: (mealId: string): Promise<unknown> => ipcRenderer.invoke("nimbus:plan-leftovers", mealId),
+  setExpectedLeftovers: (mealId: string, portions: number): Promise<unknown> =>
+    ipcRenderer.invoke("nimbus:set-expected-leftovers", mealId, portions),
   keepPlannedVersion: (recipeId: string): Promise<number> =>
     ipcRenderer.invoke("nimbus:keep-planned-version", recipeId),
   updatePurchase: (id: string, changes: Record<string, unknown>): Promise<unknown> =>

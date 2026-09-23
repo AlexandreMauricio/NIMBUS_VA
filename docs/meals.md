@@ -88,6 +88,13 @@ for 5 cooks 5 for the 2 of you; the other 3 are leftovers.
   share, in order, as far as what was actually cooked goes. Removing or
   replacing the meal takes its planned leftovers (and what was alongside
   them) with it.
+- Planning a meal offers the leftovers a planned batch **will** leave, as
+  well as those in the kitchen ("2 expected from Wed dinner"), and a
+  meal's drawer has **Plan its leftovers** for a batch whose extra isn't
+  planned yet.
+- The pantry lists cooked leftovers with editable portions, and the
+  **expected** ones from planned batches: changing those changes how much
+  the batch cooks, trimming the meals planned from it if needed.
 - The cook dialog offers to **spread** new leftovers over the next free
   meals, one meal, or none; "Plan leftovers automatically" in Household
   picks the spread for you.

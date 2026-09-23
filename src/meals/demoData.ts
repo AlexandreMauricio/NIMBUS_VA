@@ -441,7 +441,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
     [0, "lunch", "leftover:chilli", 2, "13:00", null],
     [0, "dinner", "traybake", 3, "19:30", 5],
     [1, "breakfast", "oats", 1, "08:00", null],
-    [1, "lunch", "out:Canteen at work", 1, "13:00", null],
+    [1, "lunch", "work:Canteen at work", 1, "13:00", null],
     [1, "dinner", "riceandbeans", 3, "19:30", null],
     [2, "dinner", "chilli", 3, "19:30", 6],
     [3, "lunch", "leftover:chilli", 2, "13:00", null],
@@ -450,16 +450,17 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
   ];
   const plan: PlannedMeal[] = planned.map(([offset, slot, what, servings, time, cookServings]) => {
     const isOut = what.startsWith("out:");
+    const isWork = what.startsWith("work:");
     const isLeftover = what.startsWith("leftover:");
-    const recipeKey = isOut || isLeftover ? null : what;
+    const recipeKey = isOut || isWork || isLeftover ? null : what;
     return {
       id: id(),
       date: dayFrom(today, offset),
       slot,
-      kind: isOut ? "out" : isLeftover ? "leftover" : "recipe",
+      kind: isOut ? "out" : isWork ? "work" : isLeftover ? "leftover" : "recipe",
       recipeId: recipeKey ? recipes.get(recipeKey)!.id : null,
       leftoverId: isLeftover ? leftovers[0].id : null,
-      name: isOut ? what.slice(4) : null,
+      name: isOut ? what.slice(4) : isWork ? what.slice(5) : null,
       servings,
       cookServings,
       time,
@@ -469,7 +470,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       swapSaving: null,
       portions: null,
       fromMealId: null,
-      cost: isOut ? 6.5 : null,
+      cost: isOut || isWork ? 6.5 : null,
       notes: null,
       cookedAt: null,
       addedAt: now,

@@ -182,6 +182,17 @@ export interface MealsSnapshot {
     unknown: number;
   };
   hasDemoData: boolean;
+  /** Leftovers planned batches will leave, and how many are free to plan. */
+  expectedLeftovers: Array<{
+    mealId: string;
+    recipeId: string;
+    name: string;
+    date: string;
+    slot: MealSlot;
+    extra: number;
+    planned: number;
+    free: number;
+  }>;
   /** What to take out of the freezer for today's and tomorrow's meals. */
   defrost: Array<{ mealId: string; date: string; slot: MealSlot; meal: string; items: string[] }>;
   stores: Array<{ id: string; name: string }>;
@@ -349,6 +360,8 @@ export interface MealsBridge {
   replaceMeal(mealId: string, choice: Record<string, unknown>): Promise<unknown>;
   lockMeal(mealId: string, locked: boolean): Promise<unknown>;
   regenerateSlot(mealId: string): Promise<unknown>;
+  planLeftovers(mealId: string): Promise<unknown>;
+  setExpectedLeftovers(mealId: string, portions: number): Promise<unknown>;
   keepPlannedVersion(recipeId: string): Promise<number>;
   updatePurchase(id: string, changes: Record<string, unknown>): Promise<unknown>;
   updatePurchaseLine(id: string, lineId: string, changes: Record<string, unknown>): Promise<unknown>;

@@ -6529,3 +6529,12 @@ button.meals-alt-btn:hover {
 .meals-row-delete:hover {
   color: var(--color-error);
 }
+
+/* Leftovers a planned batch will leave: not cooked yet, so drawn as an estimate. */
+.meals-prow.is-expected {
+  border: 1px dashed var(--color-divider);
+}
+
+.meals-prow-amount .meals-stepper {
+  width: max-content;
+}

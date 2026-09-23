@@ -10,7 +10,15 @@ import {
   usableLeftovers,
 } from "../../meals/pantry";
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../../meals/recipes";
-import { cookServingsOf, dayRange, mealBadge, mealName, planCost, servingsNeeded } from "../../meals/plan";
+import {
+  cookServingsOf,
+  dayRange,
+  expectedLeftovers,
+  mealBadge,
+  mealName,
+  planCost,
+  servingsNeeded,
+} from "../../meals/plan";
 import { parseRecipePage } from "../../meals/recipeImport";
 import { PublicFetchError, fetchPublicPage } from "../publicFetch";
 import type { PublicPage } from "../publicFetch";
@@ -198,6 +206,8 @@ export function registerMealsIpc(ctx: IpcContext): void {
         .sort((a, b) => b.prices.length - a.prices.length || a.name.localeCompare(b.name)),
       // What to take out of the freezer: tonight for tomorrow, and anything still frozen for today.
       defrost: defrostList(state.plan, recipes, state.pantry, today, [today, days[1] ?? today], family),
+      // Leftovers planned batches will leave: offered when planning a meal, shown in the pantry.
+      expectedLeftovers: expectedLeftovers(state.plan, recipes),
       hasDemoData: ctx.mealService.hasDemoData(),
     };
   };
@@ -357,6 +367,10 @@ export function registerMealsIpc(ctx: IpcContext): void {
     ctx.mealService.lockMeal(mealId, locked)
   );
   handle("nimbus:regenerate-slot", (_event, mealId: unknown) => ctx.mealService.regenerateSlot(mealId));
+  handle("nimbus:plan-leftovers", (_event, mealId: unknown) => ctx.mealService.planLeftoversFor(mealId));
+  handle("nimbus:set-expected-leftovers", (_event, mealId: unknown, portions: unknown) =>
+    ctx.mealService.setExpectedLeftovers(mealId, portions)
+  );
   handle("nimbus:keep-planned-version", (_event, recipeId: unknown) =>
     ctx.mealService.keepPlannedVersion(recipeId)
   );

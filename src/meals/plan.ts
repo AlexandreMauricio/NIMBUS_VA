@@ -247,3 +247,50 @@ export function freeMealsAfter(
     }
   return free;
 }
+
+/** Leftovers a planned batch will leave, not cooked yet: how many, and how many are already planned. */
+export interface ExpectedLeftover {
+  mealId: string;
+  recipeId: string;
+  name: string;
+  date: string;
+  slot: MealSlot;
+  /** Portions cooked past who's eating. */
+  extra: number;
+  /** Of those, how many planned meals already take. */
+  planned: number;
+  /** What's still free to plan. */
+  free: number;
+}
+
+/**
+ * Every planned batch not cooked yet that cooks more than is eaten — Wed's
+ * traybake cooking 4 for 2 leaves 2 — and how much of that is spoken for,
+ * so another meal can be planned from the rest.
+ */
+export function expectedLeftovers(plan: PlannedMeal[], recipes: Map<string, Recipe>): ExpectedLeftover[] {
+  const out: ExpectedLeftover[] = [];
+  for (const meal of plan) {
+    if (meal.cookedAt || meal.kind !== "recipe" || !meal.recipeId) continue;
+    const recipe = recipes.get(meal.recipeId);
+    if (!recipe) continue;
+    const extra = Math.round((cookServingsOf(meal, recipe) - meal.servings) * 100) / 100;
+    if (extra <= 0) continue;
+    const planned = plan
+      .filter((other) => other.kind === "leftover" && other.fromMealId === meal.id && !other.leftoverId)
+      .reduce((sum, other) => sum + (other.portions ?? other.servings), 0);
+    out.push({
+      mealId: meal.id,
+      recipeId: recipe.id,
+      name: recipe.name,
+      date: meal.date,
+      slot: meal.slot,
+      extra,
+      planned: Math.round(planned * 100) / 100,
+      free: Math.max(0, Math.round((extra - planned) * 100) / 100),
+    });
+  }
+  return out.sort(
+    (a, b) => a.date.localeCompare(b.date) || MEAL_SLOTS.indexOf(a.slot) - MEAL_SLOTS.indexOf(b.slot)
+  );
+}

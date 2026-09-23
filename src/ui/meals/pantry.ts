@@ -27,6 +27,7 @@ import {
   pill,
   rerender,
   select,
+  stepper,
   snapshot,
   state,
   stockBar,
@@ -179,10 +180,18 @@ export function pantryView(data: MealsSnapshot): HTMLElement {
         `${STORAGE_LABELS[leftover.place]} · ${promised.length ? `Scheduled: ${promised.join(", ")}` : "Not scheduled"}`
       )
     );
-    row.append(
-      what,
-      make("div", "meals-prow-amount", `${leftover.portions} portion${leftover.portions === 1 ? "" : "s"}`)
+    // How many portions there really are — cooking guessed it, you know it.
+    const amount = make("div", "meals-prow-amount");
+    amount.appendChild(
+      stepper(
+        leftover.portions,
+        1,
+        0,
+        (next) => void act(() => bridge().updateLeftover(leftover.id, { portions: next }))
+      )
     );
+    amount.appendChild(make("span", "meals-line-meta", "portions"));
+    row.append(what, amount);
     const tags = make("div", "meals-prow-tags");
     tags.appendChild(pill("cooked", "accent"));
     if (leftover.eatBy) tags.appendChild(pill(`eat by ${expiryLabel(leftover.eatBy, data.today)}`, "soon"));
@@ -202,7 +211,53 @@ export function pantryView(data: MealsSnapshot): HTMLElement {
     row.appendChild(actions);
     leftovers.appendChild(row);
   }
-  if (!data.leftovers.length)
+  // Coming: what planned batches will leave, not cooked yet — changing it changes how much they cook.
+  for (const expected of data.expectedLeftovers) {
+    const row = make("div", "meals-prow is-expected");
+    const what = make("div", "meals-prow-what");
+    const promised = data.plan
+      .filter(
+        (p) => p.meal.kind === "leftover" && p.meal.fromMealId === expected.mealId && !p.meal.leftoverId
+      )
+      .map(
+        (p) =>
+          `${dayLabel(p.meal.date)} ${MEAL_SLOT_LABELS[p.meal.slot].toLowerCase()} (${p.meal.portions ?? p.meal.servings})`
+      );
+    what.append(
+      make("strong", undefined, expected.name),
+      make(
+        "span",
+        "meals-line-meta",
+        `From ${dayLabel(expected.date)} ${MEAL_SLOT_LABELS[expected.slot].toLowerCase()} · ${promised.length ? `Planned: ${promised.join(", ")}` : "Not planned"}`
+      )
+    );
+    const amount = make("div", "meals-prow-amount");
+    amount.appendChild(
+      stepper(
+        expected.extra,
+        1,
+        0,
+        (next) => void act(() => bridge().setExpectedLeftovers(expected.mealId, next))
+      )
+    );
+    amount.appendChild(make("span", "meals-line-meta", "portions"));
+    row.append(what, amount);
+    const tags = make("div", "meals-prow-tags");
+    tags.appendChild(pill("expected", "est"));
+    row.appendChild(tags);
+    const actions = make("div", "meals-prow-actions");
+    if (expected.free > 0)
+      actions.appendChild(
+        button(
+          `Plan ${expected.free}`,
+          "btn btn-secondary",
+          () => void act(() => bridge().planLeftovers(expected.mealId), "Leftovers planned.")
+        )
+      );
+    row.appendChild(actions);
+    leftovers.appendChild(row);
+  }
+  if (!data.leftovers.length && !data.expectedLeftovers.length)
     leftovers.appendChild(
       make("p", "meals-note", "Nothing cooked and kept. Cooking more than you eat records it here.")
     );

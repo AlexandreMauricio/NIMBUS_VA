@@ -20,6 +20,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.28 — 2026-09-23
+
+- **Leftovers a planned batch will leave are offered when planning a
+  meal.** Wednesday's traybake cooking 4 for 2 shows up in Thursday
+  lunch's leftovers list as "2 expected from Wed dinner", with how many
+  portions to take — no need to cook it first.
+- **"Plan its leftovers"** in a meal's drawer, for batches planned before
+  leftovers were planned for them (or with some still free).
+- **Leftovers are editable in the pantry**: the portions of cooked
+  leftovers have a stepper, and the leftovers planned batches will leave
+  are listed as expected — changing one changes how much that meal cooks,
+  and trims the meals planned from it if there are now fewer.
+
 ## 0.6.27 — 2026-09-23
 
 - **A meal not cooked at home says so.** Out, takeaway, at friends', at

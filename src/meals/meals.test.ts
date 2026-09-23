@@ -18,6 +18,7 @@ import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCooking
 import {
   cookServingsOf,
   dayRange,
+  expectedLeftovers,
   freeMealsAfter,
   leftoverCoverage,
   mealBadge,
@@ -1275,4 +1276,63 @@ test("kinds: a meal out says it was out, at work reads as at work, and a slot ca
   assert.equal(mealName(work, new Map()), "At work");
   meals.planMeal({ date: "2026-10-05", slot: "lunch", kind: "takeaway", name: "Sushi", servings: 1 });
   assert.equal(meals.listPlan().filter((m) => m.date === "2026-10-05" && m.slot === "lunch").length, 2);
+});
+
+test("expected leftovers: a batch planned before chains is offered, planned on request, and editable", () => {
+  const { service: meals } = service();
+  meals.updatePreferences({
+    eaters: [
+      { name: "A", portionFactor: 1 },
+      { name: "B", portionFactor: 1 },
+    ],
+  });
+  const recipe = meals.saveRecipe({
+    name: "Lemon chicken traybake",
+    servings: 2,
+    slots: ["lunch", "dinner"],
+    ingredients: [{ name: "Chicken thighs", quantity: 500, unit: "g" }],
+  });
+  // Cooking 4 for 2, planned without its leftovers.
+  const dinner = meals.planMeal({
+    date: "2026-10-05",
+    slot: "dinner",
+    kind: "recipe",
+    recipeId: recipe.id,
+    servings: 2,
+    cookServings: 4,
+    planLeftovers: false,
+  });
+  const recipes = () => new Map(meals.getState().recipes.map((r) => [r.id, r]));
+  const expected = () => expectedLeftovers(meals.listPlan(), recipes());
+  assert.deepEqual(
+    expected().map((e) => [e.extra, e.planned, e.free]),
+    [[2, 0, 2]]
+  );
+
+  // Thursday lunch takes them, chosen from what's expected.
+  const lunch = meals.planMeal({
+    date: "2026-10-06",
+    slot: "lunch",
+    kind: "leftover",
+    fromMealId: dinner.id,
+    portions: 2,
+    servings: 2,
+  });
+  assert.equal(lunch.name, "Lemon chicken traybake (leftovers)");
+  assert.deepEqual(
+    expected().map((e) => [e.planned, e.free]),
+    [[2, 0]]
+  );
+
+  // The pantry says there'll be 3 — one more is free to plan; then 1 — the lunch keeps 1.
+  meals.setExpectedLeftovers(dinner.id, 3);
+  assert.equal(meals.listPlan().find((m) => m.id === dinner.id)!.cookServings, 5);
+  meals.planLeftoversFor(dinner.id);
+  assert.equal(expected()[0].free, 0);
+  meals.setExpectedLeftovers(dinner.id, 1);
+  const chain = meals.listPlan().filter((m) => m.fromMealId === dinner.id);
+  assert.deepEqual(
+    chain.map((m) => m.portions),
+    [1]
+  );
 });

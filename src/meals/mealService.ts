@@ -1174,12 +1174,15 @@ export class MealService {
     const leftoverId = typeof r.leftoverId === "string" && r.leftoverId ? r.leftoverId : null;
     if (kind === "recipe" && !this.getRecipe(recipeId)) throw new Error("Choose a recipe.");
     const existing = id ? this.state.plan.find((meal) => meal.id === id) : undefined;
-    // Leftovers of a batch not cooked yet have nothing to point at until it is.
-    if (
-      kind === "leftover" &&
-      !existing?.fromMealId &&
-      !this.state.leftovers.some((l) => l.id === leftoverId)
-    )
+    // Leftovers of a batch not cooked yet point at that planned meal until it's cooked.
+    const source =
+      kind === "leftover" && typeof r.fromMealId === "string"
+        ? this.state.plan.find((m) => m.id === r.fromMealId && m.kind === "recipe" && !m.cookedAt)
+        : undefined;
+    if (kind === "leftover" && typeof r.fromMealId === "string" && !source)
+      throw new Error("That meal is already cooked or gone.");
+    const fromMealId = source?.id ?? existing?.fromMealId ?? null;
+    if (kind === "leftover" && !fromMealId && !this.state.leftovers.some((l) => l.id === leftoverId))
       throw new Error("Choose which leftovers.");
     if (id && !existing) throw new Error("That planned meal is gone.");
     if (!existing && this.state.plan.length >= MAX_PLANNED_MEALS) throw new Error("The plan is full.");
@@ -1203,10 +1206,11 @@ export class MealService {
       reasons: [],
       swapSaving: null,
       portions: kind === "leftover" ? positive(r.portions) : null,
-      fromMealId: existing?.fromMealId ?? null,
+      fromMealId,
       addedAt: existing?.addedAt ?? this.now(),
       updatedAt: this.now(),
     };
+    if (source && !meal.name) meal.name = `${this.getRecipe(source.recipeId)?.name ?? "Meal"} (leftovers)`;
     this.state.plan = existing
       ? this.state.plan.map((entry) => (entry.id === meal.id ? meal : entry))
       : [...this.state.plan, meal];
@@ -1262,6 +1266,47 @@ export class MealService {
     return pantry;
   }
 
+  /** "Plan its leftovers": a batch planned before leftovers were planned for it, or with some left free. */
+  planLeftoversFor(mealId: unknown): PlannedMeal[] {
+    const meal = this.state.plan.find((m) => m.id === mealId);
+    if (!meal) throw new Error("That meal is gone.");
+    const planned = this.planLeftoversOf(meal);
+    if (!planned.length) throw new Error("No free lunch or dinner in the next three days for them.");
+    this.save();
+    return planned;
+  }
+
+  /**
+   * How many leftovers a planned batch will leave, as the pantry edits it:
+   * it cooks that many more than are eating. Leftover meals planned from it
+   * that no longer have portions are taken out, the last first.
+   */
+  setExpectedLeftovers(mealId: unknown, portions: unknown): PlannedMeal {
+    const meal = this.state.plan.find((m) => m.id === mealId && m.kind === "recipe");
+    if (!meal) throw new Error("That meal is gone.");
+    if (meal.cookedAt) throw new Error("That meal is already cooked — change its leftovers in the pantry.");
+    const extra =
+      typeof portions === "number" && Number.isFinite(portions) ? Math.max(0, Math.round(portions)) : 0;
+    meal.cookServings = meal.servings + extra;
+    meal.updatedAt = this.now();
+    const chain = this.state.plan
+      .filter((m) => m.kind === "leftover" && m.fromMealId === meal.id && !m.leftoverId && !m.cookedAt)
+      .sort(
+        (a, b) => a.date.localeCompare(b.date) || MEAL_SLOTS.indexOf(a.slot) - MEAL_SLOTS.indexOf(b.slot)
+      );
+    let left = extra;
+    for (const entry of chain) {
+      const share = Math.min(entry.portions ?? entry.servings, left);
+      left -= share;
+      if (share <= 0) {
+        this.state.plan = this.state.plan.filter((m) => m !== entry);
+        this.dropLeftoversOf(entry.id);
+      } else entry.portions = share;
+    }
+    this.save();
+    return meal;
+  }
+
   /** The planned leftovers of a meal not cooked yet — taken out when it changes or goes. */
   private dropLeftoversOf(mealId: string): void {
     // Its leftovers not cooked yet, and what was planned alongside them — and so on down.
@@ -1286,7 +1331,10 @@ export class MealService {
     if (meal.kind !== "recipe" || meal.cookedAt) return [];
     const recipe = this.getRecipe(meal.recipeId);
     if (!recipe) return [];
-    const extra = Math.round((cookServingsOf(meal, recipe) - meal.servings) * 100) / 100;
+    const already = this.state.plan
+      .filter((other) => other.kind === "leftover" && other.fromMealId === meal.id && !other.leftoverId)
+      .reduce((sum, other) => sum + (other.portions ?? other.servings), 0);
+    const extra = Math.round((cookServingsOf(meal, recipe) - meal.servings - already) * 100) / 100;
     if (extra <= 0) return [];
     const eatBy = isoDate(new Date(Date.parse(`${meal.date}T12:00:00`) + 3 * 86_400_000));
     const free = freeMealsAfter(this.state.plan, meal, 4, this.state.preferences.slots);

@@ -164,6 +164,16 @@ export function replaceDrawer(data: MealsSnapshot): HTMLElement | null {
   }
 
   const actions = make("div", "meals-row");
+  // A batch whose extra portions aren't planned yet.
+  const expected = data.expectedLeftovers.find((e) => e.mealId === meal.id);
+  if (!proposed && expected && expected.free > 0)
+    actions.appendChild(
+      button(
+        `Plan its ${expected.free} leftover portion${expected.free === 1 ? "" : "s"}`,
+        "btn btn-secondary",
+        () => void act(() => bridge().planLeftovers(meal.id), "Leftovers planned.")
+      )
+    );
   // Two things in one meal: a takeaway for one, leftovers for another.
   if (!proposed)
     actions.appendChild(

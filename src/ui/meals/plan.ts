@@ -395,10 +395,34 @@ export function planEditor(
     ),
     existing?.recipeId ?? undefined
   );
-  const leftoverPicker = select(
-    data.leftovers.map((l) => [l.id, `${l.name} — ${l.portions} portion(s)`] as [string, string]),
-    existing?.leftoverId ?? undefined
+  // Leftovers in the kitchen, and those a batch planned before this meal will leave (within three days).
+  const slotKey = (date: string, slot: MealSlot) => `${date}|${MEAL_SLOTS.indexOf(slot)}`;
+  const upcoming = data.expectedLeftovers.filter(
+    (expected) =>
+      (expected.free > 0 || expected.mealId === existing?.fromMealId) &&
+      slotKey(expected.date, expected.slot) < slotKey(target.date, target.slot) &&
+      Date.parse(`${target.date}T12:00:00`) - Date.parse(`${expected.date}T12:00:00`) <= 3 * 86_400_000
   );
+  const leftoverPicker = select(
+    [
+      ...data.leftovers.map(
+        (l) => [l.id, `${l.name} — ${l.portions} portion(s) in the kitchen`] as [string, string]
+      ),
+      ...upcoming.map(
+        (expected) =>
+          [
+            `from:${expected.mealId}`,
+            `${expected.name} — ${expected.free} expected from ${dayLabel(expected.date)} ${MEAL_SLOT_LABELS[expected.slot].toLowerCase()}`,
+          ] as [string, string]
+      ),
+    ],
+    existing?.fromMealId ? `from:${existing.fromMealId}` : (existing?.leftoverId ?? undefined)
+  );
+  const portions = input("number");
+  portions.min = "0.5";
+  portions.step = "0.5";
+  portions.placeholder = "as many as eat";
+  portions.value = existing?.portions ? String(existing.portions) : "";
   const name = input("text");
   name.maxLength = 200;
   name.placeholder = "Where, or what — e.g. Divinos";
@@ -444,11 +468,13 @@ export function planEditor(
   const rows = make("div", "meals-form");
   const recipeField = field("Recipe", recipePicker);
   const leftoverField = field("Leftovers", leftoverPicker);
+  const portionsField = field("Portions of them", portions);
   const nameField = field("Name", name);
   rows.append(
     field("What", kind),
     recipeField,
     leftoverField,
+    portionsField,
     nameField,
     field("Eating", servings),
     field("Time", time),
@@ -457,6 +483,7 @@ export function planEditor(
   const applyKind = () => {
     recipeField.hidden = kind.value !== "recipe";
     leftoverField.hidden = kind.value !== "leftover";
+    portionsField.hidden = kind.value !== "leftover";
     nameField.hidden = kind.value === "recipe" || kind.value === "leftover";
   };
   kind.addEventListener("change", () => {
@@ -487,7 +514,15 @@ export function planEditor(
               slot: target.slot,
               kind: kind.value,
               recipeId: kind.value === "recipe" ? recipePicker.value : null,
-              leftoverId: kind.value === "leftover" ? leftoverPicker.value : null,
+              leftoverId:
+                kind.value === "leftover" && !leftoverPicker.value.startsWith("from:")
+                  ? leftoverPicker.value
+                  : null,
+              fromMealId:
+                kind.value === "leftover" && leftoverPicker.value.startsWith("from:")
+                  ? leftoverPicker.value.slice(5)
+                  : null,
+              portions: kind.value === "leftover" && portions.value ? Number(portions.value) : null,
               name: name.value || null,
               servings: Number(servings.value) || 1,
               // Left where the recipe put it, it follows the recipe; moved, it's yours.
