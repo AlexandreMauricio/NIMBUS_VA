@@ -152,7 +152,26 @@ try {
   const kept = JSON.parse(fs.readFileSync(secretsPath, "utf-8")).secrets[key];
   check("THE REGRESSION: a save keeps a credential it couldn't decrypt", kept === stored.secrets[key], kept);
 
-  // 5. Genuinely removing the account does clear its secret.
+  // 5. An unreadable settings.json must not take the credentials with it.
+  //    Before the fix, loading fell back to defaults (no accounts), and
+  //    that launch's first save deleted every stored credential.
+  launch("seed");
+  fs.writeFileSync(path.join(TMP, "settings.json"), "{ not json");
+  const recovered = launch("coldstart");
+  check(
+    "an unreadable settings.json is set aside, not overwritten",
+    fs.readdirSync(TMP).some((f) => /^settings\.unreadable-\d+\.json$/.test(f))
+  );
+  check(
+    "a recovered launch reads no account",
+    recovered.tokenAfterHydrate === "",
+    recovered.tokenAfterHydrate
+  );
+  const survived = fs.existsSync(secretsPath) && JSON.parse(fs.readFileSync(secretsPath, "utf-8")).secrets[key];
+  check("THE REGRESSION: the credentials survive the recovered launch's save", !!survived, survived);
+
+  // 6. Genuinely removing the account does clear its secret.
+  launch("seed");
   launch("remove-account");
   check("removing the account clears the store", !secretsExist());
 } catch (err) {

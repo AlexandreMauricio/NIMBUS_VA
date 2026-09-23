@@ -70,10 +70,12 @@ is created in `lifecycle.ts` and injected into all four.
   scripts only as **environment variables**, never as part of the script
   text, and each script re-checks them — a value cannot become code.
 - Paths must be full drive-letter paths, without characters Windows
-  forbids or a colon past the drive. `app.launch` accepts only `.exe` and
-  `.lnk`; `files.openFile` refuses anything whose default handler would
-  run it (executables, scripts, installers, shortcuts — a deliberately
-  broad denylist). Existence and kind (file vs. folder) are checked before
+  forbids, a colon past the drive, or a trailing dot or space (Windows
+  drops those, so `setup.exe.` would open `setup.exe`). `app.launch`
+  accepts only `.exe` and `.lnk`; `files.openFile` refuses anything whose
+  default handler would run or mount it (executables, scripts, installers
+  and app packages, shortcuts, disk images — a deliberately broad
+  denylist). Existence and kind (file vs. folder) are checked before
   anything is opened.
 - Process names are plain names — letters, digits, spaces, `.`, `_`, `-`,
   no wildcards — so one step addresses one app.

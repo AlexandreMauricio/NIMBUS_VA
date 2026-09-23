@@ -2,7 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isDeviceMac, isRandomizedMac, normalizeMac } from "./mac";
 import { parseOuiCsv, vendorLookup } from "./oui";
-import { formatIPv4, isHostInSubnet, isPrivateIPv4, networkLabel, parseIPv4, sweepTargets } from "./subnet";
+import {
+  formatIPv4,
+  isHostInSubnet,
+  isPrivateIPv4,
+  isPublicAddress,
+  networkLabel,
+  parseIPv4,
+  parseIPv6,
+  sweepTargets,
+} from "./subnet";
 import { normalizeNickname } from "./types";
 
 // --------------------------------------------------------------------- MAC
@@ -57,6 +66,50 @@ test("only private ranges count as local", () => {
   for (const ip of ["172.32.0.1", "8.8.8.8", "169.254.1.1", "127.0.0.1", "100.64.0.1"]) {
     assert.equal(isPrivateIPv4(ip), false, ip);
   }
+});
+
+test("IPv6 addresses parse to eight groups, however they are written", () => {
+  assert.deepEqual(parseIPv6("::1"), [0, 0, 0, 0, 0, 0, 0, 1]);
+  assert.deepEqual(parseIPv6("[2606:4700::1111]"), [0x2606, 0x4700, 0, 0, 0, 0, 0, 0x1111]);
+  assert.deepEqual(parseIPv6("::ffff:127.0.0.1"), [0, 0, 0, 0, 0, 0xffff, 0x7f00, 1]);
+  assert.deepEqual(parseIPv6("fe80::1%12"), [0xfe80, 0, 0, 0, 0, 0, 0, 1]);
+  for (const bad of ["1.2.3.4", "1::2::3", "12345::", "g::1", "1:2:3:4:5:6:7:8:9", ""])
+    assert.equal(parseIPv6(bad), null, bad);
+});
+
+test("only addresses on the public Internet count as public", () => {
+  for (const ip of ["8.8.8.8", "1.1.1.1", "151.101.1.69", "2606:4700::1111", "[2a00:1450:4003::200e]"])
+    assert.equal(isPublicAddress(ip), true, ip);
+  for (const ip of [
+    "0.0.0.0",
+    "10.0.0.1",
+    "100.64.0.1",
+    "100.127.255.254",
+    "127.0.0.1",
+    "127.255.0.1",
+    "169.254.169.254",
+    "172.16.0.1",
+    "192.0.0.1",
+    "192.168.1.1",
+    "198.18.0.1",
+    "224.0.0.251",
+    "255.255.255.255",
+    "::",
+    "::1",
+    "[::1]",
+    "::ffff:127.0.0.1",
+    "::ffff:7f00:1",
+    "::ffff:192.168.1.1",
+    "64:ff9b::a00:1",
+    "fc00::1",
+    "fd12:3456::1",
+    "fe80::1",
+    "ff02::fb",
+    "localhost",
+    "example.com",
+    "",
+  ])
+    assert.equal(isPublicAddress(ip), false, ip);
 });
 
 test("a host on the subnet excludes its network and broadcast addresses", () => {

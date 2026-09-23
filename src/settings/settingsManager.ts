@@ -48,6 +48,14 @@ const secretStore = new SecretStore();
  */
 const hydratedSettings = new WeakSet<NimbusSettings>();
 
+/**
+ * Settings objects that are defaults standing in for a settings.json that
+ * couldn't be read. They list none of the accounts the stored credentials
+ * belong to, so their saves may add credentials but never remove one —
+ * putting the set-aside file back then brings its credentials with it.
+ */
+const recoveredSettings = new WeakSet<NimbusSettings>();
+
 function getSettingsFilePath(): string {
   return path.join(app.getPath("userData"), "settings.json");
 }
@@ -76,10 +84,25 @@ export function loadSettings(): NimbusSettings {
     }
     return applyDefaults(migrateLegacyShape(parsed));
   } catch (err) {
+    // Set aside rather than left to be overwritten: the first save of the
+    // defaults (a window resize is enough) would otherwise replace every
+    // routine, account and stock position with nothing. The other state
+    // files already do this; settings.json holds the most to lose.
+    const aside = path.join(path.dirname(filePath), `settings.unreadable-${Date.now()}.json`);
+    let setAside = false;
+    try {
+      fs.renameSync(filePath, aside);
+      setAside = true;
+    } catch {
+      // If it can't be moved, the warning below stands.
+    }
     logger.warn("Failed to read settings.json, falling back to defaults", {
       error: String(err),
+      setAsideAs: setAside ? path.basename(aside) : null,
     });
-    return structuredClone(DEFAULT_SETTINGS);
+    const defaults = structuredClone(DEFAULT_SETTINGS);
+    recoveredSettings.add(defaults);
+    return defaults;
   }
 }
 
@@ -102,6 +125,7 @@ export function hydrateCredentials(settings: NimbusSettings): NimbusSettings {
   const migratingCredentials = hasInlineCredentials(settings);
   const hydrated = restoreSecrets(settings, secretStore.readAll());
   hydratedSettings.add(hydrated);
+  if (recoveredSettings.has(settings)) recoveredSettings.add(hydrated);
 
   if (migratingCredentials) {
     logger.info("Moving credentials out of settings.json into OS-encrypted storage");
@@ -132,7 +156,7 @@ export function saveSettings(settings: NimbusSettings): void {
   const { sanitized, secrets } = extractSecrets(settings);
 
   if (hydratedSettings.has(settings)) {
-    secretStore.writeAll(secrets);
+    secretStore.writeAll(secrets, { keepUnlisted: recoveredSettings.has(settings) });
   } else {
     // This object's credentials are blanks, so writing them would clear
     // the store — the exact bug this guard exists for. Nothing should

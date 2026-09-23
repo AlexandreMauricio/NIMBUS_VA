@@ -61,6 +61,18 @@ export class SecretStore {
    * caller can always treat "no secret for this key" as the normal
    * not-configured case.
    */
+  /** The stored entries as they are on disk, still encrypted; empty when there are none or the file can't be read. */
+  private readStored(): Record<SecretKey, string> {
+    const filePath = secretFilePath();
+    if (!fs.existsSync(filePath)) return {};
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as EncryptedSecretFile;
+      return { ...(parsed.secrets ?? {}) };
+    } catch {
+      return {};
+    }
+  }
+
   readAll(): Record<SecretKey, string> {
     this.unreadable = {};
     const filePath = secretFilePath();
@@ -112,14 +124,27 @@ export class SecretStore {
    * `readAll` couldn't decrypt what was stored, the stored form is kept
    * as-is rather than erased.
    *
+   * With `keepUnlisted`, a key absent from `secrets` is kept as stored
+   * instead of deleted. Settings recovered from an unreadable
+   * settings.json list none of the old accounts, and absence then means
+   * "not known", not "removed".
+   *
    * Fails safe rather than falling back to plaintext, matching
    * SpotifyTokenStore: without OS secure storage, credentials just don't
    * persist across restarts — and nothing already stored is touched.
    */
-  writeAll(secrets: Record<SecretKey, string>): void {
+  writeAll(secrets: Record<SecretKey, string>, options: { keepUnlisted?: boolean } = {}): void {
     const filePath = secretFilePath();
     const entries = Object.entries(secrets).filter(([, value]) => value.length > 0);
     const carried = Object.entries(this.unreadable).filter(([key]) => key in secrets && !secrets[key]);
+    if (options.keepUnlisted) {
+      // Everything stored under a key this save doesn't mention, still
+      // encrypted — including what readAll could decrypt, re-read here so
+      // nothing depends on what was decrypted earlier.
+      for (const [key, encrypted] of Object.entries(this.readStored())) {
+        if (!(key in secrets)) carried.push([key, encrypted]);
+      }
+    }
 
     if (entries.length > 0 && !safeStorage.isEncryptionAvailable()) {
       logger.warn("OS secure storage unavailable — credentials will not persist across restarts");
@@ -158,7 +183,7 @@ export class SecretStore {
       fs.renameSync(tempPath, filePath);
       // A value the user has since replaced, or an account since removed,
       // is no longer owed a carry-over.
-      this.unreadable = Object.fromEntries(carried);
+      this.unreadable = Object.fromEntries(carried.filter(([key]) => key in this.unreadable));
     } catch (err) {
       logger.error("Failed to persist credentials", { error: String(err) });
       try {

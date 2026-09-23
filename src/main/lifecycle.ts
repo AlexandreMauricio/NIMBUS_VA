@@ -8,6 +8,7 @@ import { DEFAULT_ZOOM_PERCENT, normalizeZoomPercent, steppedZoom } from "../sett
 import { APP_NAME, APP_FULL_NAME, APP_VERSION } from "../common/appInfo";
 import { config } from "../config/config";
 import { createTray, destroyTray } from "./tray";
+import { isTrustedSender } from "./navigationGuard";
 import { applyAutostart } from "./autostart";
 import { contextService } from "../context";
 import { WeatherProvider, LocationResolver, GeocodingClient } from "../context/providers/weather";
@@ -123,8 +124,8 @@ import { coverRecipe, coverageCount, isoDate, summariseStock, usableLeftovers } 
 import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../meals/recipes";
 import { dayRange, mealName, planCost, servingsNeeded } from "../meals/plan";
 import { parseRecipePage } from "../meals/recipeImport";
-import { isPrivateIPv4 } from "../network/subnet";
-import { httpTimeoutSignal } from "../common/timeout";
+import { fetchPublicPage, PublicFetchError } from "./publicFetch";
+import type { PublicPage } from "./publicFetch";
 import {
   ActivityService,
   ActivityMapping,
@@ -327,46 +328,60 @@ function mergeKnown<T extends object>(current: T, partial: unknown): T {
   return out as T;
 }
 
+/**
+ * `ipcMain.handle`, answering only NIMBUS's own pages (see
+ * navigationGuard.ts). Every channel is registered through this.
+ */
+function handle(channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isTrustedSender(event)) {
+      logger.warn("Refused an IPC call from outside NIMBUS", {
+        channel,
+        url: String(event.senderFrame?.url ?? "").slice(0, 200),
+      });
+      throw new Error("Not allowed.");
+    }
+    return listener(event, ...args);
+  });
+}
+
 function registerIpcHandlers(): void {
-  ipcMain.handle("nimbus:get-app-info", () => ({
+  handle("nimbus:get-app-info", () => ({
     name: APP_NAME,
     fullName: APP_FULL_NAME,
     version: APP_VERSION,
     environment: config.appEnv,
   }));
 
-  ipcMain.handle("nimbus:get-settings", () => settings.windowsClient.startup);
+  handle("nimbus:get-settings", () => settings.windowsClient.startup);
 
   // How large the UI is drawn on this PC. Clamped in Core, and the
   // keyboard shortcuts go through the same one place.
-  ipcMain.handle("nimbus:get-zoom", () => settings.windowsClient.zoomPercent);
-  ipcMain.handle("nimbus:set-zoom", (_event, percent: unknown) => applyZoom(percent));
+  handle("nimbus:get-zoom", () => settings.windowsClient.zoomPercent);
+  handle("nimbus:set-zoom", (_event, percent: unknown) => applyZoom(percent));
 
-  ipcMain.handle(
-    "nimbus:update-settings",
-    (_event, partial: Partial<typeof settings.windowsClient.startup>) => {
-      settings.windowsClient.startup = mergeKnown(settings.windowsClient.startup, partial);
-      saveSettings(settings);
-      if (partial.launchWithWindows !== undefined) {
-        applyAutostart(settings.windowsClient.startup.launchWithWindows);
-      }
-      logger.info("Settings updated", settings.windowsClient.startup);
-      return settings.windowsClient.startup;
+  handle("nimbus:update-settings", (_event, partial: Partial<typeof settings.windowsClient.startup>) => {
+    settings.windowsClient.startup = mergeKnown(settings.windowsClient.startup, partial);
+    saveSettings(settings);
+    if (partial.launchWithWindows !== undefined) {
+      applyAutostart(settings.windowsClient.startup.launchWithWindows);
     }
-  );
+    logger.info("Settings updated", settings.windowsClient.startup);
+    return settings.windowsClient.startup;
+  });
 
-  ipcMain.handle("nimbus:hide-window", () => {
+  handle("nimbus:hide-window", () => {
     mainWindow?.hide();
   });
 
-  ipcMain.handle("nimbus:get-context", () => contextService.getSnapshot());
+  handle("nimbus:get-context", () => contextService.getSnapshot());
 
-  ipcMain.handle("nimbus:get-weather-settings", () => settings.userPreferences.weather);
+  handle("nimbus:get-weather-settings", () => settings.userPreferences.weather);
   // City search for the manual location; only the typed name leaves the PC.
   const geocoding = new GeocodingClient();
-  ipcMain.handle("nimbus:search-places", (_event, query: unknown) => geocoding.searchPlaces(query));
+  handle("nimbus:search-places", (_event, query: unknown) => geocoding.searchPlaces(query));
 
-  ipcMain.handle(
+  handle(
     "nimbus:update-weather-settings",
     (_event, partial: Partial<typeof settings.userPreferences.weather>) => {
       const next = mergeKnown(settings.userPreferences.weather, partial);
@@ -380,9 +395,9 @@ function registerIpcHandlers(): void {
     }
   );
 
-  ipcMain.handle("nimbus:get-calendar-settings", () => settings.userPreferences.calendar);
+  handle("nimbus:get-calendar-settings", () => settings.userPreferences.calendar);
 
-  ipcMain.handle(
+  handle(
     "nimbus:update-calendar-settings",
     (_event, partial: Partial<typeof settings.userPreferences.calendar>) => {
       const next = mergeKnown(settings.userPreferences.calendar, partial);
@@ -414,7 +429,7 @@ function registerIpcHandlers(): void {
   // write-only for it: `hasPassword` tells the UI whether one is already
   // saved (to decide what placeholder to show), and saving a new value
   // goes through nimbus:update-email-settings, which is never read back.
-  ipcMain.handle("nimbus:get-email-settings", () => ({
+  handle("nimbus:get-email-settings", () => ({
     enabled: settings.userPreferences.email.enabled,
     defaultSinceDays: settings.userPreferences.email.defaultSinceDays,
     accounts: settings.userPreferences.email.accounts.map(({ password, ...rest }) => ({
@@ -423,7 +438,7 @@ function registerIpcHandlers(): void {
     })),
   }));
 
-  ipcMain.handle(
+  handle(
     "nimbus:update-email-settings",
     (
       _event,
@@ -478,7 +493,7 @@ function registerIpcHandlers(): void {
   // password. `hasApiToken` tells the UI whether one is already saved;
   // saving a new value goes through nimbus:update-task-settings, which is
   // never read back.
-  ipcMain.handle("nimbus:get-task-settings", () => ({
+  handle("nimbus:get-task-settings", () => ({
     enabled: settings.userPreferences.tasks.enabled,
     accounts: settings.userPreferences.tasks.accounts.map(({ apiToken, ...rest }) => ({
       ...rest,
@@ -486,7 +501,7 @@ function registerIpcHandlers(): void {
     })),
   }));
 
-  ipcMain.handle(
+  handle(
     "nimbus:update-task-settings",
     (
       _event,
@@ -543,24 +558,22 @@ function registerIpcHandlers(): void {
   // into a generic "false" — the renderer needs the real error message
   // (e.g. "status 403" for a revoked token) to show the user anything
   // useful.
-  ipcMain.handle("nimbus:list-tasks", () => taskProvider.listAllTasks());
-  ipcMain.handle("nimbus:list-task-projects", () => taskProvider.listProjects());
-  ipcMain.handle("nimbus:create-task", (_event, request: TaskWriteRequest) =>
-    taskProvider.createTask(request)
-  );
-  ipcMain.handle("nimbus:update-task", (_event, taskId: string, request: Partial<TaskWriteRequest>) =>
+  handle("nimbus:list-tasks", () => taskProvider.listAllTasks());
+  handle("nimbus:list-task-projects", () => taskProvider.listProjects());
+  handle("nimbus:create-task", (_event, request: TaskWriteRequest) => taskProvider.createTask(request));
+  handle("nimbus:update-task", (_event, taskId: string, request: Partial<TaskWriteRequest>) =>
     taskProvider.updateTask(taskId, request)
   );
-  ipcMain.handle("nimbus:complete-task", (_event, taskId: string) => taskProvider.completeTask(taskId));
-  ipcMain.handle("nimbus:reopen-task", (_event, taskId: string) => taskProvider.reopenTask(taskId));
-  ipcMain.handle("nimbus:delete-task", (_event, taskId: string) => taskProvider.deleteTask(taskId));
+  handle("nimbus:complete-task", (_event, taskId: string) => taskProvider.completeTask(taskId));
+  handle("nimbus:reopen-task", (_event, taskId: string) => taskProvider.reopenTask(taskId));
+  handle("nimbus:delete-task", (_event, taskId: string) => taskProvider.deleteTask(taskId));
 
   // Stocks (src/context/providers/stocks/) — read-only tracking of
   // positions the user entered by hand. Nothing here trades or talks to a
   // brokerage: these handlers save the user's own position notes and read
   // market data, and that is all.
-  ipcMain.handle("nimbus:get-stock-settings", () => settings.userPreferences.stocks);
-  ipcMain.handle(
+  handle("nimbus:get-stock-settings", () => settings.userPreferences.stocks);
+  handle(
     "nimbus:update-stock-settings",
     (
       _event,
@@ -642,9 +655,9 @@ function registerIpcHandlers(): void {
   );
   // Asks for fresh prices on the next read (at most every 30 s); the tab
   // then re-reads the context snapshot as usual.
-  ipcMain.handle("nimbus:refresh-stocks", () => stockProvider.refresh());
+  handle("nimbus:refresh-stocks", () => stockProvider.refresh());
   // Headlines for a symbol the user actually tracks — never an arbitrary one.
-  ipcMain.handle("nimbus:get-stock-news", (_event, symbol: unknown) => {
+  handle("nimbus:get-stock-news", (_event, symbol: unknown) => {
     const normalized = normalizeSymbol(symbol);
     const tracked = settings.userPreferences.stocks.positions.some(
       (p) => normalizeSymbol(p.symbol) === normalized
@@ -656,7 +669,7 @@ function registerIpcHandlers(): void {
   });
   // Live listings of the same company, for a tracked symbol whose price is
   // outdated. A suggestion only — switching is an ordinary position edit.
-  ipcMain.handle("nimbus:find-stock-listings", (_event, symbol: unknown) => {
+  handle("nimbus:find-stock-listings", (_event, symbol: unknown) => {
     const normalized = normalizeSymbol(symbol);
     const tracked = settings.userPreferences.stocks.positions.some(
       (p) => normalizeSymbol(p.symbol) === normalized
@@ -665,24 +678,22 @@ function registerIpcHandlers(): void {
     return stockProvider.findListings(normalized);
   });
   // Dividend history per holding, with tax estimated for a Portugal resident.
-  ipcMain.handle("nimbus:get-stock-dividends", () => stockProvider.getDividends());
+  handle("nimbus:get-stock-dividends", () => stockProvider.getDividends());
 
   // Network (src/network/) — observation only. Each channel does one fixed
   // thing: read the neighbor cache, run the bounded local scan, or edit
   // NIMBUS's own label for a device. None takes an address from the UI.
-  ipcMain.handle("nimbus:get-network-state", () => networkService.getState());
-  ipcMain.handle("nimbus:refresh-network", () => networkService.refresh());
-  ipcMain.handle("nimbus:scan-network", () => networkService.scan());
-  ipcMain.handle("nimbus:cancel-network-scan", () => networkService.cancel());
-  ipcMain.handle("nimbus:update-network-device", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:get-network-state", () => networkService.getState());
+  handle("nimbus:refresh-network", () => networkService.refresh());
+  handle("nimbus:scan-network", () => networkService.scan());
+  handle("nimbus:cancel-network-scan", () => networkService.cancel());
+  handle("nimbus:update-network-device", (_event, id: unknown, changes: unknown) =>
     networkService.updateDevice(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:forget-network-device", (_event, id: unknown) =>
-    networkService.forget(String(id ?? ""))
-  );
+  handle("nimbus:forget-network-device", (_event, id: unknown) => networkService.forget(String(id ?? "")));
   // "Ask the device" — by device id only; the address comes from NIMBUS's
   // own list, and must be private and on this PC's subnet.
-  ipcMain.handle("nimbus:identify-network-device", (_event, id: unknown) =>
+  handle("nimbus:identify-network-device", (_event, id: unknown) =>
     networkService.identifyDevice(String(id ?? ""))
   );
   // Memory (src/memory/). The renderer can list, save its own memories,
@@ -691,7 +702,7 @@ function registerIpcHandlers(): void {
   // Collections (src/collections/). A search sends only a game id and the
   // text typed. Adding takes a game and a catalog id: the card's data comes
   // from a result the main process fetched itself, never from the renderer.
-  ipcMain.handle("nimbus:get-collection", (_event, filter: unknown) => {
+  handle("nimbus:get-collection", (_event, filter: unknown) => {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
     return {
       games: catalogService.games(),
@@ -703,10 +714,10 @@ function registerIpcHandlers(): void {
       stats: collectionService.stats(),
     };
   });
-  ipcMain.handle("nimbus:search-card-catalog", (_event, game: unknown, query: unknown) =>
+  handle("nimbus:search-card-catalog", (_event, game: unknown, query: unknown) =>
     catalogService.search(game, query)
   );
-  ipcMain.handle("nimbus:add-to-collection", (_event, game: unknown, sourceId: unknown, options: unknown) => {
+  handle("nimbus:add-to-collection", (_event, game: unknown, sourceId: unknown, options: unknown) => {
     const card = catalogService.resolve(game, sourceId);
     if (!card) throw new Error("Search for the card again, then add it.");
     const o = options && typeof options === "object" ? (options as Record<string, unknown>) : {};
@@ -715,10 +726,10 @@ function registerIpcHandlers(): void {
       foil: o.foil === true,
     });
   });
-  ipcMain.handle("nimbus:update-collection-card", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:update-collection-card", (_event, id: unknown, changes: unknown) =>
     collectionService.update(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:remove-collection-card", (_event, id: unknown) =>
+  handle("nimbus:remove-collection-card", (_event, id: unknown) =>
     collectionService.remove(String(id ?? ""))
   );
 
@@ -735,7 +746,7 @@ function registerIpcHandlers(): void {
       )
       .reduce((sum, card) => sum + card.quantity, 0);
 
-  ipcMain.handle("nimbus:get-card-detail", async (_event, game: unknown, sourceId: unknown) => {
+  handle("nimbus:get-card-detail", async (_event, game: unknown, sourceId: unknown) => {
     const detail = await catalogService.getDetail(game, sourceId);
     const decks = deckService.list().filter((deck) => deck.game === detail.game);
     return {
@@ -753,7 +764,7 @@ function registerIpcHandlers(): void {
       decks: decks.map((deck) => ({ id: deck.id, name: deck.name })),
     };
   });
-  ipcMain.handle("nimbus:get-decks", () => ({
+  handle("nimbus:get-decks", () => ({
     decks: deckService.list().map((deck) => {
       const check = checkDeck(deck);
       return {
@@ -796,7 +807,7 @@ function registerIpcHandlers(): void {
       size
     ).lines;
   };
-  ipcMain.handle("nimbus:get-deck", (_event, id: unknown) => {
+  handle("nimbus:get-deck", (_event, id: unknown) => {
     const deck = deckService.get(String(id ?? ""));
     return {
       deck,
@@ -812,7 +823,7 @@ function registerIpcHandlers(): void {
   // The deck builder (src/collections/decks/builder.ts runs in the page).
   // Browsing makes each shown card resolvable; creating the deck names cards
   // by id only, and their data comes from what this process fetched.
-  ipcMain.handle("nimbus:builder-browse", async (_event, game: unknown, filter: unknown) => {
+  handle("nimbus:builder-browse", async (_event, game: unknown, filter: unknown) => {
     const page = await catalogService.browse(game, filter);
     return {
       ...page,
@@ -828,26 +839,23 @@ function registerIpcHandlers(): void {
       })),
     };
   });
-  ipcMain.handle(
-    "nimbus:card-synergy",
-    async (_event, game: unknown, sourceId: unknown, context: unknown) => {
-      const result = await catalogService.synergy(game, sourceId, context);
-      return {
-        source: result.source,
-        cards: result.cards.map(({ detail, reason }) => ({
-          sourceId: detail.sourceId,
-          name: detail.name,
-          imageUrl: detail.imageUrl,
-          setName: detail.setName,
-          typeLine: detail.typeLine,
-          text: detail.text ? detail.text.slice(0, 400) : null,
-          rules: detail.rules,
-          owned: ownedCopies(detail.game, detail.name, detail.number),
-          reason,
-        })),
-      };
-    }
-  );
+  handle("nimbus:card-synergy", async (_event, game: unknown, sourceId: unknown, context: unknown) => {
+    const result = await catalogService.synergy(game, sourceId, context);
+    return {
+      source: result.source,
+      cards: result.cards.map(({ detail, reason }) => ({
+        sourceId: detail.sourceId,
+        name: detail.name,
+        imageUrl: detail.imageUrl,
+        setName: detail.setName,
+        typeLine: detail.typeLine,
+        text: detail.text ? detail.text.slice(0, 400) : null,
+        rules: detail.rules,
+        owned: ownedCopies(detail.game, detail.name, detail.number),
+        reason,
+      })),
+    };
+  });
   // Comparing a Commander deck with EDHREC's average decks for its commander
   // (src/collections/catalogs/edhrec.ts, decks/compare.ts). Pages are kept
   // six hours; only the commander's name goes to EDHREC.
@@ -871,12 +879,12 @@ function registerIpcHandlers(): void {
     if (!commander) throw new Error("Put the deck's commander in the Commander zone first.");
     return { deck, commander };
   };
-  ipcMain.handle("nimbus:deck-compare-options", async (_event, id: unknown) => {
+  handle("nimbus:deck-compare-options", async (_event, id: unknown) => {
     const { commander } = commanderOf(id);
     const name = commander.name.split(" // ")[0];
     return edhrec(`refs|${name}`, () => commanderReferences(name));
   });
-  ipcMain.handle("nimbus:deck-compare", async (_event, id: unknown, variantIds: unknown) => {
+  handle("nimbus:deck-compare", async (_event, id: unknown, variantIds: unknown) => {
     const { deck, commander } = commanderOf(id);
     const name = commander.name.split(" // ")[0];
     const refs = await edhrec(`refs|${name}`, () => commanderReferences(name));
@@ -962,7 +970,7 @@ function registerIpcHandlers(): void {
     };
   });
   let archetypes: { at: number; names: Promise<string[]> } | null = null;
-  ipcMain.handle("nimbus:builder-archetypes", () => {
+  handle("nimbus:builder-archetypes", () => {
     if (!archetypes || Date.now() - archetypes.at > 24 * 60 * 60_000) {
       const names = ygoArchetypes().catch((err) => {
         archetypes = null;
@@ -973,7 +981,7 @@ function registerIpcHandlers(): void {
     }
     return archetypes.names;
   });
-  ipcMain.handle("nimbus:builder-create-deck", async (_event, input: unknown) => {
+  handle("nimbus:builder-create-deck", async (_event, input: unknown) => {
     const i = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const deck = deckService.create({ name: i.name, game: i.game, format: i.format });
     const failed: string[] = [];
@@ -1012,7 +1020,7 @@ function registerIpcHandlers(): void {
   });
   // Cards saved before costs and kinds were kept get fresh card data, one
   // paced lookup per card — only for cards already in the deck.
-  ipcMain.handle("nimbus:refresh-deck-cards", async (_event, id: unknown) => {
+  handle("nimbus:refresh-deck-cards", async (_event, id: unknown) => {
     const deck = deckService.get(String(id ?? ""));
     const stale = [...new Set(deck.cards.filter(needsCardData(deck.game)).map((card) => card.sourceId))];
     const details = [];
@@ -1027,17 +1035,17 @@ function registerIpcHandlers(): void {
     deckService.refreshCards(deck.id, details);
     return { updated: details.length, failed };
   });
-  ipcMain.handle("nimbus:create-deck", (_event, input: unknown) => deckService.create(input));
-  ipcMain.handle("nimbus:update-deck", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:create-deck", (_event, input: unknown) => deckService.create(input));
+  handle("nimbus:update-deck", (_event, id: unknown, changes: unknown) =>
     deckService.update(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:remove-deck", (_event, id: unknown) => deckService.remove(String(id ?? "")));
-  ipcMain.handle("nimbus:add-deck-card", async (_event, id: unknown, sourceId: unknown, zone: unknown) => {
+  handle("nimbus:remove-deck", (_event, id: unknown) => deckService.remove(String(id ?? "")));
+  handle("nimbus:add-deck-card", async (_event, id: unknown, sourceId: unknown, zone: unknown) => {
     const deck = deckService.get(String(id ?? ""));
     const detail = await catalogService.getDetail(deck.game, sourceId);
     return deckService.addCard(deck.id, detail, zoneOf(zone) ?? undefined);
   });
-  ipcMain.handle(
+  handle(
     "nimbus:set-deck-card-quantity",
     (_event, id: unknown, sourceId: unknown, zone: unknown, quantity: unknown) => {
       const z = zoneOf(zone);
@@ -1045,19 +1053,16 @@ function registerIpcHandlers(): void {
       return deckService.setQuantity(String(id ?? ""), String(sourceId ?? ""), z, Number(quantity));
     }
   );
-  ipcMain.handle(
-    "nimbus:move-deck-card",
-    (_event, id: unknown, sourceId: unknown, from: unknown, to: unknown) => {
-      const f = zoneOf(from);
-      const t = zoneOf(to);
-      if (!f || !t) throw new Error("That isn't a deck zone.");
-      return deckService.moveCard(String(id ?? ""), String(sourceId ?? ""), f, t);
-    }
-  );
+  handle("nimbus:move-deck-card", (_event, id: unknown, sourceId: unknown, from: unknown, to: unknown) => {
+    const f = zoneOf(from);
+    const t = zoneOf(to);
+    if (!f || !t) throw new Error("That isn't a deck zone.");
+    return deckService.moveCard(String(id ?? ""), String(sourceId ?? ""), f, t);
+  });
   // A pasted decklist: each name is searched in the deck's game and the first
   // printing with exactly that name is added. Capped, and paced by the
   // catalog service like any search.
-  ipcMain.handle("nimbus:import-decklist", async (_event, id: unknown, text: unknown) => {
+  handle("nimbus:import-decklist", async (_event, id: unknown, text: unknown) => {
     const deck = deckService.get(String(id ?? ""));
     const { lines, unread } = parseDecklist(typeof text === "string" ? text.slice(0, 20_000) : "");
     const kept = lines.slice(0, 250);
@@ -1184,95 +1189,91 @@ function registerIpcHandlers(): void {
 
   /**
    * Fetches a recipe page for the importer. The renderer names the
-   * address, so this is the one place in Meals where it can: only http(s)
-   * is allowed, never a private or loopback host (which would make NIMBUS
-   * a way to reach the user's own network), the request is time-bounded,
-   * and only the first megabyte is read — enough for any recipe page's
-   * metadata. The page itself is never rendered, only parsed.
+   * address, so this is the one place in Meals where it can: publicFetch
+   * allows only http(s) on the public Internet — never this machine or
+   * the local network, checked at connection time and on every redirect —
+   * with one deadline and only the first megabyte downloaded. The page
+   * itself is never rendered, only parsed.
    */
   const fetchRecipePage = async (raw: unknown) => {
-    let url: URL;
+    let page: PublicPage;
     try {
-      url = new URL(String(raw ?? ""));
-    } catch {
-      throw new Error("That doesn't look like a web address.");
+      page = await fetchPublicPage(String(raw ?? "").trim(), {
+        maxBytes: 1_000_000,
+        headers: { Accept: "text/html,application/xhtml+xml" },
+      });
+    } catch (err) {
+      if (!(err instanceof PublicFetchError)) throw err;
+      if (err.kind === "address")
+        throw new Error("That address is on this machine or network, not a recipe site.");
+      if (err.kind === "protocol")
+        throw new Error(
+          err.message.startsWith("That doesn't")
+            ? err.message
+            : "Only http and https addresses can be imported."
+        );
+      throw new Error(err.message);
     }
-    if (url.protocol !== "http:" && url.protocol !== "https:")
-      throw new Error("Only http and https addresses can be imported.");
-    const host = url.hostname.toLowerCase();
-    if (
-      host === "localhost" ||
-      host.endsWith(".local") ||
-      host === "[::1]" ||
-      isPrivateIPv4(host) ||
-      /^127\./.test(host)
-    )
-      throw new Error("That address is on this machine or network, not a recipe site.");
-    const response = await fetch(url.toString(), {
-      signal: httpTimeoutSignal(),
-      headers: { Accept: "text/html,application/xhtml+xml" },
-    });
-    if (!response.ok) throw new Error(`The site answered ${response.status}.`);
-    const html = (await response.text()).slice(0, 1_000_000);
-    const recipe = parseRecipePage(html, url.toString());
+    const recipe = parseRecipePage(page.body, page.url);
     if (!recipe)
       throw new Error("No recipe data on that page — some sites don't publish it. Add it by hand instead.");
-    logger.info("Imported a recipe page", { host, ingredients: recipe.ingredients.length });
+    logger.info("Imported a recipe page", {
+      host: new URL(page.url).hostname,
+      ingredients: recipe.ingredients.length,
+    });
     return recipe;
   };
 
   // Meals (src/meals/): recipes, the pantry, leftovers and the plan. All of
   // it is local — no service is called — so the handlers are thin wrappers
   // over the service, which validates every field it is given.
-  ipcMain.handle("nimbus:get-meals", () => mealsSnapshot());
-  ipcMain.handle("nimbus:save-recipe", (_event, input: unknown, id: unknown) =>
+  handle("nimbus:get-meals", () => mealsSnapshot());
+  handle("nimbus:save-recipe", (_event, input: unknown, id: unknown) =>
     mealService.saveRecipe(input, typeof id === "string" && id ? id : undefined)
   );
-  ipcMain.handle("nimbus:remove-recipe", (_event, id: unknown) => mealService.removeRecipe(String(id ?? "")));
-  ipcMain.handle("nimbus:add-stock", (_event, input: unknown) => mealService.addStock(input));
-  ipcMain.handle("nimbus:update-stock", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:remove-recipe", (_event, id: unknown) => mealService.removeRecipe(String(id ?? "")));
+  handle("nimbus:add-stock", (_event, input: unknown) => mealService.addStock(input));
+  handle("nimbus:update-stock", (_event, id: unknown, changes: unknown) =>
     mealService.updateStock(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:correct-stock", (_event, id: unknown, quantity: unknown, unit: unknown) =>
+  handle("nimbus:correct-stock", (_event, id: unknown, quantity: unknown, unit: unknown) =>
     mealService.correctStock(String(id ?? ""), quantity, unit)
   );
-  ipcMain.handle("nimbus:remove-stock", (_event, id: unknown) => mealService.removeStock(String(id ?? "")));
-  ipcMain.handle("nimbus:add-leftover", (_event, input: unknown) => mealService.addLeftover(input));
-  ipcMain.handle("nimbus:update-leftover", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:remove-stock", (_event, id: unknown) => mealService.removeStock(String(id ?? "")));
+  handle("nimbus:add-leftover", (_event, input: unknown) => mealService.addLeftover(input));
+  handle("nimbus:update-leftover", (_event, id: unknown, changes: unknown) =>
     mealService.updateLeftover(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:remove-leftover", (_event, id: unknown) =>
-    mealService.removeLeftover(String(id ?? ""))
-  );
-  ipcMain.handle("nimbus:plan-meal", (_event, input: unknown, id: unknown) =>
+  handle("nimbus:remove-leftover", (_event, id: unknown) => mealService.removeLeftover(String(id ?? "")));
+  handle("nimbus:plan-meal", (_event, input: unknown, id: unknown) =>
     mealService.planMeal(input, typeof id === "string" && id ? id : undefined)
   );
-  ipcMain.handle("nimbus:remove-planned-meal", (_event, id: unknown) =>
+  handle("nimbus:remove-planned-meal", (_event, id: unknown) =>
     mealService.removePlannedMeal(String(id ?? ""))
   );
-  ipcMain.handle("nimbus:cook-meal", (_event, input: unknown) => mealService.cook(input));
-  ipcMain.handle("nimbus:eat-leftover", (_event, mealId: unknown, leftoverId: unknown, portions: unknown) =>
+  handle("nimbus:cook-meal", (_event, input: unknown) => mealService.cook(input));
+  handle("nimbus:eat-leftover", (_event, mealId: unknown, leftoverId: unknown, portions: unknown) =>
     mealService.eatLeftover(String(mealId ?? ""), String(leftoverId ?? ""), portions)
   );
-  ipcMain.handle("nimbus:update-ingredient", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:update-ingredient", (_event, id: unknown, changes: unknown) =>
     mealService.updateIngredient(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:update-meal-preferences", (_event, changes: unknown) =>
+  handle("nimbus:update-meal-preferences", (_event, changes: unknown) =>
     mealService.updatePreferences(changes)
   );
-  ipcMain.handle("nimbus:add-shopping-item", (_event, input: unknown) => mealService.addShoppingItem(input));
-  ipcMain.handle("nimbus:remove-shopping-item", (_event, id: unknown) =>
+  handle("nimbus:add-shopping-item", (_event, input: unknown) => mealService.addShoppingItem(input));
+  handle("nimbus:remove-shopping-item", (_event, id: unknown) =>
     mealService.removeShoppingItem(String(id ?? ""))
   );
-  ipcMain.handle("nimbus:buy-item", (_event, input: unknown) => mealService.buy(input));
-  ipcMain.handle("nimbus:import-recipe-url", (_event, url: unknown) => fetchRecipePage(url));
-  ipcMain.handle("nimbus:load-demo-meals", () => mealService.loadDemoData());
-  ipcMain.handle("nimbus:remove-demo-meals", () => mealService.removeDemoData());
+  handle("nimbus:buy-item", (_event, input: unknown) => mealService.buy(input));
+  handle("nimbus:import-recipe-url", (_event, url: unknown) => fetchRecipePage(url));
+  handle("nimbus:load-demo-meals", () => mealService.loadDemoData());
+  handle("nimbus:remove-demo-meals", () => mealService.removeDemoData());
 
   // Books (src/collections/books/): comics collected editions and manga.
   // GCD lookups take a series name or a numeric volume id only; the URL is
   // built in the main process.
-  ipcMain.handle("nimbus:get-books", (_event, filter: unknown) => {
+  handle("nimbus:get-books", (_event, filter: unknown) => {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
     return {
       books: bookService.list({
@@ -1287,20 +1288,20 @@ function registerIpcHandlers(): void {
     };
   });
   // The reading log: readings of issues on a day, with estimated minutes.
-  ipcMain.handle(
+  handle(
     "nimbus:log-issue-readings",
     (_event, issues: unknown, readOn: unknown, minutes: unknown, bookId: unknown) =>
       bookService.logReadings(issues, readOn, minutes, bookId)
   );
-  ipcMain.handle("nimbus:remove-issue-reading", (_event, id: unknown) => bookService.removeReading(id));
+  handle("nimbus:remove-issue-reading", (_event, id: unknown) => bookService.removeReading(id));
   // Your own characters, writers and artists for an issue, and whether stats use them.
-  ipcMain.handle("nimbus:set-my-issue-credits", (_event, issue: unknown, changes: unknown) =>
+  handle("nimbus:set-my-issue-credits", (_event, issue: unknown, changes: unknown) =>
     bookService.setCustomCredits(issue, changes)
   );
-  ipcMain.handle("nimbus:use-my-issue-credits", (_event, issue: unknown, on: unknown) =>
+  handle("nimbus:use-my-issue-credits", (_event, issue: unknown, on: unknown) =>
     bookService.setUseCustomCredits(issue, on)
   );
-  ipcMain.handle("nimbus:set-minutes-per-issue", (_event, minutes: unknown) =>
+  handle("nimbus:set-minutes-per-issue", (_event, minutes: unknown) =>
     bookService.setMinutesPerIssue(minutes)
   );
   // Characters and creators for logged issues not looked up yet — a few at a
@@ -1326,15 +1327,15 @@ function registerIpcHandlers(): void {
     },
   });
   setTimeout(() => creditsQueue?.kick(), 15_000);
-  ipcMain.handle("nimbus:reading-credits-state", () => creditsQueue?.state() ?? null);
+  handle("nimbus:reading-credits-state", () => creditsQueue?.state() ?? null);
   // Issues read or unread: [{series, year, number}], checked in the service.
-  ipcMain.handle("nimbus:set-issues-read", (_event, issues: unknown, read: unknown) =>
+  handle("nimbus:set-issues-read", (_event, issues: unknown, read: unknown) =>
     bookService.setIssuesRead(issues, read)
   );
   // A cover you choose: the main process opens the file picker, and the
   // picture is resized and saved in NIMBUS's folder — the renderer never
   // names a path.
-  ipcMain.handle("nimbus:choose-book-cover", async (_event, id: unknown) => {
+  handle("nimbus:choose-book-cover", async (_event, id: unknown) => {
     const book = bookService.get(String(id ?? ""));
     const saved = await chooseCoverFile(BrowserWindow.getFocusedWindow(), book.id);
     if (!saved) return false;
@@ -1343,7 +1344,7 @@ function registerIpcHandlers(): void {
     return true;
   });
   // Back to the cover found by ISBN (looked for again).
-  ipcMain.handle("nimbus:clear-book-cover", (_event, id: unknown) => {
+  handle("nimbus:clear-book-cover", (_event, id: unknown) => {
     const book = bookService.get(String(id ?? ""));
     if (isChosenCover(book.coverUrl)) removeCoverFile(book.id);
     bookService.setCover(book.id, null);
@@ -1353,21 +1354,18 @@ function registerIpcHandlers(): void {
   });
   // A single issue's page, from GCD — the series name, year and number only.
   // Its characters and creators are kept for reading stats.
-  ipcMain.handle(
-    "nimbus:get-comic-issue",
-    async (_event, series: unknown, year: unknown, number: unknown) => {
-      const detail = await gcdCatalog.findIssue(series, year, number);
-      if (detail && typeof series === "string" && Number.isInteger(number)) {
-        const y = Number.isInteger(year) ? (year as number) : null;
-        bookService.setIssueCredits(series, y, number as number, creditsFromGcd(detail));
-      }
-      return detail;
+  handle("nimbus:get-comic-issue", async (_event, series: unknown, year: unknown, number: unknown) => {
+    const detail = await gcdCatalog.findIssue(series, year, number);
+    if (detail && typeof series === "string" && Number.isInteger(number)) {
+      const y = Number.isInteger(year) ? (year as number) : null;
+      bookService.setIssueCredits(series, y, number as number, creditsFromGcd(detail));
     }
-  );
+    return detail;
+  });
   // Links out to the two comic databases. The page names what to look up;
   // the address is built here, for these two sites only, so the renderer
   // can never open an address of its choosing.
-  ipcMain.handle("nimbus:open-comic-link", async (_event, site: unknown, lookup: unknown) => {
+  handle("nimbus:open-comic-link", async (_event, site: unknown, lookup: unknown) => {
     const l = lookup && typeof lookup === "object" ? (lookup as Record<string, unknown>) : {};
     const words = typeof l.text === "string" ? l.text.replace(/\s+/g, " ").trim().slice(0, 150) : "";
     const gcdId =
@@ -1386,9 +1384,9 @@ function registerIpcHandlers(): void {
     await shell.openExternal(url);
     return true;
   });
-  ipcMain.handle("nimbus:search-comic-series", (_event, name: unknown) => gcdCatalog.searchSeries(name));
+  handle("nimbus:search-comic-series", (_event, name: unknown) => gcdCatalog.searchSeries(name));
   // A GCD volume, with its contents from Wikipedia's lists when GCD has none.
-  ipcMain.handle("nimbus:get-comic-volume", async (_event, issueId: unknown) => {
+  handle("nimbus:get-comic-volume", async (_event, issueId: unknown) => {
     const volume = await gcdCatalog.getVolume(issueId);
     if (volume.runs.length || !volume.isbn)
       return { ...volume, contentsFrom: volume.runs.length ? "gcd" : null };
@@ -1404,10 +1402,8 @@ function registerIpcHandlers(): void {
   // GCD before this lookup existed. The ISBN never leaves the PC: the lists
   // are downloaded whole and matched here.
   // Editions by title from Wikipedia's lists — searched on the PC; nothing is sent.
-  ipcMain.handle("nimbus:search-book-editions", (_event, query: unknown) =>
-    wikipediaCollections.search(query)
-  );
-  ipcMain.handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
+  handle("nimbus:search-book-editions", (_event, query: unknown) => wikipediaCollections.search(query));
+  handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
     typeof isbn === "string" && isbn.length <= 20 ? wikipediaCollections.findByIsbn([isbn]) : null
   );
   // Runs written without a series year ("Amazing Spider-Man #29-31") are
@@ -1457,26 +1453,23 @@ function registerIpcHandlers(): void {
     );
     return saved;
   };
-  ipcMain.handle("nimbus:add-book", (_event, input: unknown) => afterSave(bookService.add(input)));
-  ipcMain.handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
+  handle("nimbus:add-book", (_event, input: unknown) => afterSave(bookService.add(input)));
+  handle("nimbus:update-book", (_event, id: unknown, input: unknown) =>
     afterSave(bookService.update(String(id ?? ""), input))
   );
-  ipcMain.handle("nimbus:get-book-years", (_event, id: unknown) => bookYears.get(String(id ?? "")) ?? null);
-  ipcMain.handle("nimbus:work-out-book-years", (_event, id: unknown) => workOutBookYears(String(id ?? "")));
-  ipcMain.handle(
-    "nimbus:set-run-year",
-    (_event, id: unknown, index: unknown, series: unknown, year: unknown) => {
-      const bookId = String(id ?? "");
-      if (!Number.isInteger(index) || typeof series !== "string" || !Number.isInteger(year)) {
-        throw new Error("Choose the series' year.");
-      }
-      const set = bookService.setRunYears(bookId, [{ index: index as number, series, year: year as number }]);
-      const state = bookYears.get(bookId);
-      if (state) state.ambiguous = state.ambiguous.filter((a) => a.index !== index);
-      return set;
+  handle("nimbus:get-book-years", (_event, id: unknown) => bookYears.get(String(id ?? "")) ?? null);
+  handle("nimbus:work-out-book-years", (_event, id: unknown) => workOutBookYears(String(id ?? "")));
+  handle("nimbus:set-run-year", (_event, id: unknown, index: unknown, series: unknown, year: unknown) => {
+    const bookId = String(id ?? "");
+    if (!Number.isInteger(index) || typeof series !== "string" || !Number.isInteger(year)) {
+      throw new Error("Choose the series' year.");
     }
-  );
-  ipcMain.handle("nimbus:remove-book", (_event, id: unknown) => {
+    const set = bookService.setRunYears(bookId, [{ index: index as number, series, year: year as number }]);
+    const state = bookYears.get(bookId);
+    if (state) state.ambiguous = state.ambiguous.filter((a) => a.index !== index);
+    return set;
+  });
+  handle("nimbus:remove-book", (_event, id: unknown) => {
     const removed = bookService.remove(String(id ?? ""));
     if (removed) removeCoverFile(String(id));
     return removed;
@@ -1484,7 +1477,7 @@ function registerIpcHandlers(): void {
 
   // Presence: the current judgement, and the devices you can choose as your
   // phone. The choice is a Network tab device id — checked against the list.
-  ipcMain.handle("nimbus:get-presence", () => ({
+  handle("nimbus:get-presence", () => ({
     ...(presenceService?.update() ?? null),
     phoneDeviceId: settings.windowsClient.network.phoneDeviceId,
     devices: networkService
@@ -1492,7 +1485,7 @@ function registerIpcHandlers(): void {
       .devices.filter((device) => !device.isSelf && !device.isGateway)
       .map((device) => ({ id: device.id, name: device.displayName, randomizedMac: device.randomizedMac })),
   }));
-  ipcMain.handle("nimbus:set-presence-phone", (_event, deviceId: unknown) => {
+  handle("nimbus:set-presence-phone", (_event, deviceId: unknown) => {
     const known = networkService.getState().devices.some((device) => device.id === deviceId);
     settings.windowsClient.network.phoneDeviceId = typeof deviceId === "string" && known ? deviceId : null;
     saveSettings(settings);
@@ -1500,7 +1493,7 @@ function registerIpcHandlers(): void {
     return presenceService?.update() ?? null;
   });
 
-  ipcMain.handle("nimbus:list-memories", (_event, filter: unknown) => {
+  handle("nimbus:list-memories", (_event, filter: unknown) => {
     const f = filter && typeof filter === "object" ? (filter as Record<string, unknown>) : {};
     return memoryService.list({
       kind: typeof f.kind === "string" ? (f.kind as never) : undefined,
@@ -1510,7 +1503,7 @@ function registerIpcHandlers(): void {
       includeDisabled: f.includeDisabled === true,
     });
   });
-  ipcMain.handle("nimbus:remember-memory", (_event, input: unknown) => {
+  handle("nimbus:remember-memory", (_event, input: unknown) => {
     const i = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
     return memoryService.remember({
       kind: i.kind as "preference" | "fact",
@@ -1523,20 +1516,20 @@ function registerIpcHandlers(): void {
       expiresAt: typeof i.expiresAt === "string" ? i.expiresAt : null,
     });
   });
-  ipcMain.handle("nimbus:update-memory", (_event, id: unknown, changes: unknown) =>
+  handle("nimbus:update-memory", (_event, id: unknown, changes: unknown) =>
     memoryService.update(String(id ?? ""), changes)
   );
-  ipcMain.handle("nimbus:promote-memory", (_event, id: unknown) => memoryService.promote(String(id ?? "")));
-  ipcMain.handle("nimbus:forget-memory", (_event, id: unknown) => memoryService.forget(String(id ?? "")));
-  ipcMain.handle("nimbus:get-memory-settings", () => settings.userPreferences.memory);
-  ipcMain.handle("nimbus:update-memory-settings", (_event, partial: unknown) => {
+  handle("nimbus:promote-memory", (_event, id: unknown) => memoryService.promote(String(id ?? "")));
+  handle("nimbus:forget-memory", (_event, id: unknown) => memoryService.forget(String(id ?? "")));
+  handle("nimbus:get-memory-settings", () => settings.userPreferences.memory);
+  handle("nimbus:update-memory-settings", (_event, partial: unknown) => {
     settings.userPreferences.memory = mergeKnown(settings.userPreferences.memory, partial);
     saveSettings(settings);
     logger.info("Memory settings updated", { ...settings.userPreferences.memory });
     return settings.userPreferences.memory;
   });
 
-  ipcMain.handle("nimbus:update-network-settings", (_event, partial: unknown) => {
+  handle("nimbus:update-network-settings", (_event, partial: unknown) => {
     settings.windowsClient.network = mergeKnown(settings.windowsClient.network, partial);
     saveSettings(settings);
     logger.info("Network settings updated", { ...settings.windowsClient.network });
@@ -1546,7 +1539,7 @@ function registerIpcHandlers(): void {
   });
   // Records a sale the user already made at their broker: shares move from
   // an open lot to the closed list. NIMBUS itself never trades.
-  ipcMain.handle("nimbus:close-stock-position", (_event, request: unknown) => {
+  handle("nimbus:close-stock-position", (_event, request: unknown) => {
     const current = settings.userPreferences.stocks;
     if (current.closedPositions.length >= MAX_CLOSED_POSITIONS) {
       throw new Error(`At most ${MAX_CLOSED_POSITIONS} closed positions can be kept.`);
@@ -1580,7 +1573,7 @@ function registerIpcHandlers(): void {
     return settings.userPreferences.stocks;
   });
   // Anexo J figures for one year — a helper for the user's IRS return.
-  ipcMain.handle("nimbus:get-stock-irs-report", (_event, year: unknown) => {
+  handle("nimbus:get-stock-irs-report", (_event, year: unknown) => {
     const y = Number(year);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Error("Choose a year between 2000 and 2100.");
     return stockProvider.getIrsReport(y);
@@ -1590,13 +1583,13 @@ function registerIpcHandlers(): void {
   // stored refresh token or not) rather than persisted as its own
   // settings field — the tokens themselves are the source of truth, kept
   // out of settings.json entirely (see src/main/spotify/spotifyTokenStore.ts).
-  ipcMain.handle("nimbus:get-spotify-settings", () => ({
+  handle("nimbus:get-spotify-settings", () => ({
     enabled: settings.userPreferences.spotify.enabled,
     preferredDeviceId: settings.userPreferences.spotify.preferredDeviceId,
     connected: spotifyAuth.isAuthenticated(),
   }));
 
-  ipcMain.handle(
+  handle(
     "nimbus:update-spotify-settings",
     (_event, partial: Partial<typeof settings.userPreferences.spotify>) => {
       settings.userPreferences.spotify = mergeKnown(settings.userPreferences.spotify, partial);
@@ -1613,7 +1606,7 @@ function registerIpcHandlers(): void {
   // Starts the PKCE auth flow (opens the system browser). The renderer
   // only ever gets a connected/not-connected boolean back — never a token
   // of any kind, at any point in this exchange.
-  ipcMain.handle("nimbus:spotify-connect", async () => {
+  handle("nimbus:spotify-connect", async () => {
     try {
       await spotifyAuth.startAuthFlow();
       return { connected: spotifyAuth.isAuthenticated(), error: null };
@@ -1623,7 +1616,7 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle("nimbus:spotify-disconnect", () => {
+  handle("nimbus:spotify-disconnect", () => {
     spotifyAuth.disconnect();
     return { connected: false };
   });
@@ -1635,12 +1628,12 @@ function registerIpcHandlers(): void {
   // task's own security-boundary example. ActionService validates the id
   // and params itself; there is no way to reach arbitrary Node/API access
   // through this handler.
-  ipcMain.handle("nimbus:list-actions", () => actionService.listActions());
+  handle("nimbus:list-actions", () => actionService.listActions());
   // A file/folder picker for action parameters that are local paths (see
   // ActionParameterSchema.format). It only ever returns a path for the
   // renderer to put in a text field — the action still validates that
   // path itself when it runs.
-  ipcMain.handle("nimbus:pick-path", async (_event, format: unknown) => {
+  handle("nimbus:pick-path", async (_event, format: unknown) => {
     if (format !== "file" && format !== "folder" && format !== "application") return null;
     const options: OpenDialogOptions =
       format === "folder"
@@ -1663,20 +1656,17 @@ function registerIpcHandlers(): void {
       : await dialog.showOpenDialog(options);
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
-  ipcMain.handle(
-    "nimbus:execute-action",
-    async (_event, actionId: string, params?: Record<string, unknown>) => {
-      const result = await actionService.executeAction(actionId, params ?? {});
-      onActionExecuted(actionId, result);
-      return result;
-    }
-  );
+  handle("nimbus:execute-action", async (_event, actionId: string, params?: Record<string, unknown>) => {
+    const result = await actionService.executeAction(actionId, params ?? {});
+    onActionExecuted(actionId, result);
+    return result;
+  });
 
   // Playlist metadata only (name/id/artwork/owner/track count) — never
   // downloads a playlist's actual tracks. Lets requests reject naturally
   // (not authenticated, API down, etc.) rather than pretending success;
   // the renderer already handles a rejected invoke with its own try/catch.
-  ipcMain.handle("nimbus:spotify-list-playlists", async () => {
+  handle("nimbus:spotify-list-playlists", async () => {
     const raw = await spotifyClient.listPlaylists();
     return mapPlaylists(raw);
   });
@@ -1685,56 +1675,49 @@ function registerIpcHandlers(): void {
   // Action relationship. Every write is validated the same way action
   // params are: reject before it's ever saved or executed, never trust
   // renderer-supplied configuration blindly.
-  ipcMain.handle("nimbus:get-routine-settings", () => settings.userPreferences.routines);
+  handle("nimbus:get-routine-settings", () => settings.userPreferences.routines);
 
-  ipcMain.handle(
-    "nimbus:update-routine-settings",
-    (_event, partial: { enabled?: boolean; routines?: Routine[] }) => {
-      if (partial.routines) {
-        const knownActionIds = actionService.listActions().map((a) => a.id);
-        for (const routine of partial.routines) {
-          const result = validateRoutine(routine, knownActionIds);
-          if (!result.valid) {
-            throw new Error(`Invalid routine "${routine?.name ?? "?"}": ${result.error}`);
-          }
+  handle("nimbus:update-routine-settings", (_event, partial: { enabled?: boolean; routines?: Routine[] }) => {
+    if (partial.routines) {
+      const knownActionIds = actionService.listActions().map((a) => a.id);
+      for (const routine of partial.routines) {
+        const result = validateRoutine(routine, knownActionIds);
+        if (!result.valid) {
+          throw new Error(`Invalid routine "${routine?.name ?? "?"}": ${result.error}`);
         }
       }
-
-      settings.userPreferences.routines = {
-        enabled: partial.enabled ?? settings.userPreferences.routines.enabled,
-        routines: partial.routines ?? settings.userPreferences.routines.routines,
-      };
-      saveSettings(settings);
-      syncActivityMonitor();
-      logger.info("Routine settings updated", {
-        enabled: settings.userPreferences.routines.enabled,
-        routineCount: settings.userPreferences.routines.routines.length,
-      });
-      return settings.userPreferences.routines;
     }
-  );
+
+    settings.userPreferences.routines = {
+      enabled: partial.enabled ?? settings.userPreferences.routines.enabled,
+      routines: partial.routines ?? settings.userPreferences.routines.routines,
+    };
+    saveSettings(settings);
+    syncActivityMonitor();
+    logger.info("Routine settings updated", {
+      enabled: settings.userPreferences.routines.enabled,
+      routineCount: settings.userPreferences.routines.routines.length,
+    });
+    return settings.userPreferences.routines;
+  });
 
   // "Test" evaluates and explains; it deliberately runs nothing (see
   // RoutineService.testRoutine). "Run now" is the separate, explicit way
   // to actually execute a routine's actions — what Test used to do.
-  ipcMain.handle("nimbus:test-routine", (_event, routineId: string) => routineService.testRoutine(routineId));
-  ipcMain.handle("nimbus:run-routine-now", (_event, routineId: string) =>
-    routineService.runRoutineNow(routineId)
-  );
-  ipcMain.handle("nimbus:get-routine-history", () => routineService.getHistory());
+  handle("nimbus:test-routine", (_event, routineId: string) => routineService.testRoutine(routineId));
+  handle("nimbus:run-routine-now", (_event, routineId: string) => routineService.runRoutineNow(routineId));
+  handle("nimbus:get-routine-history", () => routineService.getHistory());
 
   // Activity is read-only over IPC apart from its configuration: the
   // renderer can see what NIMBUS concluded and edit the rules, but
   // cannot assert an activity or end a session by hand.
-  ipcMain.handle("nimbus:get-current-activity", () => activityService.getCurrentActivity());
-  ipcMain.handle("nimbus:get-activity-sessions", () => activityService.getRecentSessions(50));
+  handle("nimbus:get-current-activity", () => activityService.getCurrentActivity());
+  handle("nimbus:get-activity-sessions", () => activityService.getRecentSessions(50));
   // Every activity name in play, so the editor can offer them as a
   // choice instead of asking the user to retype one exactly.
-  ipcMain.handle("nimbus:get-known-activities", () =>
-    knownActivityNames(settings.userPreferences.activity.mappings)
-  );
-  ipcMain.handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
-  ipcMain.handle(
+  handle("nimbus:get-known-activities", () => knownActivityNames(settings.userPreferences.activity.mappings));
+  handle("nimbus:get-activity-settings", () => settings.userPreferences.activity);
+  handle(
     "nimbus:update-activity-settings",
     (
       _event,
@@ -1774,16 +1757,16 @@ function registerIpcHandlers(): void {
       return settings.userPreferences.activity;
     }
   );
-  ipcMain.handle("nimbus:get-routine-last-triggered", () => routineService.getLastTriggeredAt());
+  handle("nimbus:get-routine-last-triggered", () => routineService.getLastTriggeredAt());
 
   // A debugging aid for "why didn't my trigger fire" — the exact raw
   // process/window/folder data the desktop activity monitor saw on its
   // most recent poll, or null if it isn't running. Same information the
   // monitor already reads for matching; nothing new is exposed.
-  ipcMain.handle("nimbus:get-update-state", () => getUpdateState());
-  ipcMain.handle("nimbus:check-for-updates", () => checkForUpdates());
-  ipcMain.handle("nimbus:install-update", () => installUpdate());
-  ipcMain.handle("nimbus:get-usage", () => ({
+  handle("nimbus:get-update-state", () => getUpdateState());
+  handle("nimbus:check-for-updates", () => checkForUpdates());
+  handle("nimbus:install-update", () => installUpdate());
+  handle("nimbus:get-usage", () => ({
     enabled: settings.userPreferences.activity.suggestFrequentApps === true,
     trackingOn: settings.userPreferences.activity.enabled || settings.userPreferences.routines.enabled,
     presence: presenceService?.update().state ?? null,
@@ -1791,7 +1774,7 @@ function registerIpcHandlers(): void {
       (a, b) => b.daysUsed - a.daysUsed || b.minutesUsed - a.minutesUsed
     ),
   }));
-  ipcMain.handle("nimbus:get-weekly-summary", async () => {
+  handle("nimbus:get-weekly-summary", async () => {
     const calendar = (await contextService.getSnapshot()).providers.calendar;
     const calendarData =
       calendar && calendar.status === "ok" && calendar.data
@@ -1810,15 +1793,15 @@ function registerIpcHandlers(): void {
       Intl.DateTimeFormat().resolvedOptions().timeZone
     );
   });
-  ipcMain.handle("nimbus:get-activity-snapshot", () => activityMonitor?.getLastSnapshot() ?? null);
+  handle("nimbus:get-activity-snapshot", () => activityMonitor?.getLastSnapshot() ?? null);
 
-  ipcMain.handle("nimbus:get-active-suggestions", () => routineService.getActiveSuggestions());
+  handle("nimbus:get-active-suggestions", () => routineService.getActiveSuggestions());
   // One answer path for every suggestion. Attention's own are informational:
   // answering them only tells Attention not to show them again — nothing
   // runs. Every other suggestion is a routine's, answered by
   // RoutineService exactly as before; Attention is then told it's resolved,
   // so it leaves the popup queue.
-  ipcMain.handle("nimbus:accept-suggestion", async (_event, suggestionId: string) => {
+  handle("nimbus:accept-suggestion", async (_event, suggestionId: string) => {
     if (attentionService.acknowledgeSuggestion(suggestionId)) return [];
     const suggestion = routineService.getActiveSuggestions().find((s) => s.id === suggestionId);
     const results = await routineService.acceptSuggestion(suggestionId);
@@ -1826,7 +1809,7 @@ function registerIpcHandlers(): void {
     if (suggestion) rememberRoutineDecision(suggestion, "accepted");
     return results;
   });
-  ipcMain.handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
+  handle("nimbus:dismiss-suggestion", (_event, suggestionId: string) => {
     if (attentionService.dismissSuggestion(suggestionId)) return;
     const suggestion = routineService.getActiveSuggestions().find((s) => s.id === suggestionId);
     routineService.dismissSuggestion(suggestionId);
@@ -1835,14 +1818,14 @@ function registerIpcHandlers(): void {
   });
   // The Attention debug view (Context tab): every current item, its score,
   // decision and why. Read-only.
-  ipcMain.handle("nimbus:get-attention", () => attentionService.getDebugState());
+  handle("nimbus:get-attention", () => attentionService.getDebugState());
   // Answering a question from the Home feed. Routed through the same
   // onAnswer path as the popup, so "Make it an activity" opens the editor
   // and "Not now" is remembered either way.
-  ipcMain.handle("nimbus:answer-attention-item", (_event, itemId: unknown, outcome: unknown) =>
+  handle("nimbus:answer-attention-item", (_event, itemId: unknown, outcome: unknown) =>
     attentionService.answerItem(String(itemId ?? ""), outcome === "accepted" ? "accepted" : "dismissed")
   );
-  ipcMain.handle(
+  handle(
     "nimbus:update-attention-settings",
     (_event, partial: { enabled?: unknown; popups?: unknown; reminderMinutes?: unknown }) => {
       const current = settings.userPreferences.attention;
@@ -1864,8 +1847,8 @@ function registerIpcHandlers(): void {
   // src/preload/suggestionPreload.ts) — reuses the accept/dismiss handlers
   // above, just adds a way for that window to read what it should show
   // and to close itself.
-  ipcMain.handle("nimbus:get-popup-suggestion", () => getCurrentPopupSuggestion());
-  ipcMain.handle("nimbus:close-suggestion-popup", () => {
+  handle("nimbus:get-popup-suggestion", () => getCurrentPopupSuggestion());
+  handle("nimbus:close-suggestion-popup", () => {
     closeSuggestionPopup();
     // Whatever was waiting for the popup may be shown now.
     attentionService?.popupClosed();
@@ -1874,28 +1857,28 @@ function registerIpcHandlers(): void {
   // The timer popup window's surface (src/main/timerWindow.ts,
   // src/timers/). A generic timer engine — nothing here is Spotify- or
   // Routine-specific.
-  ipcMain.handle("nimbus:get-timer-state", () => timerService.getState());
-  ipcMain.handle("nimbus:pause-timer", (_event, timerId: string) => timerService.pause(timerId));
-  ipcMain.handle("nimbus:resume-timer", (_event, timerId: string) => timerService.resume(timerId));
-  ipcMain.handle("nimbus:cancel-timer", (_event, timerId: string) => timerService.cancel(timerId));
+  handle("nimbus:get-timer-state", () => timerService.getState());
+  handle("nimbus:pause-timer", (_event, timerId: string) => timerService.pause(timerId));
+  handle("nimbus:resume-timer", (_event, timerId: string) => timerService.resume(timerId));
+  handle("nimbus:cancel-timer", (_event, timerId: string) => timerService.cancel(timerId));
   // Extends the running Pomodoro through the normal Action path, so it
   // gets the same validation and result handling as any other action.
-  ipcMain.handle("nimbus:timer-add-study", async () => {
+  handle("nimbus:timer-add-study", async () => {
     const result = await actionService.executeAction("timer.addStudy", {});
     onActionExecuted("timer.addStudy", result);
     return { status: result.status, message: result.message ?? result.error?.message };
   });
-  ipcMain.handle("nimbus:close-timer-window", () => closeTimerWindow());
+  handle("nimbus:close-timer-window", () => closeTimerWindow());
 
   // Pull-only: returns whatever briefing was last generated (or null before
   // the first one completes). Never generates — that's what keeps a UI
   // reload from producing a new briefing every time it asks.
-  ipcMain.handle("nimbus:get-briefing", () => briefingService.getCurrent());
+  handle("nimbus:get-briefing", () => briefingService.getCurrent());
 
   // Explicit, user-initiated regeneration (e.g. a "Regenerate" button) —
   // distinct from the pull above, and from the one automatic generation
   // that happens at startup.
-  ipcMain.handle("nimbus:regenerate-briefing", () => generateBriefing());
+  handle("nimbus:regenerate-briefing", () => generateBriefing());
 }
 
 /**

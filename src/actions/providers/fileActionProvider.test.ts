@@ -42,11 +42,24 @@ test("openFile refuses programs, scripts and shortcuts, whatever the case", () =
     ".reg",
     ".scr",
     ".hta",
+    ".msix",
+    ".appinstaller",
+    ".settingcontent-ms",
+    ".iso",
+    ".vhdx",
   ];
   for (const ext of exts) {
     const result = provider.validate(FILE_ACTIONS.OPEN_FILE, { path: `C:\\x\\file${ext}` });
     assert.equal(result.valid, false, ext);
     assert.match(result.error ?? "", /Launch an app/);
+  }
+});
+
+test("openFile refuses a name Windows would open as something else", () => {
+  const { provider } = setup();
+  // Windows drops trailing dots and spaces: each of these would run setup.exe.
+  for (const path of ["C:\\x\\setup.exe.", "C:\\x\\setup.exe..", "C:\\x\\setup.exe. ."]) {
+    assert.equal(provider.validate(FILE_ACTIONS.OPEN_FILE, { path }).valid, false, path);
   }
 });
 

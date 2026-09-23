@@ -242,6 +242,11 @@ src/
   main/                     [2] Windows-specific (Electron main process)
     main.ts                       Entry point: file logging, AppUserModelID,
                                    single-instance lock
+    navigationGuard.ts            Keeps windows on NIMBUS's own pages; which
+                                   IPC senders are trusted
+    publicFetch.ts                Fetches a page the renderer named: public
+                                   Internet only, checked at connection time
+                                   and per redirect, size-capped
     lifecycle.ts                  Windows/tray lifecycle, every main-window
                                    IPC handler, wiring of all services
     tray.ts, autostart.ts         Tray icon/menu; login-item registration
@@ -317,7 +322,10 @@ a device capability.
 
 Every window runs with `contextIsolation: true`, `nodeIntegration: false`,
 and a Content Security Policy limiting scripts to the app itself. A
-renderer can only call what its preload exposes.
+renderer can only call what its preload exposes. No window can navigate
+away from NIMBUS's pages or open another window (`navigationGuard.ts` —
+dropping a file or link on a window does nothing), and every handler
+answers only a sender whose page is under the app's own `ui/` folder.
 
 **Main window** (`preload.ts` → `window.nimbus`), handled in `lifecycle.ts`:
 
@@ -337,7 +345,7 @@ renderer can only call what its preload exposes.
 | Network                | `nimbus:get-network-state`, `nimbus:refresh-network`, `nimbus:scan-network`, `nimbus:cancel-network-scan`, `nimbus:update-network-device`, `nimbus:forget-network-device`, `nimbus:identify-network-device`, `nimbus:update-network-settings`                                                                                                                                                          |
 | Presence               | `nimbus:get-presence`, `nimbus:set-presence-phone` (a Network tab device id, checked against the list)                                                                                                                                                                                                                                                                                                 |
 | Decks                  | `nimbus:get-card-detail` (game and catalog id only), `nimbus:get-decks`, `nimbus:get-deck`, `nimbus:create-deck`, `nimbus:update-deck`, `nimbus:remove-deck`, `nimbus:add-deck-card` (catalog id only — the card is fetched in the main process), `nimbus:set-deck-card-quantity`, `nimbus:move-deck-card`, `nimbus:import-decklist` (text, capped), `nimbus:refresh-deck-cards` (cards already in the deck), `nimbus:card-synergy`, `nimbus:builder-archetypes`, `nimbus:builder-browse`, `nimbus:builder-create-deck` (cards by id only, from what main browsed), `nimbus:deck-compare-options`, `nimbus:deck-compare` (a deck id and EDHREC variant ids — only the commander's name is sent); pushes `nimbus:decks-changed` |
-| Meals                  | `nimbus:get-meals` (the tab's whole snapshot, worked out in main), `nimbus:save-recipe`, `nimbus:remove-recipe`, `nimbus:add-stock`, `nimbus:update-stock`, `nimbus:correct-stock`, `nimbus:remove-stock`, `nimbus:add-leftover`, `nimbus:update-leftover`, `nimbus:remove-leftover`, `nimbus:plan-meal`, `nimbus:remove-planned-meal`, `nimbus:cook-meal`, `nimbus:eat-leftover`, `nimbus:update-ingredient`, `nimbus:update-meal-preferences`, `nimbus:add-shopping-item`, `nimbus:remove-shopping-item`, `nimbus:buy-item`, `nimbus:load-demo-meals`, `nimbus:remove-demo-meals`; `nimbus:import-recipe-url` is the one that names an address (http(s) only, never a loopback or private host, time-bounded, first megabyte parsed and never rendered); pushes `nimbus:meals-changed` |
+| Meals                  | `nimbus:get-meals` (the tab's whole snapshot, worked out in main), `nimbus:save-recipe`, `nimbus:remove-recipe`, `nimbus:add-stock`, `nimbus:update-stock`, `nimbus:correct-stock`, `nimbus:remove-stock`, `nimbus:add-leftover`, `nimbus:update-leftover`, `nimbus:remove-leftover`, `nimbus:plan-meal`, `nimbus:remove-planned-meal`, `nimbus:cook-meal`, `nimbus:eat-leftover`, `nimbus:update-ingredient`, `nimbus:update-meal-preferences`, `nimbus:add-shopping-item`, `nimbus:remove-shopping-item`, `nimbus:buy-item`, `nimbus:load-demo-meals`, `nimbus:remove-demo-meals`; `nimbus:import-recipe-url` is the one that names an address (http(s) on the public Internet only — checked when connecting and on every redirect, so neither a redirect nor a name resolving to this PC or the local network gets through — time-bounded, first megabyte downloaded, parsed and never rendered); pushes `nimbus:meals-changed` |
 | Books                  | `nimbus:get-books`, `nimbus:search-comic-series` (a series name only), `nimbus:get-comic-volume` (a numeric GCD volume id only — the URL is built in the main process), `nimbus:add-book`, `nimbus:update-book`, `nimbus:remove-book`, `nimbus:get-comic-issue` (series name, year and number only), `nimbus:open-comic-link` (League of Comic Geeks or GCD; the address is built in the main process), `nimbus:search-book-editions` and `nimbus:find-book-contents` (searched on the PC in Wikipedia's lists — nothing about the book is sent), `nimbus:get-book-years`, `nimbus:work-out-book-years`, `nimbus:set-run-year`, `nimbus:choose-book-cover` (main opens the file dialog; the renderer never names a path), `nimbus:clear-book-cover`; reading log: `nimbus:log-issue-readings`, `nimbus:remove-issue-reading`, `nimbus:set-issues-read`, `nimbus:set-minutes-per-issue`, `nimbus:set-my-issue-credits`, `nimbus:use-my-issue-credits`, `nimbus:reading-credits-state` (also pushed) |
 | Collections            | `nimbus:get-collection`, `nimbus:search-card-catalog` (a game id and search text only), `nimbus:add-to-collection` (a game and catalog id — the card's data comes from the main process's own search), `nimbus:update-collection-card`, `nimbus:remove-collection-card`                                                                                                                                |
 | Memory                 | `nimbus:list-memories`, `nimbus:remember-memory`, `nimbus:update-memory`, `nimbus:promote-memory`, `nimbus:forget-memory`, `nimbus:get-memory-settings`, `nimbus:update-memory-settings`                                                                                                                                                                                                               |
@@ -381,7 +389,7 @@ written atomically (temp file, fsync, rename):
 
 | File                                                                  | Owner                     | Contents                                                                                                                                         |
 | --------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `settings.json`                                                       | `settingsManager.ts`      | `WindowsClientSettings` + `UserPreferences`, with credentials stripped out                                                                       |
+| `settings.json`                                                       | `settingsManager.ts`      | `WindowsClientSettings` + `UserPreferences`, with credentials stripped out; an unparseable file is renamed `settings.unreadable-<time>.json`     |
 | `secrets.json`                                                        | `secretStore.ts`          | IMAP passwords and Todoist tokens, DPAPI-encrypted, keyed by account id                                                                          |
 | `spotify-tokens.json`                                                 | `spotifyTokenStore.ts`    | Spotify tokens, DPAPI-encrypted                                                                                                                  |
 | `routine-state.json`                                                  | `routineStateStore.ts`    | Cooldown timestamps; wind-downs still owed (dropped after 12 h)                                                                                  |
@@ -405,7 +413,9 @@ save, `extractSecrets` lists every account's key (empty when it has no
 value); `SecretStore.writeAll` deletes keys for removed accounts but
 **keeps an entry it could not decrypt** rather than erasing it. Without OS
 encryption, credentials are not persisted, and nothing already stored is
-deleted.
+deleted. When `settings.json` couldn't be read and NIMBUS is running on
+defaults, saves keep every stored credential they don't know about, so
+restoring the set-aside file restores its accounts' credentials too.
 
 **Migrations on load**: a pre-split flat `settings.json`
 (`migrateLegacyShape`), plaintext credentials from before the secret store

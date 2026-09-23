@@ -89,6 +89,25 @@ export const BLOCKED_OPEN_EXTENSIONS = new Set([
   ".gadget",
   ".dll",
   ".sys",
+  // Packaged apps and their installers
+  ".appx",
+  ".appxbundle",
+  ".msix",
+  ".msixbundle",
+  ".appinstaller",
+  // Files whose handler runs or mounts something
+  ".settingcontent-ms",
+  ".diagcab",
+  ".library-ms",
+  ".search-ms",
+  ".psc1",
+  ".wsc",
+  ".xll",
+  ".jnlp",
+  ".iso",
+  ".img",
+  ".vhd",
+  ".vhdx",
 ]);
 
 /**
@@ -106,6 +125,10 @@ export function absolutePathError(value: unknown, what: string): string | null {
   if (!/^[A-Za-z]:[\\/]/.test(p))
     return `${what} must be a full path starting with a drive letter, e.g. C:\\...`;
   if (p.indexOf(":", 2) !== -1) return `${what} can't contain a colon after the drive letter.`;
+  // Windows drops trailing dots and spaces from a name, so "setup.exe."
+  // opens setup.exe while its extension reads as "." — refused, so the
+  // extension checked is the one Windows will use.
+  if (/[. ]$/.test(p.replace(/[\\/]+$/, ""))) return `${what} can't end with a dot or a space.`;
   return null;
 }
 

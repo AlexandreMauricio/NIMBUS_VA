@@ -18,6 +18,31 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.11 — 2026-09-23
+
+- **Fixed: an unreadable `settings.json` could wipe your settings and
+  every saved password and token.** NIMBUS fell back to defaults, and its
+  first save (a window resize was enough) wrote those over the file and
+  emptied the credential store. The file is now set aside as
+  `settings.unreadable-<time>.json`, like the other data files, and a
+  session running on those defaults never deletes a stored credential —
+  put the old file back and its accounts come back with their passwords.
+- **Windows can no longer be navigated away from NIMBUS.** Dropping a file
+  or link onto the window used to load it in place, with the window's
+  bridge to NIMBUS still attached. Navigation and new windows are now
+  refused, and every IPC channel answers only NIMBUS's own pages.
+- **Recipe import only reaches the public Internet.** The address is
+  checked when connecting, not just as typed, so a redirect or a name
+  pointing at this PC or the local network is refused; more private
+  ranges are recognised (link-local, carrier-grade NAT, IPv6), and only
+  the first megabyte is downloaded rather than read whole and cut.
+- **Opening a file refuses more that would run or install something**
+  (app packages and their installers, disk images, and a few more), and
+  a path ending in a dot or space — which Windows would open as a
+  different file — is refused.
+
+---
+
 ## 0.6.10 — 2026-09-23
 
 - **Fixed: the Meals tab's spacing collapsed.** It asked for a spacing step

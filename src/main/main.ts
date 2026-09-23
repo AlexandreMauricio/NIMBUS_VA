@@ -3,6 +3,7 @@ import * as path from "path";
 import { logger, configureFileLogging } from "../logging/logger";
 import { configureLocale } from "../common/locale";
 import { startApp } from "./lifecycle";
+import { installNavigationGuard } from "./navigationGuard";
 
 /**
  * Entry point for the Windows (Electron) client. Wires up global error
@@ -28,6 +29,9 @@ app.setAppUserModelId("com.nimbus.desktop");
 
 // Covers you choose for books are kept in NIMBUS's own folder and shown
 // through this scheme (see coverStore.ts) — never as file:// paths.
+// Every window stays on NIMBUS's own pages (see navigationGuard.ts).
+installNavigationGuard();
+
 protocol.registerSchemesAsPrivileged([
   { scheme: "nimbus-cover", privileges: { standard: true, secure: true } },
 ]);
