@@ -23,6 +23,7 @@ import {
 import { MealService, ingredientKey, parseState } from "./mealService";
 import { durationMinutes, parseAmountText, parseIngredientLine, parseRecipePage } from "./recipeImport";
 import type { Ingredient, MealsState, MealsStore, PantryItem, PlannedMeal, Recipe } from "./types";
+import { isRecipePhotoUrl, recipePhotoUrl } from "./types";
 
 test("units: aliases, base amounts, and weight is never turned into volume", () => {
   assert.equal(normaliseUnit(" Kilos "), "kg");
@@ -118,11 +119,28 @@ const recipe = (over: Partial<Recipe> = {}): Recipe => ({
   prepMinutes: 15,
   cookMinutes: 40,
   ingredients: over.ingredients ?? [
-    { ingredientId: "chicken", text: "chicken thighs", quantity: 600, unit: "g", optional: false },
-    { ingredientId: "lemon", text: "lemons", quantity: 2, unit: "piece", optional: false },
-    { ingredientId: "parsley", text: "parsley", quantity: 1, unit: "bunch", optional: true },
+    {
+      ingredientId: "chicken",
+      text: "chicken thighs",
+      quantity: 600,
+      unit: "g",
+      optional: false,
+      componentId: null,
+    },
+    { ingredientId: "lemon", text: "lemons", quantity: 2, unit: "piece", optional: false, componentId: null },
+    {
+      ingredientId: "parsley",
+      text: "parsley",
+      quantity: 1,
+      unit: "bunch",
+      optional: true,
+      componentId: null,
+    },
   ],
   steps: [],
+  components: [],
+  batch: false,
+  photo: null,
   tags: [],
   source: null,
   notes: null,
@@ -222,7 +240,10 @@ test("recipes: cost and nutrition are estimates that say how many lines they use
   const ingredients = new Map([
     [
       "chicken",
-      ingredient("chicken", { lastPrice: 0.0055, nutrition: { kcal: 209, protein: 26, carbs: 0, fat: 11 } }),
+      ingredient("chicken", {
+        lastPrice: 0.0055,
+        nutrition: { kcal: 209, protein: 26, carbs: 0, fat: 11, fibre: 0 },
+      }),
     ],
     ["lemon", ingredient("lemon", { unit: "piece", lastPrice: 0.4 })],
   ]);
@@ -825,4 +846,96 @@ test("step 1: editing a recipe keeps its notes and the minutes of steps kept wor
   const edited = meals.saveRecipe({ name: "Soup", steps: [{ text: "Simmer.", minutes: 20 }] }, saved.id);
   assert.equal(edited.notes, "Freezes well");
   assert.equal(edited.steps[0].minutes, 20);
+});
+
+test("step 2: a recipe of several dishes keeps each line and step with its dish", () => {
+  const { service: meals } = service();
+  const saved = meals.saveRecipe({
+    name: "Traybake with salad",
+    components: [
+      { key: "a", name: "Chicken" },
+      { key: "b", name: "Spinach salad" },
+    ],
+    ingredients: [
+      { name: "Chicken thighs", quantity: 600, unit: "g", component: "a" },
+      { name: "Spinach", quantity: 150, unit: "g", component: "b" },
+      { name: "Salt", quantity: 1, unit: "g", component: "nope" },
+    ],
+    steps: [
+      { text: "Roast the chicken.", minutes: 25, component: "a" },
+      { text: "Dress the salad.", component: "b" },
+    ],
+    batch: true,
+  });
+  assert.equal(saved.components.length, 2);
+  const [chicken, salad] = saved.components;
+  assert.deepEqual(
+    saved.ingredients.map((line) => line.componentId),
+    [chicken.id, salad.id, null]
+  );
+  assert.deepEqual(
+    saved.steps.map((step) => [step.componentId, step.minutes]),
+    [
+      [chicken.id, 25],
+      [salad.id, null],
+    ]
+  );
+  assert.equal(saved.batch, true);
+
+  // Editing by the existing ids keeps them; a dish that's gone drops its lines' link.
+  const edited = meals.saveRecipe(
+    {
+      name: "Traybake with salad",
+      components: [{ key: chicken.id, name: "Chicken" }],
+      ingredients: [
+        { name: "Chicken thighs", quantity: 600, unit: "g", component: chicken.id },
+        { name: "Spinach", quantity: 150, unit: "g", component: salad.id },
+      ],
+    },
+    saved.id
+  );
+  assert.equal(edited.components[0].id, chicken.id);
+  assert.deepEqual(
+    edited.ingredients.map((line) => line.componentId),
+    [chicken.id, null]
+  );
+  assert.equal(edited.batch, true, "batch is kept when the edit doesn't mention it");
+
+  // Loading drops a line pointing at a dish the recipe doesn't have.
+  const loaded = parseState({
+    recipes: [{ ...edited, ingredients: [{ ...edited.ingredients[0], componentId: "ghost" }] }],
+  });
+  assert.equal(loaded.recipes[0].ingredients[0].componentId, null);
+});
+
+test("step 2: fibre is counted like the rest, and the demo traybake has three dishes", () => {
+  const { service: meals } = service();
+  meals.loadDemoData();
+  const state = meals.getState();
+  const traybake = state.recipes.find((r) => r.name === "Lemon chicken traybake")!;
+  assert.deepEqual(
+    traybake.components.map((c) => c.name),
+    ["Chicken", "Potatoes", "Spinach salad"]
+  );
+  assert.ok(traybake.steps.some((s) => s.minutes === 25));
+  assert.equal(state.recipes.find((r) => r.name === "Chilli con carne")!.batch, true);
+  const lookup = (id: string) => state.ingredients.find((i) => i.id === id);
+  const nutrition = recipeNutrition(traybake, traybake.servings, lookup);
+  assert.ok((nutrition.fibre ?? 0) > 0, "potatoes and spinach bring fibre");
+});
+
+test("step 2: only NIMBUS's own recipe photo addresses are kept", () => {
+  assert.equal(recipePhotoUrl("abc-123", 5), "nimbus-cover://recipe/abc-123.jpg?v=5");
+  assert.equal(recipePhotoUrl("../etc", 5), null);
+  assert.equal(isRecipePhotoUrl("nimbus-cover://recipe/abc-123.jpg?v=5"), true);
+  for (const bad of ["file:///C:/x.jpg", "https://example.com/a.jpg", "nimbus-cover://cover/a.jpg"])
+    assert.equal(isRecipePhotoUrl(bad), false, bad);
+  const { service: meals } = service();
+  const saved = meals.saveRecipe({ name: "Soup", photo: "file:///C:/Windows/win.ini" });
+  assert.equal(saved.photo, null, "the renderer can't set a photo address");
+  assert.throws(() => meals.setRecipePhoto(saved.id, "https://example.com/a.jpg"));
+  assert.equal(
+    meals.setRecipePhoto(saved.id, recipePhotoUrl(saved.id, 1)).photo,
+    recipePhotoUrl(saved.id, 1)
+  );
 });

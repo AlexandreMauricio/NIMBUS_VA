@@ -8,6 +8,7 @@ export interface NutritionUI {
   protein: number | null;
   carbs?: number | null;
   fat?: number | null;
+  fibre?: number | null;
   from: number;
   total: number;
   missing: string[];
@@ -21,14 +22,18 @@ export interface RecipeUI {
   servings: number;
   prepMinutes: number | null;
   cookMinutes: number | null;
+  components: Array<{ id: string; name: string }>;
   ingredients: Array<{
     ingredientId: string;
     text: string;
     quantity: number;
     unit: string;
     optional: boolean;
+    componentId: string | null;
   }>;
-  steps: Array<{ text: string; minutes: number | null }>;
+  steps: Array<{ text: string; minutes: number | null; componentId: string | null }>;
+  batch: boolean;
+  photo: string | null;
   tags: string[];
   source: string | null;
   notes: string | null;
@@ -49,6 +54,8 @@ export interface MealsSnapshot {
     dailyBudget: number | null;
     dailyKcal: number | null;
     dailyProtein: number | null;
+    dailyCarbs: number | null;
+    dailyFibre: number | null;
   };
   ingredients: Array<{ id: string; name: string; aliases: string[]; unit: string; lastPrice: number | null }>;
   recipes: Array<{
@@ -61,6 +68,7 @@ export interface MealsSnapshot {
       text: string;
       ingredientId: string;
       optional: boolean;
+      componentId: string | null;
       needed: { quantity: number; unit: string };
       status: "have" | "partial" | "missing" | "unknown";
       short: { quantity: number; unit: string } | null;
@@ -174,6 +182,8 @@ export interface MealsBridge {
   getMeals(): Promise<MealsSnapshot>;
   saveRecipe(input: Record<string, unknown>, id?: string): Promise<unknown>;
   removeRecipe(id: string): Promise<void>;
+  chooseRecipePhoto(id: string): Promise<boolean>;
+  clearRecipePhoto(id: string): Promise<boolean>;
   addStock(input: Record<string, unknown>): Promise<unknown>;
   updateStock(id: string, changes: Record<string, unknown>): Promise<unknown>;
   correctStock(id: string, quantity: number, unit?: string, reason?: string): Promise<unknown>;
@@ -205,7 +215,8 @@ export interface MealsBridge {
 export const bridge = (): MealsBridge => (window as unknown as { nimbus: MealsBridge }).nimbus;
 
 export type MealsView = "today" | "plan" | "recipes" | "shopping" | "pantry" | "settings";
-export type RecipeFilter = "all" | "home" | "quick" | "cheap" | "favourites" | "imported";
+export type RecipeFilter =
+  "all" | "home" | "quick" | "cheap" | "favourites" | "imported" | "single" | "multi" | "batch";
 
 export interface MealsUiState {
   view: MealsView;

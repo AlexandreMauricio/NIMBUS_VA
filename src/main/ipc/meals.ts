@@ -12,6 +12,9 @@ import { dayRange, mealBadge, mealName, planCost, servingsNeeded } from "../../m
 import { parseRecipePage } from "../../meals/recipeImport";
 import { PublicFetchError, fetchPublicPage } from "../publicFetch";
 import type { PublicPage } from "../publicFetch";
+import { BrowserWindow } from "electron";
+import { recipePhotoUrl } from "../../meals/types";
+import { choosePictureFile, removePictureFile } from "../coverStore";
 import { handle } from "./handle";
 import type { IpcContext } from "./context";
 
@@ -64,6 +67,7 @@ export function registerMealsIpc(ctx: IpcContext): void {
               text: line.ingredient.text,
               ingredientId: line.ingredient.ingredientId,
               optional: line.ingredient.optional,
+              componentId: line.ingredient.componentId,
               needed: line.needed,
               status: line.status,
               short: line.short,
@@ -181,7 +185,27 @@ export function registerMealsIpc(ctx: IpcContext): void {
   handle("nimbus:save-recipe", (_event, input: unknown, id: unknown) =>
     ctx.mealService.saveRecipe(input, typeof id === "string" && id ? id : undefined)
   );
-  handle("nimbus:remove-recipe", (_event, id: unknown) => ctx.mealService.removeRecipe(String(id ?? "")));
+  handle("nimbus:remove-recipe", (_event, id: unknown) => {
+    ctx.mealService.removeRecipe(String(id ?? ""));
+    removePictureFile("recipe", String(id ?? ""));
+  });
+  // A recipe's photo: the main process opens the picker and keeps the
+  // picture in its own folder — the renderer only names the recipe.
+  handle("nimbus:choose-recipe-photo", async (_event, id: unknown) => {
+    const recipe = ctx.mealService.getRecipe(String(id ?? ""));
+    if (!recipe) throw new Error("That recipe is gone.");
+    const saved = await choosePictureFile("recipe", BrowserWindow.getFocusedWindow(), recipe.id);
+    if (!saved) return false;
+    ctx.mealService.setRecipePhoto(recipe.id, recipePhotoUrl(recipe.id, Date.now()));
+    return true;
+  });
+  handle("nimbus:clear-recipe-photo", (_event, id: unknown) => {
+    const recipe = ctx.mealService.getRecipe(String(id ?? ""));
+    if (!recipe) throw new Error("That recipe is gone.");
+    removePictureFile("recipe", recipe.id);
+    ctx.mealService.setRecipePhoto(recipe.id, null);
+    return true;
+  });
   handle("nimbus:add-stock", (_event, input: unknown) => ctx.mealService.addStock(input));
   handle("nimbus:update-stock", (_event, id: unknown, changes: unknown) =>
     ctx.mealService.updateStock(String(id ?? ""), changes)

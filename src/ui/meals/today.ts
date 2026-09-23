@@ -18,7 +18,7 @@ import {
   state,
 } from "./common";
 import { openCook } from "./cook";
-import { openRecipe } from "./recipes";
+import { openRecipe, photoBox } from "./recipes";
 
 // ---------- Today ----------
 
@@ -40,7 +40,7 @@ export function todayView(data: MealsSnapshot): HTMLElement {
       })
     );
     const grid = make("div", "meals-meal-grid");
-    for (const entry of todays) grid.appendChild(mealCard(entry));
+    for (const entry of todays) grid.appendChild(mealCard(entry, data, entry === next));
     body.appendChild(grid);
     wrap.appendChild(box);
   }
@@ -156,6 +156,7 @@ export function heroCard(data: MealsSnapshot, entry: MealsSnapshot["plan"][numbe
   // The right-hand column: what the recipe is short of, or that nothing is.
   // The right-hand column: what it takes, and which of it is in the kitchen.
   const side = make("div", "meals-hero-side");
+  if (recipe?.recipe.photo) side.appendChild(photoBox(recipe.recipe.photo, "meals-hero-sidephoto"));
   if (recipe) {
     const missing = recipe.lines.filter((line) => !line.optional && line.status !== "have");
     side.appendChild(
@@ -199,8 +200,15 @@ export function heroCard(data: MealsSnapshot, entry: MealsSnapshot["plan"][numbe
   return hero;
 }
 
-export function mealCard(entry: MealsSnapshot["plan"][number]): HTMLElement {
+export function mealCard(
+  entry: MealsSnapshot["plan"][number],
+  data: MealsSnapshot,
+  isNext = false
+): HTMLElement {
   const card = make("article", `meals-meal-card${entry.meal.cookedAt ? " is-done" : ""}`);
+  const photo = data.recipes.find((r) => r.recipe.id === entry.meal.recipeId)?.recipe.photo ?? null;
+  // Every card has its picture area, as the design draws it — a photo when the recipe has one.
+  card.appendChild(photoBox(photo, "meals-meal-photo"));
   const top = make("div", "meals-meal-top");
   top.append(
     make(
@@ -211,13 +219,16 @@ export function mealCard(entry: MealsSnapshot["plan"][number]): HTMLElement {
     make(
       "span",
       "meals-meal-state",
+      // As the design words it: what this meal is waiting on.
       entry.meal.cookedAt
-        ? "cooked"
-        : entry.meal.kind === "out"
-          ? "out"
-          : entry.meal.kind === "leftover"
-            ? "leftovers"
-            : "planned"
+        ? "Eaten ✓"
+        : isNext
+          ? "Up next"
+          : entry.meal.kind === "out"
+            ? "Out"
+            : entry.meal.kind === "leftover"
+              ? "Reheat"
+              : "Planned"
     )
   );
   card.append(top, make("div", "meals-meal-name", entry.name));
@@ -252,23 +263,24 @@ export function nutritionPanel(data: MealsSnapshot, todays: MealsSnapshot["plan"
     (sum, entry) => ({
       kcal: sum.kcal + (entry.nutrition?.kcal ?? 0),
       protein: sum.protein + (entry.nutrition?.protein ?? 0),
+      carbs: sum.carbs + (entry.nutrition?.carbs ?? 0),
+      fibre: sum.fibre + (entry.nutrition?.fibre ?? 0),
     }),
-    { kcal: 0, protein: 0 }
+    { kcal: 0, protein: 0, carbs: 0, fibre: 0 }
   );
   const targets = data.preferences;
   const rings = make("div", "meals-rings");
+  const dial = (value: number, target: number | null, unit: string, label: string) =>
+    ring(target ? (value / target) * 100 : null, `${Math.round(value)}${unit}`, label);
   rings.append(
-    ring(
-      targets.dailyKcal ? (totals.kcal / targets.dailyKcal) * 100 : null,
-      `${Math.round(totals.kcal)} kcal`,
-      "Calories"
-    ),
-    ring(
-      targets.dailyProtein ? (totals.protein / targets.dailyProtein) * 100 : null,
-      `${Math.round(totals.protein)} g`,
-      "Protein"
-    )
+    dial(totals.kcal, targets.dailyKcal, " kcal", "Calories"),
+    dial(totals.protein, targets.dailyProtein, " g", "Protein")
   );
+  // Carbs and fibre join in when there's a target for them or anything to show.
+  if (targets.dailyCarbs || totals.carbs)
+    rings.appendChild(dial(totals.carbs, targets.dailyCarbs, " g", "Carbs"));
+  if (targets.dailyFibre || totals.fibre)
+    rings.appendChild(dial(totals.fibre, targets.dailyFibre, " g", "Fibre"));
   body.appendChild(rings);
   const withoutData = todays.length - eaten.length;
   body.appendChild(
@@ -276,7 +288,7 @@ export function nutritionPanel(data: MealsSnapshot, todays: MealsSnapshot["plan"
       "p",
       "meals-note",
       [
-        targets.dailyKcal || targets.dailyProtein
+        targets.dailyKcal || targets.dailyProtein || targets.dailyCarbs || targets.dailyFibre
           ? "% of the daily target set in Settings"
           : "Set a daily target in Settings to see how far through the day this is",
         withoutData ? `${withoutData} of today's meals have no nutrition data` : null,

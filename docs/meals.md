@@ -17,7 +17,7 @@ lookups, purchases and price history are not built — see
 | **Ingredient** | A food you buy and cook with ("Chicken thighs")                 | `types.ts`, `mealService.ts` |
 | **Pantry item**| How much of it you have, where, and until when                  | `pantry.ts`                 |
 | **Leftover**   | Food already cooked, counted in portions                        | `pantry.ts`                 |
-| **Recipe**     | What to make, in ingredients and steps                          | `recipes.ts`                |
+| **Recipe**     | What to make, in ingredients and steps — one dish, or several   | `recipes.ts`                |
 | **Planned meal**| One meal, in one slot, on one day                              | `plan.ts`                   |
 
 A recipe line and a pantry item both point at the same **ingredient id**,
@@ -87,6 +87,27 @@ package ("use 900 g · 1.1 kg remains"), and where the extra portions go —
 the fridge with its eat-by date or the freezer — optionally straight into
 a free lunch or dinner before they have to be eaten.
 
+## Meals of several dishes
+
+A recipe can be **one dish or several**: the traybake in the demo is
+"Chicken", "Potatoes" and "Spinach salad". Each ingredient line and each
+method step can belong to one of them, and the recipe page groups them
+that way, with the dish as a tag on its steps. A recipe with no dishes is
+one dish, and every recipe written before this existed stays exactly as
+it was. The list filters on **Single dish**, **Multi-dish** and
+**Batch-friendly** (made to keep or freeze). Imported recipes arrive as
+one list — the recipe data sites publish has no dishes — and the editor
+lets you add dishes and move lines between them.
+
+## Photos
+
+A recipe can have a **photo**, chosen in NIMBUS's own file dialog, resized
+to at most 1200 px and kept in `%APPDATA%\nimbus\recipe-photos\`. It is
+served to the page as `nimbus-cover://recipe/<id>.jpg` — the renderer
+never names a path, and the saved recipe can only point at that address.
+Recipe cards, the recipe page and today's meal cards show it; without one
+they show the design's soft placeholder.
+
 ## Cost and nutrition
 
 Both are estimates, and both say what they were worked out from.
@@ -94,7 +115,8 @@ Both are estimates, and both say what they were worked out from.
 - **Cost** uses the last price paid per ingredient, held per base unit
   (€/g, €/ml, €/piece), so package size doesn't matter. Until purchases
   exist, a price is only there if you typed it.
-- **Nutrition** uses each ingredient's per-100 g/ml values. A line counted
+- **Nutrition** uses each ingredient's per-100 g/ml values — calories,
+  protein, carbs, fat and fibre. A line counted
   in pieces can't be turned into calories until an ingredient says what
   one piece weighs, so it's listed as missing instead of guessed.
 
@@ -111,8 +133,9 @@ for the shopping list and the pantry:
 
 - **Today** — a hero card for the next meal (when to start cooking, its
   cost, and its ingredients beside it, ticked or marked short),
-  a card per meal today, then panels: **nutrition** as dials against the
-  daily target, **spend** as a column a day with the budget as a dashed
+  a card per meal today with what it's waiting on ("Up next", "Reheat",
+  "Eaten ✓"), then panels: **nutrition** as dials against the daily
+  targets (calories, protein, and carbs and fibre when set), **spend** as a column a day with the budget as a dashed
   line, **what needs eating**, **leftovers**, the shopping total, and the
   week's dinners as a strip.
 - **Plan** — a row per meal slot and a column per day for the next week,

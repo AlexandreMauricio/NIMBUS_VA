@@ -72,6 +72,9 @@ export function recipesView(data: MealsSnapshot): HTMLElement {
   const filters: Array<[RecipeFilter, string, (r: MealsSnapshot["recipes"][number]) => boolean]> = [
     ["all", "No filter", () => true],
     ["home", "All at home", (r) => r.coverage.total > 0 && r.coverage.have === r.coverage.total],
+    ["single", "Single dish", (r) => r.recipe.components.length < 2],
+    ["multi", "Multi-dish", (r) => r.recipe.components.length >= 2],
+    ["batch", "Batch-friendly", (r) => r.recipe.batch],
     ["quick", "≤ 30 min", (r) => (r.minutes ?? 999) <= 30],
     ["cheap", "≤ 2 €/serving", (r) => (r.cost.value ?? 99) / Math.max(1, r.recipe.servings) <= 2],
     ["favourites", "Favourites", (r) => r.recipe.favourite],
@@ -190,15 +193,19 @@ export function recipeCard(entry: MealsSnapshot["recipes"][number]): HTMLElement
   const card = make("button", "meals-recipe-card");
   (card as HTMLButtonElement).type = "button";
   card.addEventListener("click", () => openRecipe(entry.recipe.id));
-  const head = make("div", "meals-recipe-head");
-  head.append(
-    make("span", "card-kicker", entry.recipe.slots.map((slot) => MEAL_SLOT_LABELS[slot]).join(" · ")),
-    make("span", "meals-recipe-home", `${entry.coverage.have}/${entry.coverage.total} at home`)
+  const photo = photoBox(entry.recipe.photo, "meals-recipe-photo");
+  if (entry.minutes) photo.appendChild(make("span", "meals-overlay-tag", `⏱ ${entry.minutes} min`));
+  photo.appendChild(
+    make("span", "meals-overlay-tag is-right", `${entry.coverage.have}/${entry.coverage.total} at home`)
   );
-  card.append(head, make("span", "meals-recipe-name", entry.recipe.name));
+  card.appendChild(photo);
+  const kinds = make("div", "meals-row meals-row-tight");
+  for (const slot of entry.recipe.slots) kinds.appendChild(pill(MEAL_SLOT_LABELS[slot]));
+  if (entry.recipe.components.length >= 2) kinds.appendChild(pill("Multi-dish"));
+  if (entry.recipe.batch) kinds.appendChild(pill("Batch-friendly"));
+  card.append(kinds, make("span", "meals-recipe-name", entry.recipe.name));
   if (entry.recipe.description) card.appendChild(make("span", "meals-recipe-desc", entry.recipe.description));
   const pills = make("div", "meals-row meals-row-tight");
-  if (entry.minutes) pills.appendChild(pill(`⏱ ${entry.minutes} min`));
   if (entry.nutrition.kcal) pills.appendChild(pill(`≈ ${entry.nutrition.kcal} kcal`));
   if (entry.nutrition.protein) pills.appendChild(pill(`${entry.nutrition.protein} g protein`));
   pills.appendChild(
@@ -222,21 +229,16 @@ export function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][
   const servings = state.recipeServings ?? entry.recipe.servings;
   const factor = servings / Math.max(1, entry.recipe.servings);
 
-  const hero = make("section", "meals-hero meals-hero-recipe");
+  const hero = make("section", "meals-hero meals-hero-recipe has-photo");
   const body = make("div", "meals-hero-body");
-  body.appendChild(
-    make(
-      "p",
-      "card-kicker",
-      [
-        entry.recipe.slots.map((slot) => MEAL_SLOT_LABELS[slot]).join(" · "),
-        entry.recipe.tags.join(" · "),
-        entry.recipe.source?.startsWith("http") ? "Imported" : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    )
-  );
+  const kinds = make("div", "meals-row meals-row-tight");
+  for (const slot of entry.recipe.slots) kinds.appendChild(pill(MEAL_SLOT_LABELS[slot]));
+  if (entry.recipe.components.length >= 2)
+    kinds.appendChild(pill(`Multi-dish · ${entry.recipe.components.length} components`, "accent"));
+  if (entry.recipe.batch) kinds.appendChild(pill("Batch-friendly", "accent"));
+  if (entry.recipe.source?.startsWith("http")) kinds.appendChild(pill("Imported"));
+  for (const tag of entry.recipe.tags) kinds.appendChild(pill(tag));
+  body.appendChild(kinds);
   body.appendChild(make("h1", "meals-hero-title", entry.recipe.name));
   if (entry.recipe.description) body.appendChild(make("p", "meals-hero-text", entry.recipe.description));
 
@@ -295,26 +297,30 @@ export function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][
   );
   body.appendChild(actions);
   hero.appendChild(body);
+  hero.appendChild(recipePhoto(entry.recipe));
   wrap.appendChild(hero);
 
   const columns = make("div", "meals-recipe-columns");
 
   const ingredients = panel("Ingredients", `${entry.coverage.have} of ${entry.coverage.total} at home`);
-  const lines = make("div", "meals-lines");
-  for (const line of entry.lines) {
-    const row = make("div", "meals-line");
-    row.append(
-      make(
-        "span",
-        "meals-amount",
-        formatAmount({ quantity: line.needed.quantity * factor, unit: line.needed.unit })
-      ),
-      make("strong", undefined, line.text)
-    );
-    row.appendChild(lineStatus(line, data.today));
-    lines.appendChild(row);
+  for (const group of byComponent(entry.recipe.components, entry.lines)) {
+    if (group.name) ingredients.body.appendChild(make("p", "card-kicker meals-component-head", group.name));
+    const lines = make("div", "meals-lines");
+    for (const line of group.items) {
+      const row = make("div", "meals-line");
+      row.append(
+        make(
+          "span",
+          "meals-amount",
+          formatAmount({ quantity: line.needed.quantity * factor, unit: line.needed.unit })
+        ),
+        make("strong", undefined, line.text)
+      );
+      row.appendChild(lineStatus(line, data.today));
+      lines.appendChild(row);
+    }
+    ingredients.body.appendChild(lines);
   }
-  ingredients.body.appendChild(lines);
   const missing = entry.lines.filter((line) => !line.optional && line.status !== "have").length;
   if (missing)
     ingredients.body.appendChild(
@@ -346,6 +352,8 @@ export function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][
     kv("Carbs", entry.nutrition.carbs === null ? "—" : `${entry.nutrition.carbs} g`);
   if (entry.nutrition.fat !== undefined)
     kv("Fat", entry.nutrition.fat === null ? "—" : `${entry.nutrition.fat} g`);
+  if (entry.nutrition.fibre !== undefined)
+    kv("Fibre", entry.nutrition.fibre === null ? "—" : `${entry.nutrition.fibre} g`);
   nutrition.body.appendChild(table);
   nutrition.body.appendChild(
     make(
@@ -407,9 +415,11 @@ export function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][
       const row = make("div", "meals-step");
       const text = make("div", "meals-step-body");
       text.appendChild(make("p", undefined, step.text));
-      if (step.minutes) {
+      const part = entry.recipe.components.find((c) => c.id === step.componentId)?.name;
+      if (step.minutes || part) {
         const tags = make("div", "meals-row meals-row-tight");
-        tags.appendChild(pill(`${step.minutes} min`));
+        if (step.minutes) tags.appendChild(pill(`${step.minutes} min`));
+        if (part) tags.appendChild(pill(part));
         text.appendChild(tags);
       }
       row.append(make("span", "meals-step-n", String(index + 1)), text);
@@ -525,6 +535,65 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
   }
   body.append(make("p", "meals-field-label", "Suits"), slotRow, field("Description", description));
 
+  // Dishes: a meal of several ("Chicken", "Potatoes", "Spinach salad").
+  // Lines and steps can each belong to one; none at all is one dish.
+  const batchBox = input("checkbox", "");
+  batchBox.checked = existing?.batch ?? false;
+  const batchLabel = make("label", "meals-check");
+  batchLabel.append(batchBox, document.createTextNode(" Batch-friendly — made to keep or freeze"));
+  body.appendChild(batchLabel);
+
+  body.appendChild(make("h6", "kicker", "Dishes"));
+  let dishes: Array<{ key: string; name: string }> = (existing?.components ?? []).map((c) => ({
+    key: c.id,
+    name: c.name,
+  }));
+  const dishSelects: Array<HTMLSelectElement> = [];
+  const dishRow = make("div", "meals-chips");
+  const newDish = input("text");
+  newDish.placeholder = "e.g. Spinach salad";
+  newDish.maxLength = 60;
+  const fillDishSelect = (picker: HTMLSelectElement) => {
+    const current = picker.value;
+    picker.replaceChildren(new Option("—", ""));
+    for (const dish of dishes) picker.appendChild(new Option(dish.name, dish.key));
+    picker.value = dishes.some((dish) => dish.key === current) ? current : "";
+    picker.hidden = dishes.length === 0;
+  };
+  const drawDishes = () => {
+    dishRow.replaceChildren();
+    for (const dish of dishes)
+      dishRow.appendChild(
+        chip(`${dish.name} ✕`, true, () => {
+          dishes = dishes.filter((entry) => entry.key !== dish.key);
+          drawDishes();
+        })
+      );
+    if (!dishes.length)
+      dishRow.appendChild(make("span", "meals-note", "One dish. Add dishes for a meal of several."));
+    for (const picker of dishSelects) fillDishSelect(picker);
+  };
+  const dishPicker = (value: string | null) => {
+    const picker = make("select", "select meals-dish-select");
+    dishSelects.push(picker);
+    fillDishSelect(picker);
+    picker.value = value && dishes.some((dish) => dish.key === value) ? value : "";
+    return picker;
+  };
+  const addDish = () => {
+    const dishName = newDish.value.trim();
+    if (!dishName || dishes.length >= 8) return;
+    dishes.push({ key: `new-${Date.now()}-${dishes.length}`, name: dishName });
+    newDish.value = "";
+    drawDishes();
+  };
+  newDish.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") addDish();
+  });
+  const dishTools = make("div", "meals-toolbar");
+  dishTools.append(newDish, button("+ Add dish", "btn btn-secondary", addDish));
+  body.append(dishRow, dishTools);
+
   body.appendChild(make("h6", "kicker", "Ingredients"));
   const linesBox = make("div", "meals-lines");
   const lineRows: Array<{
@@ -532,12 +601,14 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     quantity: HTMLInputElement;
     unit: HTMLSelectElement;
     optional: HTMLInputElement;
+    dish: HTMLSelectElement;
   }> = [];
   const addLine = (line?: {
     text: string;
     quantity: number | null;
     unit: string | null;
     optional: boolean;
+    componentId?: string | null;
     warning?: string | null;
   }) => {
     const row = make("div", `meals-line meals-line-edit${line?.warning ? " has-warning" : ""}`);
@@ -557,7 +628,8 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     optional.checked = line?.optional ?? false;
     const optionalLabel = make("label", "meals-check");
     optionalLabel.append(optional, document.createTextNode(" optional"));
-    const entry = { name: lineName, quantity, unit, optional };
+    const dish = dishPicker(line?.componentId ?? null);
+    const entry = { name: lineName, quantity, unit, optional, dish };
     lineRows.push(entry);
     // Which food this line will be: "→ Chicken thighs", or a new one.
     const match = make("span", "meals-line-meta meals-match");
@@ -569,7 +641,7 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     };
     lineName.addEventListener("input", showMatch);
     showMatch();
-    row.append(quantity, unit, lineName, match, optionalLabel);
+    row.append(quantity, unit, lineName, match, dish, optionalLabel);
     if (line?.warning) row.appendChild(pill(line.warning, "urgent"));
     row.appendChild(
       button("✕", "meals-link", () => {
@@ -595,13 +667,43 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     button("+ Add ingredient", "meals-link", () => addLine())
   );
 
+  // Method: a row per step, each with its minutes and its dish.
   body.appendChild(make("h6", "kicker", "Method"));
-  const steps = make("textarea", "input meals-textarea meals-steps-input");
-  steps.value = existing
-    ? existing.steps.map((step) => step.text).join("\n")
-    : (draft?.steps ?? []).join("\n");
-  steps.placeholder = "One step per line";
-  body.appendChild(steps);
+  const stepsBox = make("div", "meals-lines");
+  const stepRows: Array<{ text: HTMLTextAreaElement; minutes: HTMLInputElement; dish: HTMLSelectElement }> =
+    [];
+  const addStep = (step?: { text: string; minutes: number | null; componentId: string | null }) => {
+    const row = make("div", "meals-line meals-line-edit meals-step-edit");
+    const stepText = make("textarea", "input meals-step-text");
+    stepText.rows = 2;
+    stepText.maxLength = 2000;
+    stepText.placeholder = `Step ${stepRows.length + 1}`;
+    stepText.value = step?.text ?? "";
+    const minutes = input("number");
+    minutes.min = "0";
+    minutes.placeholder = "min";
+    minutes.value = step?.minutes ? String(step.minutes) : "";
+    const dish = dishPicker(step?.componentId ?? null);
+    const entry = { text: stepText, minutes, dish };
+    stepRows.push(entry);
+    row.append(stepText, minutes, dish);
+    row.appendChild(
+      button("✕", "meals-link", () => {
+        const index = stepRows.indexOf(entry);
+        if (index >= 0) stepRows.splice(index, 1);
+        row.remove();
+      })
+    );
+    stepsBox.appendChild(row);
+  };
+  for (const step of existing?.steps ?? []) addStep(step);
+  for (const text of draft?.steps ?? []) addStep({ text, minutes: null, componentId: null });
+  if (!stepRows.length) addStep();
+  body.append(
+    stepsBox,
+    button("+ Add step", "meals-link", () => addStep())
+  );
+  drawDishes();
 
   const actions = make("div", "meals-row");
   actions.append(
@@ -624,6 +726,8 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
                 .split(",")
                 .map((tag) => tag.trim())
                 .filter(Boolean),
+              batch: batchBox.checked,
+              components: dishes,
               ingredients: lineRows
                 .filter((row) => row.name.value.trim() && row.quantity.value)
                 .map((row) => ({
@@ -632,15 +736,14 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
                   quantity: Number(row.quantity.value),
                   unit: row.unit.value,
                   optional: row.optional.checked,
+                  component: row.dish.value || null,
                 })),
-              steps: steps.value
-                .split("\n")
-                .map((line) => line.trim())
-                .filter(Boolean)
-                // A step kept word for word keeps its minutes.
-                .map((text) => ({
-                  text,
-                  minutes: existing?.steps.find((step) => step.text === text)?.minutes ?? null,
+              steps: stepRows
+                .filter((row) => row.text.value.trim())
+                .map((row) => ({
+                  text: row.text.value,
+                  minutes: row.minutes.value ? Number(row.minutes.value) : null,
+                  component: row.dish.value || null,
                 })),
               source: draft?.source ?? null,
             },
@@ -687,4 +790,68 @@ export function lineStatus(
   if (stock?.opened) return pill("Home · opened", "soon");
   if (stock?.confidence === "estimated") return pill("Home · ≈ est.", "est");
   return pill("Home", "ok");
+}
+
+/** A picture area: the photo when there is one, the design's soft gradient when not. */
+export function photoBox(photo: string | null, className: string): HTMLElement {
+  const box = make("div", `meals-photo ${className}`);
+  if (photo) {
+    const img = make("img");
+    img.src = photo;
+    img.alt = "";
+    img.loading = "lazy";
+    box.appendChild(img);
+  }
+  return box;
+}
+
+/** The recipe page's photo, with the buttons to choose or remove it. */
+function recipePhoto(recipe: MealsSnapshot["recipes"][number]["recipe"]): HTMLElement {
+  const box = photoBox(recipe.photo, "meals-hero-photo");
+  const tools = make("div", "meals-photo-tools");
+  tools.appendChild(
+    button(
+      recipe.photo ? "Change photo" : "Add a photo",
+      "btn btn-secondary",
+      () =>
+        void act(async () => {
+          await bridge().chooseRecipePhoto(recipe.id);
+        })
+    )
+  );
+  if (recipe.photo)
+    tools.appendChild(
+      button(
+        "Remove",
+        "btn btn-ghost",
+        () =>
+          void act(async () => {
+            await bridge().clearRecipePhoto(recipe.id);
+          }, "Photo removed.")
+      )
+    );
+  box.appendChild(tools);
+  return box;
+}
+
+/**
+ * Lines grouped by the dish they belong to, in the recipe's order of
+ * dishes; lines with no dish come first, under no heading. A single-dish
+ * recipe is one group with no name.
+ */
+export function byComponent<T extends { componentId: string | null }>(
+  components: Array<{ id: string; name: string }>,
+  items: T[]
+): Array<{ name: string | null; items: T[] }> {
+  const groups: Array<{ name: string | null; items: T[] }> = [];
+  const loose = items.filter(
+    (item) => !item.componentId || !components.some((c) => c.id === item.componentId)
+  );
+  if (loose.length) groups.push({ name: components.length ? "Also" : null, items: loose });
+  for (const component of components) {
+    const own = items.filter((item) => item.componentId === component.id);
+    if (own.length) groups.push({ name: component.name, items: own });
+  }
+  if (groups.length === 1 && groups[0].name === "Also") groups[0].name = null;
+  return groups;
 }

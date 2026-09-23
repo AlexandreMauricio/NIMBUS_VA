@@ -84,6 +84,14 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
   protein.min = "0";
   protein.placeholder = "none";
   protein.value = data.preferences.dailyProtein === null ? "" : String(data.preferences.dailyProtein);
+  const carbs = input("number");
+  carbs.min = "0";
+  carbs.placeholder = "none";
+  carbs.value = data.preferences.dailyCarbs === null ? "" : String(data.preferences.dailyCarbs);
+  const fibre = input("number");
+  fibre.min = "0";
+  fibre.placeholder = "none";
+  fibre.value = data.preferences.dailyFibre === null ? "" : String(data.preferences.dailyFibre);
   const restrictions = input("text");
   restrictions.value = data.preferences.restrictions.join(", ");
   restrictions.placeholder = "No pork, Gluten-free";
@@ -95,6 +103,8 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
     field("Budget €/day", budget),
     field("Calories/day", kcal),
     field("Protein g/day", protein),
+    field("Carbs g/day", carbs),
+    field("Fibre g/day", fibre),
     field("Never suggest", restrictions),
     field("Avoid when possible", dislikes)
   );
@@ -147,6 +157,8 @@ export function settingsView(data: MealsSnapshot): HTMLElement {
               dailyBudget: budget.value ? Number(budget.value) : null,
               dailyKcal: kcal.value ? Number(kcal.value) : null,
               dailyProtein: protein.value ? Number(protein.value) : null,
+              dailyCarbs: carbs.value ? Number(carbs.value) : null,
+              dailyFibre: fibre.value ? Number(fibre.value) : null,
               slots: [...chosenSlots.entries()].filter(([, on]) => on).map(([slot]) => slot),
             }),
           "Saved."

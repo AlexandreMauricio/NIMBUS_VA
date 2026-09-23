@@ -20,6 +20,28 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.16 — 2026-09-23
+
+Meals, step 2 of 4 towards the "Meals v3" design: what a recipe can hold.
+
+- **Meals of several dishes.** A recipe can be made of dishes — the
+  traybake is "Chicken", "Potatoes" and "Spinach salad" — with each
+  ingredient and step belonging to one. The recipe page groups them, the
+  steps carry their dish, and the list filters on **Single dish**,
+  **Multi-dish** and **Batch-friendly**. Recipes you already have are one
+  dish, unchanged.
+- **Recipe photos**, chosen in NIMBUS's own dialog and kept in
+  `recipe-photos\`: on the recipe cards (with the time and "6/9 at home"
+  over them), beside the recipe's title, and on today's meal cards.
+- **Fibre** is tracked with the other nutrition, and Settings takes
+  daily targets for **carbs** and **fibre** — Today shows up to four dials.
+- Today's meal cards say what each is waiting on: **Up next**,
+  **Reheat** for leftovers, **Eaten ✓**.
+- The recipe editor edits the method a step per row, each with its
+  minutes and its dish.
+
+---
+
 ## 0.6.15 — 2026-09-23
 
 Meals, step 1 of 4 towards the "Meals v3" design: the smaller gaps in the

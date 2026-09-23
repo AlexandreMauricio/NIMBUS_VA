@@ -60,6 +60,7 @@ export interface NutritionEstimate {
   protein: number | null;
   carbs: number | null;
   fat: number | null;
+  fibre: number | null;
   from: number;
   total: number;
   missing: string[];
@@ -82,6 +83,7 @@ export function recipeNutrition(
     protein: null,
     carbs: null,
     fat: null,
+    fibre: null,
   };
   let from = 0;
   const missing: string[] = [];
@@ -95,7 +97,7 @@ export function recipeNutrition(
     }
     const hundreds = base.quantity / 100;
     let used = false;
-    for (const key of ["kcal", "protein", "carbs", "fat"] as Array<keyof NutritionPer100>) {
+    for (const key of ["kcal", "protein", "carbs", "fat", "fibre"] as Array<keyof NutritionPer100>) {
       const per100 = ingredient.nutrition[key];
       if (per100 === null || per100 === undefined) continue;
       totals[key] = (totals[key] ?? 0) + per100 * hundreds;
@@ -110,6 +112,7 @@ export function recipeNutrition(
     protein: round(totals.protein),
     carbs: round(totals.carbs),
     fat: round(totals.fat),
+    fibre: round(totals.fibre),
     from,
     total: lines.length,
     missing,
@@ -126,6 +129,7 @@ export function perServing(estimate: NutritionEstimate, servings: number): Nutri
     protein: share(estimate.protein),
     carbs: share(estimate.carbs),
     fat: share(estimate.fat),
+    fibre: share(estimate.fibre),
   };
 }
 

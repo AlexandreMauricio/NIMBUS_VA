@@ -389,6 +389,8 @@ contextBridge.exposeInMainWorld("nimbus", {
   saveRecipe: (input: Record<string, unknown>, id?: string): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:save-recipe", input, id ?? null),
   removeRecipe: (id: string): Promise<void> => ipcRenderer.invoke("nimbus:remove-recipe", id),
+  chooseRecipePhoto: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:choose-recipe-photo", id),
+  clearRecipePhoto: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:clear-recipe-photo", id),
   addStock: (input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:add-stock", input),
   updateStock: (id: string, changes: Record<string, unknown>): Promise<unknown> =>

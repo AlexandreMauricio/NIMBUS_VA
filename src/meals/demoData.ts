@@ -54,7 +54,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Meat",
     price: 0.0055,
-    nutrition: { kcal: 209, protein: 26, carbs: 0, fat: 11 },
+    nutrition: { kcal: 209, protein: 26, carbs: 0, fat: 11, fibre: 0 },
     fridgeDays: 2,
   },
   {
@@ -63,7 +63,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Vegetables",
     price: 0.0012,
-    nutrition: { kcal: 77, protein: 2, carbs: 17, fat: 0.1 },
+    nutrition: { kcal: 77, protein: 2, carbs: 17, fat: 0.1, fibre: 2.2 },
     fridgeDays: 20,
   },
   {
@@ -72,7 +72,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Vegetables",
     price: 0.008,
-    nutrition: { kcal: 23, protein: 2.9, carbs: 1.4, fat: 0.4 },
+    nutrition: { kcal: 23, protein: 2.9, carbs: 1.4, fat: 0.4, fibre: 2.2 },
     fridgeDays: 4,
   },
   {
@@ -81,7 +81,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Dairy",
     price: 0.0042,
-    nutrition: { kcal: 97, protein: 9, carbs: 3.6, fat: 5 },
+    nutrition: { kcal: 97, protein: 9, carbs: 3.6, fat: 5, fibre: 0 },
     fridgeDays: 7,
   },
   {
@@ -99,7 +99,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Cupboard",
     price: 0.0015,
-    nutrition: { kcal: 355, protein: 7, carbs: 78, fat: 0.9 },
+    nutrition: { kcal: 355, protein: 7, carbs: 78, fat: 0.9, fibre: 1.3 },
     fridgeDays: null,
   },
   {
@@ -117,7 +117,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Meat",
     price: 0.0079,
-    nutrition: { kcal: 250, protein: 26, carbs: 0, fat: 15 },
+    nutrition: { kcal: 250, protein: 26, carbs: 0, fat: 15, fibre: 0 },
     fridgeDays: 2,
   },
   {
@@ -144,7 +144,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "g",
     category: "Cupboard",
     price: 0.0021,
-    nutrition: { kcal: 379, protein: 13, carbs: 67, fat: 7 },
+    nutrition: { kcal: 379, protein: 13, carbs: 67, fat: 7, fibre: 10 },
     fridgeDays: null,
   },
   {
@@ -153,7 +153,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "ml",
     category: "Dairy",
     price: 0.00092,
-    nutrition: { kcal: 64, protein: 3.3, carbs: 4.8, fat: 3.6 },
+    nutrition: { kcal: 64, protein: 3.3, carbs: 4.8, fat: 3.6, fibre: 0 },
     fridgeDays: 5,
   },
   {
@@ -162,7 +162,7 @@ const INGREDIENTS: DemoIngredient[] = [
     unit: "ml",
     category: "Cupboard",
     price: 0.0072,
-    nutrition: { kcal: 884, protein: 0, carbs: 0, fat: 100 },
+    nutrition: { kcal: 884, protein: 0, carbs: 0, fat: 100, fibre: 0 },
     fridgeDays: null,
   },
   {
@@ -187,6 +187,14 @@ interface DemoRecipe {
   tags: string[];
   lines: Array<[string, number, string] | [string, number, string, "optional"]>;
   steps: string[];
+  /** Minutes per step, in step order, where the recipe says. */
+  stepMinutes?: Array<number | null>;
+  /** Dishes of a multi-dish meal: [key, name]. */
+  components?: Array<[string, string]>;
+  /** Which dish each ingredient key and each step (by index) belongs to. */
+  lineParts?: Record<string, string>;
+  stepParts?: string[];
+  batch?: boolean;
 }
 
 const RECIPES: DemoRecipe[] = [
@@ -215,6 +223,22 @@ const RECIPES: DemoRecipe[] = [
       "Add the chicken skin-side up and roast for another 25 minutes, until the skin crisps.",
       "Dress the spinach with the yoghurt and the rest of the lemon, and serve alongside.",
     ],
+    stepMinutes: [null, 15, 25, 5],
+    components: [
+      ["chicken", "Chicken"],
+      ["potatoes", "Potatoes"],
+      ["salad", "Spinach salad"],
+    ],
+    lineParts: {
+      chicken: "chicken",
+      lemon: "chicken",
+      potato: "potatoes",
+      oliveoil: "potatoes",
+      spinach: "salad",
+      yoghurt: "salad",
+      parsley: "salad",
+    },
+    stepParts: ["potatoes", "potatoes", "chicken", "salad"],
   },
   {
     key: "chilli",
@@ -238,6 +262,8 @@ const RECIPES: DemoRecipe[] = [
       "Brown the mince, then add the tomatoes, the drained beans and the spices.",
       "Simmer for 40 minutes while the rice cooks.",
     ],
+    stepMinutes: [5, 10, 40],
+    batch: true,
   },
   {
     key: "riceandbeans",
@@ -304,6 +330,8 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
 
   const recipes = new Map<string, Recipe>();
   for (const entry of RECIPES) {
+    const components = (entry.components ?? []).map(([key, name]) => ({ key, id: id(), name }));
+    const part = (key: string | undefined) => components.find((c) => c.key === key)?.id ?? null;
     recipes.set(entry.key, {
       id: id(),
       name: entry.name,
@@ -312,14 +340,22 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       servings: entry.servings,
       prepMinutes: entry.prep,
       cookMinutes: entry.cook,
+      components: components.map(({ id: componentId, name }) => ({ id: componentId, name })),
       ingredients: entry.lines.map((line) => ({
         ingredientId: ingredients.get(line[0])!.id,
         text: ingredients.get(line[0])!.name.toLowerCase(),
         quantity: line[1] as number,
         unit: line[2] as string,
         optional: line[3] === "optional",
+        componentId: part(entry.lineParts?.[line[0]]),
       })),
-      steps: entry.steps.map((text) => ({ text, minutes: null })),
+      steps: entry.steps.map((text, index) => ({
+        text,
+        minutes: entry.stepMinutes?.[index] ?? null,
+        componentId: part(entry.stepParts?.[index]),
+      })),
+      batch: entry.batch === true,
+      photo: null,
       tags: entry.tags,
       source: "demo",
       notes: null,

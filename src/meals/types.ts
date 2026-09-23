@@ -49,6 +49,7 @@ export interface NutritionPer100 {
   protein: number | null;
   carbs: number | null;
   fat: number | null;
+  fibre: number | null;
 }
 
 /**
@@ -87,12 +88,41 @@ export interface RecipeIngredient {
   unit: string;
   /** "to taste", garnishes: left out of cost, nutrition and the shopping list. */
   optional: boolean;
+  /** Which dish of the recipe it belongs to, when the recipe has more than one. */
+  componentId: string | null;
 }
 
 export interface RecipeStep {
   text: string;
   /** Minutes this step takes, when the recipe says — used for "start cooking by". */
   minutes: number | null;
+  /** Which dish the step is for, when the recipe has more than one. */
+  componentId: string | null;
+}
+
+/**
+ * One dish of a meal made of several — "Chicken", "Potatoes", "Spinach
+ * salad" for a traybake with a salad. Ingredients and steps point at it;
+ * a recipe with no components is one dish.
+ */
+export interface RecipeComponent {
+  id: string;
+  name: string;
+}
+
+export const MAX_COMPONENTS = 8;
+
+/** The address a recipe's own photo is served at (see src/main/coverStore.ts). */
+export function recipePhotoUrl(recipeId: string, version: number): string | null {
+  return /^[A-Za-z0-9-]{1,80}$/.test(recipeId)
+    ? `nimbus-cover://recipe/${recipeId}.jpg?v=${Math.floor(version)}`
+    : null;
+}
+
+export function isRecipePhotoUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" && /^nimbus-cover:\/\/recipe\/[A-Za-z0-9-]{1,80}\.jpg(\?v=\d+)?$/.test(value)
+  );
 }
 
 export interface Recipe {
@@ -104,8 +134,14 @@ export interface Recipe {
   servings: number;
   prepMinutes: number | null;
   cookMinutes: number | null;
+  /** The dishes it's made of; empty for a single dish. */
+  components: RecipeComponent[];
   ingredients: RecipeIngredient[];
   steps: RecipeStep[];
+  /** Made in quantity to keep or freeze — a filter of its own. */
+  batch: boolean;
+  /** A photo you chose, served as nimbus-cover://recipe/<id>.jpg; null for none. */
+  photo: string | null;
   tags: string[];
   /** Where it came from: a URL, "typed", or null. */
   source: string | null;
@@ -235,6 +271,10 @@ export interface MealPreferences {
   dailyKcal: number | null;
   /** Daily protein per person, in grams. */
   dailyProtein: number | null;
+  /** Daily carbohydrate per person, in grams. */
+  dailyCarbs: number | null;
+  /** Daily fibre per person, in grams. */
+  dailyFibre: number | null;
 }
 
 export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
@@ -245,6 +285,8 @@ export const DEFAULT_MEAL_PREFERENCES: MealPreferences = {
   dailyBudget: null,
   dailyKcal: null,
   dailyProtein: null,
+  dailyCarbs: null,
+  dailyFibre: null,
 };
 
 /**

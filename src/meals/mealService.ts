@@ -49,8 +49,11 @@ import {
   PlannedMeal,
   PlannedMealKind,
   Recipe,
+  MAX_COMPONENTS,
+  RecipeComponent,
   RecipeIngredient,
   RecipeStep,
+  isRecipePhotoUrl,
   STORAGE_PLACES,
   StoragePlace,
 } from "./types";
@@ -113,6 +116,7 @@ function parseNutrition(raw: unknown): NutritionPer100 | null {
     protein: value(r.protein),
     carbs: value(r.carbs),
     fat: value(r.fat),
+    fibre: value(r.fibre),
   };
   return Object.values(nutrition).some((v) => v !== null) ? nutrition : null;
 }
@@ -153,6 +157,7 @@ function parseRecipeIngredient(raw: unknown): RecipeIngredient | null {
     quantity,
     unit,
     optional: r.optional === true,
+    componentId: typeof r.componentId === "string" && r.componentId ? r.componentId : null,
   };
 }
 
@@ -161,7 +166,31 @@ function parseStep(raw: unknown): RecipeStep | null {
   const r = raw as Record<string, unknown>;
   const body = text(r.text, 2000);
   if (!body) return null;
-  return { text: body, minutes: positive(r.minutes) };
+  return {
+    text: body,
+    minutes: positive(r.minutes),
+    componentId: typeof r.componentId === "string" && r.componentId ? r.componentId : null,
+  };
+}
+
+function parseComponents(raw: unknown): RecipeComponent[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RecipeComponent[] = [];
+  for (const entry of raw) {
+    const r = (entry ?? {}) as Record<string, unknown>;
+    const name = text(r.name, 60);
+    if (typeof r.id !== "string" || !r.id || !name || out.some((c) => c.id === r.id)) continue;
+    out.push({ id: r.id, name });
+    if (out.length >= MAX_COMPONENTS) break;
+  }
+  return out;
+}
+
+/** A line or step pointing at a dish the recipe doesn't have is just part of the whole. */
+function keepComponent<T extends { componentId: string | null }>(entry: T, components: RecipeComponent[]): T {
+  return entry.componentId && !components.some((c) => c.id === entry.componentId)
+    ? { ...entry, componentId: null }
+    : entry;
 }
 
 export function parseRecipe(raw: unknown): Recipe | null {
@@ -172,9 +201,13 @@ export function parseRecipe(raw: unknown): Recipe | null {
   const slots = Array.isArray(r.slots)
     ? (r.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot)) as MealSlot[])
     : [];
+  const components = parseComponents(r.components);
   return {
     id: r.id,
     name,
+    components,
+    batch: r.batch === true,
+    photo: isRecipePhotoUrl(r.photo) ? r.photo : null,
     description: text(r.description, 2000),
     slots: slots.length ? [...new Set(slots)] : ["dinner"],
     servings: positive(r.servings, 2)!,
@@ -185,12 +218,14 @@ export function parseRecipe(raw: unknown): Recipe | null {
           .map(parseRecipeIngredient)
           .filter((i): i is RecipeIngredient => i !== null)
           .slice(0, MAX_RECIPE_INGREDIENTS)
+          .map((i) => keepComponent(i, components))
       : [],
     steps: Array.isArray(r.steps)
       ? r.steps
           .map(parseStep)
           .filter((s): s is RecipeStep => s !== null)
           .slice(0, MAX_RECIPE_STEPS)
+          .map((s) => keepComponent(s, components))
       : [],
     tags: list(r.tags, 20, 40),
     source: text(r.source, 500),
@@ -323,6 +358,8 @@ export function parsePreferences(raw: unknown): MealPreferences {
     dailyBudget: positive(r.dailyBudget),
     dailyKcal: positive(r.dailyKcal),
     dailyProtein: positive(r.dailyProtein),
+    dailyCarbs: positive(r.dailyCarbs),
+    dailyFibre: positive(r.dailyFibre),
   };
 }
 
@@ -543,6 +580,25 @@ export class MealService {
     const r = (input ?? {}) as Record<string, unknown>;
     const name = text(r.name, 200);
     if (!name) throw new Error("A recipe needs a name.");
+    const existing = id ? this.state.recipes.find((recipe) => recipe.id === id) : undefined;
+    if (id && !existing) throw new Error("That recipe is gone.");
+    // Dishes arrive as {key, name}: a key that is one of this recipe's
+    // component ids keeps it, anything else is a new dish. Lines and steps
+    // name their dish by the same key.
+    const componentIds = new Map<string, string>();
+    const components: RecipeComponent[] = [];
+    for (const raw of Array.isArray(r.components) ? r.components.slice(0, MAX_COMPONENTS) : []) {
+      const c = (raw ?? {}) as Record<string, unknown>;
+      const componentName = text(c.name, 60);
+      const key = typeof c.key === "string" ? c.key : typeof c.id === "string" ? c.id : "";
+      if (!componentName || !key || componentIds.has(key)) continue;
+      const keep = existing?.components.find((entry) => entry.id === key);
+      const componentId = keep?.id ?? randomUUID();
+      componentIds.set(key, componentId);
+      components.push({ id: componentId, name: componentName });
+    }
+    const componentOf = (value: unknown) =>
+      typeof value === "string" ? (componentIds.get(value) ?? null) : null;
     const lines = Array.isArray(r.ingredients) ? r.ingredients.slice(0, MAX_RECIPE_INGREDIENTS) : [];
     const ingredients: RecipeIngredient[] = [];
     for (const raw of lines) {
@@ -562,19 +618,21 @@ export class MealService {
         quantity,
         unit,
         optional: line.optional === true,
+        componentId: componentOf(line.component ?? line.componentId),
       });
     }
     const steps = Array.isArray(r.steps)
       ? r.steps
           .map((raw) => {
             const step = typeof raw === "string" ? { text: raw } : ((raw ?? {}) as Record<string, unknown>);
-            return parseStep(step);
+            const parsed = parseStep(step);
+            return parsed
+              ? { ...parsed, componentId: componentOf(step.component ?? step.componentId) }
+              : null;
           })
           .filter((s): s is RecipeStep => s !== null)
           .slice(0, MAX_RECIPE_STEPS)
       : [];
-    const existing = id ? this.state.recipes.find((recipe) => recipe.id === id) : undefined;
-    if (id && !existing) throw new Error("That recipe is gone.");
     if (!existing && this.state.recipes.length >= MAX_RECIPES) throw new Error("Too many recipes.");
     const slots = Array.isArray(r.slots)
       ? (r.slots.filter((s): s is MealSlot => MEAL_SLOTS.includes(s as MealSlot)) as MealSlot[])
@@ -587,8 +645,12 @@ export class MealService {
       servings: positive(r.servings, existing?.servings ?? 2)!,
       prepMinutes: positive(r.prepMinutes),
       cookMinutes: positive(r.cookMinutes),
+      components,
       ingredients,
       steps,
+      batch: r.batch === undefined ? (existing?.batch ?? false) : r.batch === true,
+      // The photo is set only by the main process's picker (setRecipePhoto).
+      photo: existing?.photo ?? null,
       tags: list(r.tags, 20, 40),
       source: text(r.source, 500) ?? existing?.source ?? null,
       notes: r.notes === undefined ? (existing?.notes ?? null) : text(r.notes, 2000),
@@ -601,6 +663,17 @@ export class MealService {
     this.state.recipes = existing
       ? this.state.recipes.map((entry) => (entry.id === recipe.id ? recipe : entry))
       : [...this.state.recipes, recipe];
+    this.save();
+    return recipe;
+  }
+
+  /** Sets or clears the recipe's photo address — the picture itself is saved by the main process. */
+  setRecipePhoto(id: unknown, photo: string | null): Recipe {
+    const recipe = this.state.recipes.find((entry) => entry.id === id);
+    if (!recipe) throw new Error("That recipe is gone.");
+    if (photo !== null && !isRecipePhotoUrl(photo)) throw new Error("That isn't a recipe photo.");
+    recipe.photo = photo;
+    recipe.updatedAt = this.now();
     this.save();
     return recipe;
   }
@@ -1186,6 +1259,8 @@ export class MealService {
     if (c.dailyBudget !== undefined) current.dailyBudget = positive(c.dailyBudget);
     if (c.dailyKcal !== undefined) current.dailyKcal = positive(c.dailyKcal);
     if (c.dailyProtein !== undefined) current.dailyProtein = positive(c.dailyProtein);
+    if (c.dailyCarbs !== undefined) current.dailyCarbs = positive(c.dailyCarbs);
+    if (c.dailyFibre !== undefined) current.dailyFibre = positive(c.dailyFibre);
     this.save();
     return this.getPreferences();
   }
