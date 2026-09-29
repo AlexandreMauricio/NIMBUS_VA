@@ -74,11 +74,21 @@ export interface MealsSnapshot {
     category: string | null;
     /** A more general food this one stands in for (Soy milk → Milk). */
     countsAs: string | null;
+    /** Which unit lastPrice is per, and how much one piece holds. */
+    priceUnit: "g" | "ml" | "piece" | null;
+    pieceSize: { quantity: number; unit: string } | null;
   }>;
   recipes: Array<{
     recipe: RecipeUI;
     minutes: number | null;
-    cost: { value: number | null; from: number; total: number; missing: string[] };
+    cost: {
+      value: number | null;
+      from: number;
+      total: number;
+      missing: string[];
+      /** Foods priced in another unit ("per piece" for a recipe in ml), fixable with a piece size. */
+      otherUnit?: Array<{ ingredientId: string; name: string; priceUnit: string; wanted: string }>;
+    };
     nutrition: NutritionUI;
     coverage: { have: number; total: number };
     lines: Array<{

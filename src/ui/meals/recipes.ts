@@ -273,6 +273,7 @@ export function recipePage(data: MealsSnapshot, entry: MealsSnapshot["recipes"][
       : `≈ ${euro(entry.cost.value * factor)} · ${euro(entry.cost.value / Math.max(1, entry.recipe.servings))}/serving`
   );
   body.appendChild(facts);
+  body.appendChild(costGaps(entry));
 
   const actions = make("div", "meals-row");
   actions.append(
@@ -545,6 +546,13 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     slotRow.appendChild(label);
   }
   body.append(make("p", "meals-field-label", "Suits"), slotRow, field("Description", description));
+  body.appendChild(
+    make(
+      "p",
+      "meals-note",
+      "An ingredient with no amount is kept as optional — shown, not costed or bought. Not sure? A bowl of cereal is about 40 g with 200–250 ml of milk; a serving of pasta 80–100 g; of rice about 75 g."
+    )
+  );
 
   // Dishes: a meal of several ("Chicken", "Potatoes", "Spinach salad").
   // Lines and steps can each belong to one; none at all is one dish.
@@ -631,6 +639,7 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
     quantity.step = "0.01";
     quantity.min = "0";
     quantity.value = line?.quantity === null || line?.quantity === undefined ? "" : String(line.quantity);
+    quantity.placeholder = "amount";
     const unit = select(
       KNOWN_UNITS.map((u) => [u, unitLabel(u) === "×" ? "each" : unitLabel(u)] as [string, string]),
       line?.unit ?? "g"
@@ -756,13 +765,14 @@ export function recipeEditor(data: MealsSnapshot, id: string): HTMLElement {
               difficulty: difficulty.value || null,
               components: dishes,
               ingredients: lineRows
-                .filter((row) => row.name.value.trim() && row.quantity.value)
+                .filter((row) => row.name.value.trim())
+                // No amount: kept as optional ("some"), not costed or bought — never dropped.
                 .map((row) => ({
                   name: row.name.value,
                   text: row.name.value,
-                  quantity: Number(row.quantity.value),
+                  quantity: row.quantity.value ? Number(row.quantity.value) : 1,
                   unit: row.unit.value,
-                  optional: row.optional.checked,
+                  optional: row.optional.checked || !row.quantity.value,
                   component: row.dish.value || null,
                 })),
               steps: stepRows
@@ -881,4 +891,63 @@ export function byComponent<T extends { componentId: string | null }>(
   }
   if (groups.length === 1 && groups[0].name === "Also") groups[0].name = null;
   return groups;
+}
+
+/**
+ * What the recipe's cost leaves out, and why: a food priced per piece (a
+ * carton, a pack) while the recipe measures it — fixed by saying how much
+ * one piece holds, right here — and foods with no price yet.
+ */
+function costGaps(entry: MealsSnapshot["recipes"][number]): HTMLElement {
+  const box = make("div", "meals-cost-gaps");
+  const units: Array<[string, string]> = [
+    ["ml", "ml"],
+    ["l", "l"],
+    ["g", "g"],
+    ["kg", "kg"],
+  ];
+  const per = (unit: string) => (unit === "piece" ? "per piece (a pack, a carton)" : `per ${unit}`);
+  const otherUnit = entry.cost.otherUnit ?? [];
+  for (const gap of otherUnit) {
+    const row = make("div", "meals-row meals-row-tight");
+    const amount = input("number");
+    amount.min = "0";
+    amount.step = "any";
+    amount.placeholder = gap.wanted === "ml" ? "1" : "500";
+    const unit = select(units, gap.wanted === "ml" ? "l" : "g");
+    row.append(
+      make(
+        "span",
+        "meals-note",
+        gap.priceUnit === "piece"
+          ? `${gap.name} is priced ${per("piece")}, the recipe measures it in ${gap.wanted}. One piece is:`
+          : `${gap.name} is priced ${per(gap.priceUnit)}, the recipe counts it in ${gap.wanted === "piece" ? "pieces" : gap.wanted}. One piece is:`
+      ),
+      amount,
+      unit,
+      button(
+        "Save",
+        "btn btn-secondary",
+        () =>
+          void act(
+            () =>
+              bridge().updateIngredient(gap.ingredientId, {
+                pieceSize: { quantity: Number(amount.value), unit: unit.value },
+              }),
+            "Saved — the cost includes it now."
+          )
+      )
+    );
+    box.appendChild(row);
+  }
+  const noPrice = entry.cost.missing.filter((name) => !otherUnit.some((gap) => gap.name === name));
+  if (noPrice.length)
+    box.appendChild(
+      make(
+        "p",
+        "meals-note",
+        `Not in the cost yet — no price: ${noPrice.join(", ")}. Buying them records one.`
+      )
+    );
+  return box;
 }

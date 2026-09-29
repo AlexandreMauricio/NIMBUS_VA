@@ -14,7 +14,14 @@ import {
   wholeBagServings,
 } from "./pantry";
 import { defrostList } from "./freezer";
-import { pricePerBaseUnit, recipeCost, recipeNutrition, perServing, startCookingAt } from "./recipes";
+import {
+  priceIn,
+  pricePerBaseUnit,
+  recipeCost,
+  recipeNutrition,
+  perServing,
+  startCookingAt,
+} from "./recipes";
 import {
   cookServingsOf,
   dayRange,
@@ -242,6 +249,8 @@ const ingredient = (id: string, over: Partial<Ingredient> = {}): Ingredient => (
   lastPrice: null,
   fridgeDays: null,
   lastPackaging: null,
+  priceUnit: null,
+  pieceSize: null,
   countsAs: null,
   addedAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
@@ -1335,4 +1344,45 @@ test("expected leftovers: a batch planned before chains is offered, planned on r
     chain.map((m) => m.portions),
     [1]
   );
+});
+
+test("prices: kept with their unit — a carton priced per piece never costs 300 ml as 300 cartons", () => {
+  const milk = (over: Partial<Ingredient>) =>
+    ingredient("milk", { unit: "ml", lastPrice: 0.89, priceUnit: "piece", ...over });
+  assert.equal(priceIn(milk({}), "ml"), null, "per piece, recipe in ml: can't say");
+  assert.equal(priceIn(milk({ pieceSize: { quantity: 1, unit: "l" } }), "ml"), 0.00089);
+  assert.equal(priceIn(milk({ priceUnit: "ml", lastPrice: 0.00089 }), "ml"), 0.00089);
+  assert.equal(
+    priceIn(milk({ priceUnit: "ml", lastPrice: 0.00089, pieceSize: { quantity: 1, unit: "l" } }), "piece"),
+    0.89
+  );
+
+  const bowl: Recipe = {
+    ...recipe(),
+    servings: 1,
+    ingredients: [
+      { ingredientId: "milk", text: "milk", quantity: 300, unit: "ml", optional: false, componentId: null },
+    ],
+  };
+  const lookup = (food: Ingredient) => (id: string) => (id === "milk" ? food : undefined);
+  const unknown = recipeCost(bowl, 1, lookup(milk({})));
+  assert.equal(unknown.value, null, "not 267 €");
+  assert.deepEqual(unknown.otherUnit, [
+    { ingredientId: "milk", name: "milk", priceUnit: "piece", wanted: "ml" },
+  ]);
+  assert.equal(recipeCost(bowl, 1, lookup(milk({ pieceSize: { quantity: 1, unit: "l" } }))).value, 0.27);
+});
+
+test("prices: files from before prices kept a unit take the unit they were bought in", () => {
+  const { service: meals } = service();
+  const milk = meals.ensureIngredient("Milk", "ml");
+  // Bought at "Bought": 1 pack for 0.89 — the pantry holds it as a pack.
+  meals.addStock({ ingredientId: milk.id, quantity: 1, unit: "pack", place: "fridge" });
+  const raw = JSON.parse(JSON.stringify(meals.getState())) as Record<string, unknown>;
+  const foods = raw.ingredients as Array<Record<string, unknown>>;
+  const food = foods.find((f) => f.id === milk.id)!;
+  food.lastPrice = 0.89;
+  delete food.priceUnit;
+  const state = parseState(raw);
+  assert.equal(state.ingredients.find((i) => i.id === milk.id)!.priceUnit, "piece");
 });

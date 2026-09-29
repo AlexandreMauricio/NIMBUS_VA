@@ -14,7 +14,7 @@
  */
 
 import { ingredientKey } from "./names";
-import { toBase } from "./units";
+import { baseUnit as baseUnitOf, toBase } from "./units";
 import type { Ingredient, PantryItem, PriceRecord, StoragePlace, Store } from "./types";
 
 /** A price older than this no longer counts as what something costs. */
@@ -278,6 +278,8 @@ export interface StorePrice {
   storeId: string | null;
   storeName: string;
   pricePerBase: number;
+  /** Per g, ml or piece; null for prices kept before the unit was. */
+  unit: "g" | "ml" | "piece" | null;
   date: string;
   /** Typed in by hand rather than read off a receipt or invoice. */
   manual: boolean;
@@ -309,6 +311,7 @@ export function pricesByStore(
       storeId: record.storeId,
       storeName: stores.find((store) => store.id === record.storeId)?.name ?? "No shop",
       pricePerBase: record.pricePerBase,
+      unit: record.unit,
       date: record.date,
       manual: record.purchaseId === null || manualPurchases.has(record.purchaseId),
     }))
@@ -318,11 +321,19 @@ export function pricesByStore(
 /** What a food costs now: the cheapest recent price at any shop, else the last price you typed. */
 export function currentPrice(
   prices: PriceRecord[],
-  ingredient: Pick<Ingredient, "id" | "lastPrice">,
+  ingredient: Pick<Ingredient, "id" | "lastPrice" | "priceUnit" | "unit">,
   stores: Store[],
   today: string
 ): number | null {
-  return pricesByStore(prices, ingredient.id, stores, today)[0]?.pricePerBase ?? ingredient.lastPrice;
+  // Only prices in the unit the food is priced in compare — per piece and per ml don't.
+  const unit = ingredient.priceUnit ?? baseUnitOf(ingredient.unit);
+  const alike = prices.filter((record) => (record.unit ?? unit) === unit);
+  return pricesByStore(alike, ingredient.id, stores, today)[0]?.pricePerBase ?? ingredient.lastPrice;
+}
+
+/** A line's price unit: the base of its unit — g, ml or piece. */
+export function linePriceUnit(line: { unit: string | null }): "g" | "ml" | "piece" | null {
+  return line.unit ? baseUnitOf(line.unit) : null;
 }
 
 /**

@@ -453,9 +453,33 @@ function openFood(data: MealsSnapshot, id: string): void {
     ],
     food.countsAs ?? ""
   );
+  const pieceAmount = input("number");
+  pieceAmount.min = "0";
+  pieceAmount.step = "any";
+  pieceAmount.placeholder = "e.g. 1";
+  pieceAmount.value = food.pieceSize ? String(food.pieceSize.quantity) : "";
+  const pieceUnit = select(
+    [
+      ["ml", "ml"],
+      ["l", "l"],
+      ["g", "g"],
+      ["kg", "kg"],
+    ],
+    food.pieceSize?.unit ?? "l"
+  );
+  const pieceBox = make("div", "meals-row meals-row-tight");
+  pieceBox.append(pieceAmount, pieceUnit);
   const form = make("div", "meals-form");
-  form.append(field("Name", name), field("Counts as", countsAs));
+  form.append(field("Name", name), field("Counts as", countsAs), field("One piece / pack holds", pieceBox));
   body.appendChild(form);
+  if (food.lastPrice !== null)
+    body.appendChild(
+      make(
+        "p",
+        "meals-note",
+        `Priced ${food.priceUnit === "piece" ? `${food.lastPrice.toFixed(2).replace(".", ",")} € a piece` : food.priceUnit ? `${(food.lastPrice * 1000).toFixed(2).replace(".", ",")} € a ${food.priceUnit === "g" ? "kg" : "l"}` : "in an unknown unit"}. How much a piece holds lets a recipe in ml or g use a per-piece price.`
+      )
+    );
   body.appendChild(
     make(
       "p",
@@ -474,7 +498,14 @@ function openFood(data: MealsSnapshot, id: string): void {
       "btn btn-primary",
       () =>
         void act(
-          () => bridge().updateIngredient(food.id, { name: name.value, countsAs: countsAs.value || null }),
+          () =>
+            bridge().updateIngredient(food.id, {
+              name: name.value,
+              countsAs: countsAs.value || null,
+              pieceSize: pieceAmount.value
+                ? { quantity: Number(pieceAmount.value), unit: pieceUnit.value }
+                : null,
+            }),
           "Saved."
         )
     ),

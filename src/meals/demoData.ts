@@ -16,6 +16,7 @@
  * Pure: it takes today and an id generator, and returns entries.
  */
 
+import { baseUnit } from "./units";
 import { isoDate, suggestEatBy } from "./pantry";
 import type {
   Ingredient,
@@ -329,6 +330,8 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       lastPrice: entry.price,
       fridgeDays: entry.fridgeDays,
       lastPackaging: null,
+      priceUnit: baseUnit(entry.unit),
+      pieceSize: null,
       countsAs: null,
       addedAt: now,
       updatedAt: now,
@@ -544,6 +547,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       ingredientId: food("chicken"),
       storeId: lidl.id,
       pricePerBase: 0.00549,
+      unit: "g",
       date: bought.date,
       purchaseId: bought.id,
     },
@@ -551,6 +555,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       ingredientId: food("potato"),
       storeId: lidl.id,
       pricePerBase: 0.000995,
+      unit: "g",
       date: bought.date,
       purchaseId: bought.id,
     },
@@ -558,6 +563,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       ingredientId: food("lemon"),
       storeId: lidl.id,
       pricePerBase: 0.3225,
+      unit: "piece",
       date: bought.date,
       purchaseId: bought.id,
     },
@@ -565,6 +571,7 @@ export function buildDemoData(today: Date, id: () => string): DemoData {
       ingredientId: food("chicken"),
       storeId: continente.id,
       pricePerBase: 0.00599,
+      unit: "g",
       date: dayFrom(today, -12),
       purchaseId: null,
     },

@@ -9,7 +9,14 @@ import {
   summariseStock,
   usableLeftovers,
 } from "../../meals/pantry";
-import { perServing, recipeCost, recipeNutrition, scaleFor, totalMinutes } from "../../meals/recipes";
+import {
+  perServing,
+  priceIn,
+  recipeCost,
+  recipeNutrition,
+  scaleFor,
+  totalMinutes,
+} from "../../meals/recipes";
 import {
   cookServingsOf,
   dayRange,
@@ -438,7 +445,20 @@ function shoppingWithShops(list: ShoppingList, state: MealsState, today: string)
     return {
       ...line,
       prices,
-      cost: cheapest && base ? Math.round(cheapest.pricePerBase * base.quantity * 100) / 100 : line.cost,
+      // The cheapest shop's price, in the unit being bought — a per-piece price only through a piece size.
+      cost: (() => {
+        const food = line.ingredientId
+          ? state.ingredients.find((i) => i.id === line.ingredientId)
+          : undefined;
+        const price =
+          cheapest && base && food
+            ? priceIn(
+                { ...food, lastPrice: cheapest.pricePerBase, priceUnit: cheapest.unit ?? food.priceUnit },
+                base.unit
+              )
+            : null;
+        return price !== null && base ? Math.round(price * base.quantity * 100) / 100 : line.cost;
+      })(),
       shop: cheapest ? cheapest.storeName : null,
       priceSource: cheapest ? `${cheapest.manual ? "typed" : "receipt"} ${cheapest.date}` : null,
       mark,

@@ -12,10 +12,32 @@
  * Pure. Ingredients are handed in as a lookup so nothing here reads state.
  */
 
-import { Amount, scaleAmount, toBase } from "./units";
+import { Amount, baseUnit, scaleAmount, toBase } from "./units";
 import type { Ingredient, NutritionPer100, Recipe, RecipeIngredient } from "./types";
 
 export type IngredientLookup = (id: string) => Ingredient | undefined;
+
+/**
+ * A food's price per `base` — g, ml or piece — whatever unit it was bought
+ * in: its own unit as is; a per-piece price through the size of one piece
+ * ("one carton is 1 l"); otherwise null, never a guess. A price with no unit
+ * on record is taken to be in the food's own unit.
+ */
+export function priceIn(
+  food: Pick<Ingredient, "lastPrice" | "priceUnit" | "pieceSize" | "unit">,
+  base: "g" | "ml" | "piece"
+): number | null {
+  if (food.lastPrice === null) return null;
+  const unit = food.priceUnit ?? baseUnit(food.unit);
+  if (unit === base) return food.lastPrice;
+  const piece = food.pieceSize ? toBase(food.pieceSize) : null;
+  if (!piece || piece.quantity <= 0) return null;
+  // Rounded like every price per base unit: past cent precision, short of floating-point noise.
+  const round = (value: number) => Math.round(value * 1e8) / 1e8;
+  if (unit === "piece" && piece.unit === base) return round(food.lastPrice / piece.quantity);
+  if (base === "piece" && piece.unit === unit) return round(food.lastPrice * piece.quantity);
+  return null;
+}
 
 /** How much of one line is needed to cook `servings` of a recipe written for `recipe.servings`. */
 export function scaleFor(recipe: Recipe, servings: number): (ingredient: RecipeIngredient) => Amount {
@@ -30,6 +52,8 @@ export interface Estimate {
   total: number;
   /** The lines that contributed nothing, by name — shown so the gap is visible. */
   missing: string[];
+  /** Of those, the foods priced in another unit — "per piece" for a recipe in ml — fixable with a piece size. */
+  otherUnit?: Array<{ ingredientId: string; name: string; priceUnit: string; wanted: string }>;
 }
 
 /**
@@ -41,18 +65,34 @@ export function recipeCost(recipe: Recipe, servings: number, lookup: IngredientL
   let value: number | null = null;
   let from = 0;
   const missing: string[] = [];
+  const otherUnit: Estimate["otherUnit"] = [];
   const lines = recipe.ingredients.filter((i) => !i.optional);
   for (const line of lines) {
     const ingredient = lookup(line.ingredientId);
     const base = toBase(scale(line));
-    if (!ingredient || ingredient.lastPrice === null || !base) {
+    const price = ingredient && base ? priceIn(ingredient, base.unit) : null;
+    if (!ingredient || !base || price === null) {
       missing.push(line.text || ingredient?.name || "unknown");
+      // Priced, but per piece while the recipe weighs it (or the other way): say so, and how to fix it.
+      if (ingredient && base && ingredient.lastPrice !== null)
+        otherUnit.push({
+          ingredientId: ingredient.id,
+          name: ingredient.name,
+          priceUnit: ingredient.priceUnit ?? baseUnit(ingredient.unit) ?? "piece",
+          wanted: base.unit,
+        });
       continue;
     }
-    value = (value ?? 0) + ingredient.lastPrice * base.quantity;
+    value = (value ?? 0) + price * base.quantity;
     from += 1;
   }
-  return { value: value === null ? null : Math.round(value * 100) / 100, from, total: lines.length, missing };
+  return {
+    value: value === null ? null : Math.round(value * 100) / 100,
+    from,
+    total: lines.length,
+    missing,
+    otherUnit,
+  };
 }
 
 export interface NutritionEstimate {

@@ -113,10 +113,38 @@ test("purchases: prices per unit, per shop, cheapest first, and the two-shop sav
     { id: "cont", name: "Continente" },
   ];
   const prices: PriceRecord[] = [
-    { ingredientId: "chicken", storeId: "cont", pricePerBase: 0.00599, date: "2026-09-10", purchaseId: "p1" },
-    { ingredientId: "chicken", storeId: "cont", pricePerBase: 0.00579, date: "2026-09-19", purchaseId: "p2" },
-    { ingredientId: "chicken", storeId: "lidl", pricePerBase: 0.00549, date: "2026-09-16", purchaseId: null },
-    { ingredientId: "chicken", storeId: "lidl", pricePerBase: 0.001, date: "2025-01-01", purchaseId: "old" },
+    {
+      ingredientId: "chicken",
+      storeId: "cont",
+      pricePerBase: 0.00599,
+      unit: "g",
+      date: "2026-09-10",
+      purchaseId: "p1",
+    },
+    {
+      ingredientId: "chicken",
+      storeId: "cont",
+      pricePerBase: 0.00579,
+      unit: "g",
+      date: "2026-09-19",
+      purchaseId: "p2",
+    },
+    {
+      ingredientId: "chicken",
+      storeId: "lidl",
+      pricePerBase: 0.00549,
+      unit: "g",
+      date: "2026-09-16",
+      purchaseId: null,
+    },
+    {
+      ingredientId: "chicken",
+      storeId: "lidl",
+      pricePerBase: 0.001,
+      unit: "g",
+      date: "2025-01-01",
+      purchaseId: "old",
+    },
   ];
   const byStore = pricesByStore(prices, "chicken", stores, "2026-09-23");
   assert.deepEqual(

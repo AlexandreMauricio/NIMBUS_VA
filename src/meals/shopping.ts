@@ -20,7 +20,7 @@
 
 import { cookServingsOf } from "./plan";
 import { familyOf, stockOf } from "./pantry";
-import { scaleFor } from "./recipes";
+import { priceIn, scaleFor } from "./recipes";
 import type { Amount } from "./units";
 import { toBase } from "./units";
 import type { Ingredient, ManualShoppingItem, PantryItem, PlannedMeal, Recipe } from "./types";
@@ -121,7 +121,8 @@ export function buildShoppingList(
 
   for (const [ingredientId, need] of needs) {
     const have = stockOf(pantry, ingredientId, need.unit, family) ?? 0;
-    const price = ingredients.get(ingredientId)?.lastPrice ?? null;
+    const food = ingredients.get(ingredientId);
+    const price = food ? priceIn(food, need.unit as "g" | "ml" | "piece") : null;
     const short = Math.round((need.quantity - have) * 1000) / 1000;
     if (short <= 0) {
       covered.push({
@@ -163,7 +164,8 @@ export function buildShoppingList(
   for (const item of manual) {
     const amount = item.quantity !== null && item.unit ? { quantity: item.quantity, unit: item.unit } : null;
     const base = amount ? toBase(amount) : null;
-    const price = item.ingredientId ? (ingredients.get(item.ingredientId)?.lastPrice ?? null) : null;
+    const food = item.ingredientId ? ingredients.get(item.ingredientId) : undefined;
+    const price = food && base ? priceIn(food, base.unit) : null;
     const lineCost = price === null || !base ? null : Math.round(price * base.quantity * 100) / 100;
     if (lineCost === null) unpriced += 1;
     else cost = (cost ?? 0) + lineCost;

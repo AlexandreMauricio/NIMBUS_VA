@@ -185,6 +185,15 @@ they show the design's soft placeholder.
 
 ## Cost and nutrition
 
+**Prices keep their unit** — per g, per ml or per piece (a pack, a carton).
+A recipe line is costed only in a matching unit, or through the food's
+**piece size** ("one carton holds 1 l", set on the recipe page when it's
+needed, or in the pantry's food dialog); otherwise it's listed as not in
+the cost, never multiplied across units. Prices from before this was kept
+take the unit of the receipt line they came from, else the unit the food
+sits in the pantry in. An ingredient saved without an amount is kept as
+optional.
+
 Both are estimates, and both say what they were worked out from.
 
 - **Cost** uses the last price paid per ingredient, held per base unit

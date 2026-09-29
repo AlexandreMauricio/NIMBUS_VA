@@ -20,6 +20,21 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.31 — 2026-09-29
+
+- **Fixed: a bowl of cereal costing ~2,000 €.** Prices didn't keep their
+  unit, so milk bought as "1 pack" (priced per piece) was multiplied by the
+  300 ml a recipe asks for — 300 cartons. Prices now keep whether they're
+  per g, ml or piece; a recipe is only costed in a matching unit, or through
+  **how much one piece holds** ("one carton is 1 l"). Where a price is in
+  another unit, the recipe page says so and asks for that size right there;
+  the pantry's food dialog has it too. Older prices take the unit they were
+  bought in (the receipt line, else how the food sits in the pantry).
+- The shopping list's per-shop costs use the same rule.
+- **An ingredient with no amount is no longer dropped** from a recipe: it's
+  kept as optional (shown, not costed or bought), and the editor suggests
+  rough portions (a bowl of cereal ≈ 40 g with 200–250 ml of milk).
+
 ## 0.6.30 — 2026-09-29
 
 - **Books reads your Obsidian comics vault.** A new **Vault** pane: choose

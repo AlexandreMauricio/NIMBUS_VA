@@ -31,7 +31,7 @@ import type { Family } from "./pantry";
 import { pricePerBaseUnit, recipeCost, scaleFor } from "./recipes";
 import { effectOfReplacing, generatePlan, proposalFigures, replaceOptions } from "./generator";
 import type { PlannerInput, ReplaceOption } from "./generator";
-import { currentPrice, guessPlace, linePricePerBase, matchLine } from "./purchases";
+import { currentPrice, guessPlace, linePricePerBase, linePriceUnit, matchLine } from "./purchases";
 import { buildShoppingList } from "./shopping";
 import type { ShoppingList } from "./shopping";
 import {
@@ -93,7 +93,7 @@ import {
 import { ingredientKey, matchIngredient } from "./names";
 import { cookServingsOf, dayRange, freeMealsAfter, servingsNeeded, spreadLeftovers } from "./plan";
 import { parseAmountText } from "./recipeImport";
-import { formatAmount, normaliseUnit, subtract, toBase } from "./units";
+import { baseUnit, formatAmount, normaliseUnit, subtract, toBase } from "./units";
 
 function text(value: unknown, max: number): string | null {
   return typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ").slice(0, max) : null;
@@ -174,6 +174,8 @@ export function parseIngredient(raw: unknown): Ingredient | null {
         : null,
     fridgeDays: positive(r.fridgeDays),
     lastPackaging: text(r.lastPackaging, 120),
+    priceUnit: r.priceUnit === "g" || r.priceUnit === "ml" || r.priceUnit === "piece" ? r.priceUnit : null,
+    pieceSize: parsePieceSize(r.pieceSize),
     countsAs: typeof r.countsAs === "string" && r.countsAs && r.countsAs !== r.id ? r.countsAs : null,
     addedAt: stamp(r.addedAt),
     updatedAt: stamp(r.updatedAt),
@@ -470,7 +472,7 @@ export function parseState(raw: unknown): MealsState {
           .filter((entry): entry is T => entry !== null)
           .slice(0, max)
       : [];
-  return {
+  const state: MealsState = {
     version: 1,
     ingredients: take(r.ingredients, parseIngredient, MAX_INGREDIENTS),
     recipes: take(r.recipes, parseRecipe, MAX_RECIPES),
@@ -488,6 +490,8 @@ export function parseState(raw: unknown): MealsState {
     shoppingMarks: take(r.shoppingMarks, parseShoppingMark, MAX_SHOPPING_MARKS),
     proposal: parseProposal(r.proposal),
   };
+  inferPriceUnits(state);
+  return state;
 }
 
 /** A held proposal, checked like the plan it would become. */
@@ -621,6 +625,48 @@ function parsePurchase(raw: unknown): Purchase | null {
   };
 }
 
+/** "One piece is 1 l": a weight or volume, never pieces of pieces. */
+function parsePieceSize(raw: unknown): Ingredient["pieceSize"] {
+  const r = (raw ?? null) as Record<string, unknown> | null;
+  if (!r) return null;
+  const quantity = positive(r.quantity);
+  const unit = normaliseUnit(r.unit);
+  const base = quantity !== null && unit ? toBase({ quantity, unit }) : null;
+  return base && base.unit !== "piece" ? { quantity: quantity!, unit: unit! } : null;
+}
+
+/**
+ * Files from before prices kept their unit: each price gets the unit of
+ * the purchase line it came from, else the unit the food sits in the pantry
+ * in (a price typed at "Bought" is for the amount put in the pantry), else
+ * the food's own unit.
+ */
+function inferPriceUnits(state: MealsState): void {
+  const lineUnit = new Map<string, "g" | "ml" | "piece">();
+  for (const purchase of state.purchases)
+    for (const line of purchase.lines) {
+      const unit = line.ingredientId && line.confirmed ? linePriceUnit(line) : null;
+      if (unit) lineUnit.set(`${purchase.id}|${line.ingredientId}`, unit);
+    }
+  for (const ingredient of state.ingredients) {
+    if (ingredient.priceUnit || ingredient.lastPrice === null) continue;
+    const latest = [...state.prices]
+      .filter((record) => record.ingredientId === ingredient.id && record.purchaseId)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((record) => lineUnit.get(`${record.purchaseId}|${ingredient.id}`))
+      .find(Boolean);
+    const stocked = state.pantry.find((item) => item.ingredientId === ingredient.id);
+    ingredient.priceUnit = latest ?? (stocked ? baseUnit(stocked.unit) : null) ?? baseUnit(ingredient.unit);
+  }
+  for (const record of state.prices) {
+    if (record.unit) continue;
+    record.unit =
+      (record.purchaseId ? lineUnit.get(`${record.purchaseId}|${record.ingredientId}`) : undefined) ??
+      state.ingredients.find((i) => i.id === record.ingredientId)?.priceUnit ??
+      null;
+  }
+}
+
 function parsePriceRecord(raw: unknown): PriceRecord | null {
   const r = (raw ?? {}) as Record<string, unknown>;
   const date = isoDay(r.date);
@@ -637,6 +683,7 @@ function parsePriceRecord(raw: unknown): PriceRecord | null {
     ingredientId: r.ingredientId,
     storeId: typeof r.storeId === "string" && r.storeId ? r.storeId : null,
     pricePerBase: r.pricePerBase,
+    unit: r.unit === "g" || r.unit === "ml" || r.unit === "piece" ? r.unit : null,
     date,
     purchaseId: typeof r.purchaseId === "string" && r.purchaseId ? r.purchaseId : null,
   };
@@ -776,6 +823,8 @@ export class MealService {
       lastPrice: null,
       fridgeDays: null,
       lastPackaging: null,
+      priceUnit: null,
+      pieceSize: null,
       countsAs: null,
       addedAt: this.now(),
       updatedAt: this.now(),
@@ -801,6 +850,12 @@ export class MealService {
           ? c.lastPrice
           : null;
     if (c.fridgeDays !== undefined) ingredient.fridgeDays = positive(c.fridgeDays);
+    if (c.priceUnit !== undefined)
+      ingredient.priceUnit =
+        c.priceUnit === "g" || c.priceUnit === "ml" || c.priceUnit === "piece" ? c.priceUnit : null;
+    // A typed price is in the food's own unit unless said otherwise.
+    else if (c.lastPrice !== undefined) ingredient.priceUnit = baseUnit(ingredient.unit);
+    if (c.pieceSize !== undefined) ingredient.pieceSize = parsePieceSize(c.pieceSize);
     if (c.countsAs !== undefined) this.setCountsAs(ingredient, c.countsAs);
     ingredient.updatedAt = this.now();
     this.save();
@@ -1681,12 +1736,13 @@ export class MealService {
     if (paid !== null) {
       const price = pricePerBaseUnit(paid, { quantity, unit });
       if (price !== null) {
-        this.updateIngredient(item.ingredientId, { lastPrice: price });
+        this.updateIngredient(item.ingredientId, { lastPrice: price, priceUnit: baseUnit(unit) });
         const store = text(r.store, 60) ? this.ensureStore(r.store) : null;
         this.recordPrice({
           ingredientId: item.ingredientId,
           storeId: store?.id ?? null,
           pricePerBase: price,
+          unit: baseUnit(unit),
           date: this.today(),
           purchaseId: null,
         });
@@ -1720,7 +1776,13 @@ export class MealService {
     return store;
   }
 
+  /** A price paid, kept with its unit — which becomes the unit the food is priced in. */
   private recordPrice(record: PriceRecord): void {
+    const food = this.state.ingredients.find((i) => i.id === record.ingredientId);
+    if (food) {
+      food.lastPrice = record.pricePerBase;
+      food.priceUnit = record.unit;
+    }
     this.state.prices.push(record);
     if (this.state.prices.length > MAX_PRICES)
       this.state.prices.splice(0, this.state.prices.length - MAX_PRICES);
@@ -1894,10 +1956,10 @@ export class MealService {
           ingredientId: ingredient.id,
           storeId: purchase.storeId,
           pricePerBase: perBase,
+          unit: linePriceUnit(line),
           date: purchase.date,
           purchaseId: purchase.id,
         });
-        ingredient.lastPrice = perBase;
       }
       if (toPantry && line.quantity !== null && line.unit) {
         const place = line.bags ? "freezer" : line.place;

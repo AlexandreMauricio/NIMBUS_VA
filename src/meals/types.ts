@@ -71,6 +71,14 @@ export interface Ingredient {
   nutritionSource: string | null;
   /** The last price paid, per base unit (€/g, €/ml or €/piece), or null. */
   lastPrice: number | null;
+  /**
+   * Which base unit `lastPrice` is per: "g", "ml" or "piece". A carton of
+   * milk bought as "1 pack" is priced per piece — never to be multiplied by
+   * the 300 ml a recipe asks for.
+   */
+  priceUnit: "g" | "ml" | "piece" | null;
+  /** How much one piece (a carton, a pack) holds, e.g. 1 l — lets a per-piece price cost a recipe in ml. */
+  pieceSize: { quantity: number; unit: string } | null;
   /** How long it keeps once in the fridge, in days — used to suggest an eat-by date. */
   fridgeDays: number | null;
   /** The package it last came in ("1 kg pack"), so the shopping side can say what to buy. */
@@ -481,6 +489,8 @@ export interface PriceRecord {
   storeId: string | null;
   /** €/g, €/ml or €/piece. */
   pricePerBase: number;
+  /** Which of those; null in files written before it was kept. */
+  unit: "g" | "ml" | "piece" | null;
   date: string;
   purchaseId: string | null;
 }
