@@ -11,8 +11,12 @@ import {
 } from "../../collections";
 import type { AmbiguousRun } from "../../collections";
 import { chooseCoverFile, removeCoverFile } from "../coverStore";
+import { ComicsVault } from "../comicsVault";
 import { handle } from "./handle";
 import type { IpcContext } from "./context";
+
+/** The comics vault (an Obsidian folder) on this PC — read-only; see comicsVault.ts. */
+let comicsVault: ComicsVault | undefined;
 
 /** Background GCD lookups of read issues' characters and creators — set up with the handlers. */
 let creditsQueue: CreditsQueue | undefined;
@@ -158,6 +162,16 @@ export function registerBooksIpc(ctx: IpcContext): void {
   // are downloaded whole and matched here.
   // Editions by title from Wikipedia's lists — searched on the PC; nothing is sent.
   handle("nimbus:search-book-editions", (_event, query: unknown) => ctx.wikipediaCollections.search(query));
+  // The comics vault: this PC's folder, chosen in NIMBUS's own dialog, read and never written.
+  comicsVault ??= new ComicsVault(() => {
+    for (const win of BrowserWindow.getAllWindows())
+      if (!win.isDestroyed()) win.webContents.send("nimbus:comics-vault-changed");
+  });
+  const vault = comicsVault;
+  handle("nimbus:get-comics-vault", () => vault.snapshot());
+  handle("nimbus:choose-comics-vault", () => vault.choose(BrowserWindow.getFocusedWindow()));
+  handle("nimbus:clear-comics-vault", () => vault.clear());
+  handle("nimbus:open-vault-note", (_event, notePath: unknown) => vault.openNote(notePath));
   handle("nimbus:find-book-contents", (_event, isbn: unknown) =>
     typeof isbn === "string" && isbn.length <= 20 ? ctx.wikipediaCollections.findByIsbn([isbn]) : null
   );

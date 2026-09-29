@@ -6557,3 +6557,114 @@ button.meals-alt-btn:hover {
   margin-left: 6px;
   font-size: 0.75em;
 }
+
+/* ---------- Books: the comics vault (read-only) ---------- */
+
+.books-vault {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.books-vault-folder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  border: 1px dashed var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.books-vault-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.books-vault-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface, var(--color-neutral-900));
+}
+
+.books-vault-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.books-vault-table-title {
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--color-neutral-300);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.books-vault-table-wrap {
+  overflow-x: auto;
+}
+
+.books-vault-table {
+  width: 100%;
+  font-size: 0.8rem;
+}
+
+.books-vault-table td,
+.books-vault-table th {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.books-vault-panel {
+  margin: var(--space-6) 0;
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.books-vault-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.books-vault-head .btn {
+  margin-left: auto;
+}
+
+.books-vault-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px var(--space-6);
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.books-vault-facts dt {
+  color: var(--color-neutral-400);
+}
+
+.books-vault-facts dd {
+  margin: 0;
+}
+
+.tag.books-vault-incoming {
+  border: 1px solid var(--color-accent-600);
+  color: var(--color-accent-600);
+}
+
+.tag.books-vault-planned {
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
+}
+
+.tag.books-vault-oop {
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+}

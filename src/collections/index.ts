@@ -32,6 +32,7 @@ export {
 export { coverUrlForIsbn, isCoverUrl, isChosenCover, chosenCoverUrl } from "./books/covers";
 export { issueReadKey } from "./books/bookService";
 export { CreditsQueue } from "./books/creditsQueue";
+export * from "./books/vault";
 export type { CreditsQueueState } from "./books/creditsQueue";
 export {
   creditsFromGcd,

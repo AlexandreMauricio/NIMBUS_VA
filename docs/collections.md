@@ -134,7 +134,7 @@ progress from them; a novel or a book without issues keeps a percentage.
 Status follows: Not started, Reading, Read.
 
 **The reading log** ([readings.ts](../src/collections/books/readings.ts)).
-Ticking an issue says it's read; the log says *when*, and every time. On a
+Ticking an issue says it's read; the log says _when_, and every time. On a
 book's page, **Log a reading** takes a stretch of its issues (#3 to #14), a
 day, and the minutes each took; on an issue's page each reading is listed,
 removable, and another can be logged — reading the same Epic Collection
@@ -201,6 +201,34 @@ with Electron's own network stack — both 403), so single issues show a
 placeholder; League of Comic Geeks has their covers.
 
 The shelf is `books.json`, validated book by book on load.
+
+### The comics vault (Obsidian, read-only)
+
+If you keep a comics vault in Obsidian — a note per book in `Books/`, its
+properties the data — the **Vault** pane reads it
+([comicsVault.ts](../src/main/comicsVault.ts),
+[vault.ts](../src/collections/books/vault.ts)). **Choose folder** picks it in
+NIMBUS's own dialog; the choice lives in `<userData>/comics-vault.json`, so
+each PC keeps its own (the laptop's copy and the desktop's can be in
+different places). NIMBUS **never writes to it**; the folder is watched and
+a note saved in Obsidian (or a `git pull`) shows up straight away.
+
+- Notes are matched to NIMBUS's books by **ISBN** (any printing), then an
+  Epic Collection's **line and number**, then **name** ("The Mighty Thor
+  Omnibus Vol 4" is "The Mighty Thor Omnibus" · "Vol. 4").
+- A matched book's page shows **From your vault**: status, what it collects,
+  creators, era, prices paid and seen and where, cart, urgency, your rating,
+  the ranking, Goodreads, what covers it and what it covers — and **Open in
+  Obsidian** (an `obsidian://` link to that note only). Shelf rows show the
+  vault's status when it says more than owned or wanted (incoming, planned,
+  covered, out of print…).
+- The pane lists **Next to read** (`next_read`), the **Cart Planner**'s
+  tables as `Tools/refresh.py` last wrote them (with when — run it after
+  orders, arrivals or finished books), **carts by month** with their totals,
+  and the notes **not in NIMBUS yet**: **Add** fills the add form from the
+  note (title, volume, format, newest ISBN, owned or wishlist, what it
+  collects) and looks its contents up by ISBN; covered Epics say which
+  omnibus has them instead.
 
 ## Card pages
 

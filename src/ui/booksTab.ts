@@ -41,6 +41,9 @@ import {
 } from "./readingLog";
 import { seriesYearsPanel } from "./seriesYearsPanel";
 import { creditsEditor } from "./creditsEditor";
+import { VaultBridge, VaultSnapshotUI, vaultByBook, vaultPane, vaultPanel, vaultTag } from "./booksVault";
+import { bookFromVault } from "../collections/books/vault";
+import type { VaultBook } from "../collections/books/vault";
 
 interface GcdSeriesUI {
   id: number;
@@ -87,7 +90,7 @@ interface EditionUI extends ContentsUI {
   isbn: string | null;
 }
 
-interface BooksBridge {
+interface BooksBridge extends VaultBridge {
   getBooks(filter: Record<string, unknown>): Promise<{
     books: Book[];
     coverage: SeriesCoverage[];
@@ -120,7 +123,7 @@ type Page =
   | { view: "issue"; bookId: string; series: string; year: number | null; number: number }
   | { view: "add" };
 
-type Pane = "shelf" | "reading" | "wishlist" | "stats";
+type Pane = "shelf" | "reading" | "wishlist" | "stats" | "vault";
 
 function bridge(): BooksBridge {
   return (window as unknown as { nimbus: BooksBridge }).nimbus;
@@ -220,7 +223,11 @@ export function initBooksTab(): void {
     reading: byId("booksPaneReading"),
     wishlist: byId("booksPaneWishlist"),
     stats: byId("booksPaneStats"),
+    vault: byId("booksPaneVault"),
   };
+  /** The comics vault as last read (read-only), and its notes by NIMBUS book id. */
+  let vault: VaultSnapshotUI | null = null;
+  let vaultNotes = new Map<string, VaultBook>();
   const grid = byId<HTMLElement>("bookGrid");
   const empty = byId<HTMLElement>("bookEmpty");
   const readingList = byId<HTMLElement>("bookReadingList");
@@ -348,6 +355,12 @@ export function initBooksTab(): void {
       coverage = view.coverage;
       readIssues = new Set(view.readIssues ?? []);
       readingLog = view.readingLog ?? readingLog;
+      try {
+        vault = await bridge().getComicsVault();
+      } catch {
+        vault = null;
+      }
+      vaultNotes = vaultByBook(vault, books);
       if (!formatsFilled) {
         formatsFilled = true;
         for (const name of view.formats) format.appendChild(new Option(name, name));
@@ -458,6 +471,19 @@ export function initBooksTab(): void {
         );
         for (const book of retired) readingList.appendChild(bookRow(book, "retired"));
       }
+    } else if (pane === "vault") {
+      panes.vault.replaceChildren(
+        vaultPane(vault, books, bridge(), {
+          onAdd: addFromVault,
+          onOpenBook: (id) => go({ view: "book", id }),
+          onError: (message) => show(errorEl, message),
+          onChanged: (next) => {
+            vault = next;
+            vaultNotes = vaultByBook(vault, books);
+            render();
+          },
+        })
+      );
     } else if (pane === "wishlist") {
       wishlistList.replaceChildren();
       const wanted = books.filter((b) => b.status === "wishlist");
@@ -778,6 +804,9 @@ export function initBooksTab(): void {
       body.appendChild(line);
       row.appendChild(body);
       if (book.status === "wishlist") row.appendChild(make("span", "tag tag-outline", "Wishlist"));
+      const note = vaultNotes.get(book.id);
+      const tag = note && note.status !== "owned" && note.status !== "wanted" ? vaultTag(note) : null;
+      if (tag) row.appendChild(tag);
       list.appendChild(row);
     }
     detailView.appendChild(list);
@@ -914,6 +943,8 @@ export function initBooksTab(): void {
     info.appendChild(progressLine);
     hero.appendChild(info);
     detailView.appendChild(hero);
+    const note = vaultNotes.get(book.id);
+    if (note) detailView.appendChild(vaultPanel(note, bridge()));
 
     const years = seriesYearsPanel(book);
     if (years) detailView.appendChild(years);
@@ -1315,6 +1346,27 @@ export function initBooksTab(): void {
     title.focus();
   }
 
+  /** A vault note into the add form, its contents then looked up by ISBN as the form does. */
+  function addFromVault(note: VaultBook): void {
+    const target = bookFromVault(note);
+    openAdd();
+    openForm(
+      {
+        kind: "comic",
+        title: target.title,
+        volume: target.volume,
+        format: target.format,
+        isbn: target.isbn,
+        status: target.status,
+        shelf: note.line,
+        // The note's own "issues", until Wikipedia's list (looked up below) has better.
+        runsText: note.issues ? note.issues.replace(/[–—]/g, "-") : undefined,
+      },
+      `From your vault: ${note.name}${note.issues ? ` — collects ${note.issues}` : ""}. Check it and save.`
+    );
+    if (target.isbn) findContentsBtn.click();
+  }
+
   function openAdd(): void {
     editingId = null;
     source = null;
@@ -1696,6 +1748,8 @@ export function initBooksTab(): void {
   });
   // Covers arriving or a save elsewhere: redraw the page you're on, unless
   // it's the form (which would lose what you're typing).
+  // A note saved in Obsidian (or a git pull) reads the vault again.
+  bridge().onComicsVaultChanged(() => void load());
   bridge().onBooksChanged(() => {
     if (page.view !== "add") void load();
   });

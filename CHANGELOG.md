@@ -20,6 +20,22 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.30 — 2026-09-29
+
+- **Books reads your Obsidian comics vault.** A new **Vault** pane: choose
+  the vault folder (kept per PC, so the laptop and the desktop can each
+  point at their own copy); NIMBUS reads the book notes' properties and
+  never writes to them, and picks up a saved note straight away.
+- It shows what to **read next** in each line, the **Cart Planner** as
+  refresh.py last wrote it, **carts by month** with totals, and the notes
+  **not in NIMBUS yet** — one click fills the add form (title, volume,
+  format, ISBN, owned or wishlist, what it collects) and looks up the
+  contents.
+- A book matched to a note (by ISBN, Epic number or name) gets a **From
+  your vault** panel — status, prices and store, cart and urgency,
+  ratings, Goodreads, what covers it — and **Open in Obsidian**; shelf rows
+  show statuses like Incoming, Planned or Covered.
+
 ## 0.6.29 — 2026-09-23
 
 - **The planner fills every meal.** When nothing passes every rule, the

@@ -375,6 +375,16 @@ contextBridge.exposeInMainWorld("nimbus", {
   updateBook: (id: string, input: Record<string, unknown>): Promise<unknown> =>
     ipcRenderer.invoke("nimbus:update-book", id, input),
   removeBook: (id: string): Promise<boolean> => ipcRenderer.invoke("nimbus:remove-book", id),
+  getComicsVault: (): Promise<unknown> => ipcRenderer.invoke("nimbus:get-comics-vault"),
+  chooseComicsVault: (): Promise<unknown> => ipcRenderer.invoke("nimbus:choose-comics-vault"),
+  clearComicsVault: (): Promise<unknown> => ipcRenderer.invoke("nimbus:clear-comics-vault"),
+  openVaultNote: (notePath: string): Promise<boolean> =>
+    ipcRenderer.invoke("nimbus:open-vault-note", notePath),
+  onComicsVaultChanged: (callback: () => void): (() => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("nimbus:comics-vault-changed", listener);
+    return () => ipcRenderer.removeListener("nimbus:comics-vault-changed", listener);
+  },
   onBooksChanged: (callback: () => void): (() => void) => {
     const listener = () => callback();
     ipcRenderer.on("nimbus:books-changed", listener);
