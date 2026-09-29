@@ -20,6 +20,16 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.32 — 2026-09-29
+
+- **What you can make**, at the top of the Pantry: your recipes that are
+  ready from what's at home, and those a thing or two away (with what
+  they need) — the ones that use up food going off soonest first, then
+  favourites and the quickest. Each can be cooked, planned for the next
+  free meal (tonight, else tomorrow), or have what's missing put on the
+  shopping list. Food families count: soy milk at home makes milk recipes
+  ready.
+
 ## 0.6.31 — 2026-09-29
 
 - **Fixed: a bowl of cereal costing ~2,000 €.** Prices didn't keep their

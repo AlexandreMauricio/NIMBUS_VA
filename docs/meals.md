@@ -245,7 +245,10 @@ for the shopping list and the pantry:
 - **Shopping** — what the week needs that the kitchen hasn't got, why
   each line is there, and **Bought** to put it in the pantry at the price
   you paid.
-- **Pantry** — four counters (expiring within 48 h, this week, needing a
+- **Pantry** — **What you can make** first: your recipes ready from what's
+  at home and those a thing or two away, those using up food that's going
+  off first, each with Cook, Plan (the next free lunch or dinner) and Add
+  missing to shopping. Then four counters (expiring within 48 h, this week, needing a
   check, confirmed), chips to filter, **Stock check** to walk through every
   estimated item in turn, then a group per place with a bar per item
   showing how much of the package is left, **Correct**, and the prepared

@@ -1,4 +1,5 @@
 import { generalFoods } from "./purchases";
+import { fromPantryPanel } from "./fromPantry";
 import { parseAmountText } from "../../meals/recipeImport";
 import {
   CORRECTION_LABELS,
@@ -53,6 +54,8 @@ export function pantryView(data: MealsSnapshot): HTMLElement {
     counter(String(counts.confirmed), `of ${data.stock.length} confirmed`)
   );
   wrap.appendChild(counters);
+  // Meals from what's here: what you can make now, and what's a thing or two away.
+  wrap.appendChild(fromPantryPanel(data));
 
   const filters: Array<[MealsUiState["pantryFilter"], string]> = [
     ["all", "All"],
