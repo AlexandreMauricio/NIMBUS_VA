@@ -126,6 +126,11 @@ contextBridge.exposeInMainWorld("nimbus", {
   getAppInfo: () => ipcRenderer.invoke("nimbus:get-app-info"),
 
   getSettings: (): Promise<StartupSettings> => ipcRenderer.invoke("nimbus:get-settings"),
+  dataSummary: (): Promise<unknown> => ipcRenderer.invoke("nimbus:data-summary"),
+  exportData: (): Promise<string | null> => ipcRenderer.invoke("nimbus:export-data"),
+  readImport: (): Promise<unknown> => ipcRenderer.invoke("nimbus:read-import"),
+  cancelImport: (): Promise<void> => ipcRenderer.invoke("nimbus:cancel-import"),
+  applyImport: (sections: string[]): Promise<unknown> => ipcRenderer.invoke("nimbus:apply-import", sections),
   updateSettings: (partial: Partial<StartupSettings>): Promise<StartupSettings> =>
     ipcRenderer.invoke("nimbus:update-settings", partial),
 

@@ -6694,3 +6694,26 @@ button.meals-alt-btn:hover {
 .meals-from-pantry .meals-row-tight {
   margin-left: auto;
 }
+
+/* Settings → Your data. */
+.data-transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-6);
+}
+
+.data-transfer-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.data-transfer-section {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}

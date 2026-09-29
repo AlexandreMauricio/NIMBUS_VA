@@ -20,6 +20,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.33 — 2026-09-29
+
+- **Move your data to another PC.** Settings → Your data → **Export my
+  data…** writes one file with your meals (and recipe photos), books (and
+  chosen covers), cards, decks and memory. On the other PC, **Import from a
+  file…** shows what's in it; tick the parts to bring over. Each part
+  ticked replaces that PC's — whose copy is first backed up to
+  `<userData>/backups/` — and NIMBUS restarts. Settings, passwords, tokens
+  and per-PC things (the comics vault folder, usage history) never go in
+  the file.
+
 ## 0.6.32 — 2026-09-29
 
 - **What you can make**, at the top of the Pantry: your recipes that are

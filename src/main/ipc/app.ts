@@ -1,3 +1,5 @@
+import { BrowserWindow } from "electron";
+import { applyImport, cancelImport, exportData, localSummary, readImport } from "../dataTransfer";
 import { logger } from "../../logging/logger";
 import { saveSettings } from "../../settings/settingsManager";
 import { APP_FULL_NAME, APP_NAME, APP_VERSION } from "../../common/appInfo";
@@ -11,6 +13,13 @@ import type { IpcContext } from "./context";
 
 /** App, window, zoom, updates and the briefing. Registered once at startup; see ARCHITECTURE.md for the channels. */
 export function registerAppIpc(ctx: IpcContext): void {
+  // Moving your data to another PC (src/main/dataTransfer.ts): dialogs are main's; nothing is
+  // written on import until sections are chosen, and then NIMBUS restarts.
+  handle("nimbus:data-summary", () => localSummary());
+  handle("nimbus:export-data", () => exportData(BrowserWindow.getFocusedWindow()));
+  handle("nimbus:read-import", () => readImport(BrowserWindow.getFocusedWindow()));
+  handle("nimbus:cancel-import", () => cancelImport());
+  handle("nimbus:apply-import", (_event, sections: unknown) => applyImport(sections));
   handle("nimbus:get-app-info", () => ({
     name: APP_NAME,
     fullName: APP_FULL_NAME,
