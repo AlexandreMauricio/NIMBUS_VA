@@ -20,6 +20,16 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.41 — 2026-10-05
+
+- **The main window's script is split up.** `renderer.ts` was 4,684
+  lines; it is now 115 that start each part in order, and the parts have
+  a module each: the settings forms, the now-playing card, the Routines
+  tab, the Tasks tab, the briefing, the Context tab, the Calendar tab, the
+  activity feed and the Activity views, with the bridge's types in
+  `rendererTypes.ts`. The move is mechanical — every line of code is the
+  same — and the window loads and behaves as before.
+
 ## 0.6.40 — 2026-10-05
 
 - **Meals saves are gathered.** Cooking a meal or confirming a purchase

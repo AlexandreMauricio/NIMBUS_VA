@@ -355,7 +355,11 @@ src/
 
   ui/                       [5] Renderers (main window, suggestion popup,
                                    timer popup), bundled by esbuild; styled
-                                   with the vendored Nocturne design system
+                                   with the vendored Nocturne design system.
+                                   The main window's renderer.ts only
+                                   starts its parts, one module each (a
+                                   tab, a card, a settings section);
+                                   rendererTypes.ts types window.nimbus
 
   services/                 Placeholder — see src/services/README.md
 ```
@@ -368,8 +372,8 @@ a device capability.
 ## The UI/preload bridge and IPC surface
 
 Every window runs with `contextIsolation: true`, `nodeIntegration: false`,
-and a Content Security Policy limiting scripts to the app itself. A
-renderer can only call what its preload exposes. No window can navigate
+`sandbox: true`, and a Content Security Policy limiting scripts to the app
+itself. A renderer can only call what its preload exposes. No window can navigate
 away from NIMBUS's pages or open another window (`navigationGuard.ts` —
 dropping a file or link on a window does nothing), and every handler
 answers only a sender whose page is under the app's own `ui/` folder.

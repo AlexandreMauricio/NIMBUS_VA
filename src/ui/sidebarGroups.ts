@@ -53,3 +53,8 @@ export function initSidebarGroups(): void {
     });
   });
 }
+
+/** Opens a tab as if its sidebar link were clicked — which also unfolds its group. */
+export function switchToTab(tabName: string): void {
+  document.querySelector<HTMLButtonElement>(`.side-link[data-tab="${tabName}"]`)?.click();
+}
