@@ -59,6 +59,7 @@ export function showTimerWindow(): void {
       preload: path.join(__dirname, "..", "preload", "timerPreload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   timerWindow.setAlwaysOnTop(true, "screen-saver");

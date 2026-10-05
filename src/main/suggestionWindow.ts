@@ -63,6 +63,7 @@ function createWindow(): BrowserWindow {
       preload: path.join(__dirname, "..", "preload", "suggestionPreload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   win.setAlwaysOnTop(true, "screen-saver");

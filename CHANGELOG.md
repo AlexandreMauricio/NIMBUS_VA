@@ -20,6 +20,15 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.35 — 2026-10-05
+
+- **Every window says it is sandboxed.** The main window, the suggestion
+  popup and the timer now set `sandbox: true`. Electron has done this by
+  default since version 20; saying so means a dependency or a later edit
+  can't quietly turn it off. A new test checks that the preloads, which a
+  sandbox only lets load `electron`, never gain an import that would break
+  a window on open.
+
 ## 0.6.34 — 2026-10-05
 
 - **One way to write state files.** The temp-file, fsync, rename write

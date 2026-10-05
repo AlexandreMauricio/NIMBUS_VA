@@ -170,6 +170,9 @@ function createMainWindow(show: boolean): void {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Electron's default since 20, stated so nothing can quietly turn it
+      // off. The preloads may only require "electron" (preload.test.ts).
+      sandbox: true,
     },
   });
 
