@@ -32,7 +32,7 @@ import {
   portableSettings,
   readBundle,
 } from "../transfer/bundle";
-import { writeFileAtomic } from "./jsonFile";
+import { flushPendingWrites, writeFileAtomic } from "./jsonFile";
 import type {
   SectionId,
   SectionSpec,
@@ -96,6 +96,8 @@ export async function exportData(parent: BrowserWindow | null): Promise<string |
   };
   const picked = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
   if (picked.canceled || !picked.filePath) return null;
+  // Saves still waiting would leave the files behind what's in memory.
+  flushPendingWrites();
   const bundle: TransferBundle = {
     format: TRANSFER_FORMAT,
     version: TRANSFER_VERSION,
@@ -169,6 +171,9 @@ export function applyImport(chosen: unknown): { backup: string } {
       SECTION_IDS.includes(id as SectionId) && Boolean(pending!.sections[id as SectionId])
   );
   if (!ids.length) throw new Error("Tick at least one part to import.");
+  // So the backup holds the latest, and nothing waiting is written over
+  // the import afterwards.
+  flushPendingWrites();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backup = path.join(userData(), "backups", `before-import-${stamp}`);
   fs.mkdirSync(backup, { recursive: true });

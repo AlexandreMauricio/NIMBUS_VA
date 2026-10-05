@@ -20,6 +20,14 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.40 — 2026-10-05
+
+- **Meals saves are gathered.** Cooking a meal or confirming a purchase
+  changes many things, and each change wrote the whole of `meals.json`.
+  Saves now wait a quarter of a second and write once, with everything
+  that changed. Nothing waits past that: whatever is still waiting is
+  written when NIMBUS quits and before your data is exported or imported.
+
 ## 0.6.39 — 2026-10-05
 
 - **The Meals service is split up.** `mealService.ts` was 2,494 lines.

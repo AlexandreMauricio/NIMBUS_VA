@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { loadJsonOrSetAside, saveJsonFile, writeFileAtomic } from "./jsonFile";
+import {
+  DebouncedJsonFile,
+  flushPendingWrites,
+  loadJsonOrSetAside,
+  saveJsonFile,
+  writeFileAtomic,
+} from "./jsonFile";
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "nimbus-json-"));
@@ -61,4 +67,50 @@ test("loadJsonOrSetAside moves an unreadable file aside instead of losing it", (
   assert.equal(files.length, 1);
   assert.match(files[0], /^books\.unreadable-\d+\.json$/);
   assert.equal(fs.readFileSync(path.join(dir, files[0]), "utf-8"), "{ not json");
+});
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("DebouncedJsonFile: saves in a row are one write, of the latest value", async () => {
+  const file = path.join(tempDir(), "meals.json");
+  const writes: number[] = [];
+  const debounced = new DebouncedJsonFile(() => {
+    writes.push(Date.now());
+    return file;
+  }, 30);
+  const state = { count: 0 };
+  for (let i = 1; i <= 5; i++) {
+    state.count = i;
+    debounced.save(state);
+  }
+  assert.equal(fs.existsSync(file), false, "nothing written yet");
+  await pause(80);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf-8")), { count: 5 });
+  assert.equal(writes.length, 1);
+});
+
+test("DebouncedJsonFile: a save waits at most its delay, however many follow", async () => {
+  const file = path.join(tempDir(), "meals.json");
+  const debounced = new DebouncedJsonFile(() => file, 40);
+  debounced.save({ n: 1 });
+  await pause(25);
+  debounced.save({ n: 2 });
+  await pause(25);
+  // 50 ms after the first save: written, though the last was 25 ms ago.
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf-8")), { n: 2 });
+});
+
+test("flushPendingWrites writes every waiting file now, and only once", () => {
+  const dir = tempDir();
+  const a = new DebouncedJsonFile(() => path.join(dir, "a.json"), 10_000);
+  const b = new DebouncedJsonFile(() => path.join(dir, "b.json"), 10_000);
+  a.save({ a: 1 });
+  b.save({ b: 1 });
+  flushPendingWrites();
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["a.json", "b.json"]);
+  // Nothing waits any more: a file changed after the flush isn't overwritten.
+  fs.writeFileSync(path.join(dir, "a.json"), '{"imported":true}');
+  flushPendingWrites();
+  a.flush();
+  assert.equal(fs.readFileSync(path.join(dir, "a.json"), "utf-8"), '{"imported":true}');
 });

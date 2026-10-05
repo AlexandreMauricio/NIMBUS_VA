@@ -5,6 +5,7 @@ import { configureLocale } from "../common/locale";
 import { APP_ID } from "../common/appInfo";
 import { startApp } from "./lifecycle";
 import { installNavigationGuard } from "./navigationGuard";
+import { flushPendingWrites } from "./jsonFile";
 
 /**
  * Entry point for the Windows (Electron) client. Wires up global error
@@ -41,6 +42,9 @@ protocol.registerSchemesAsPrivileged([
 // `app.getLocale()` needs Electron ready; briefing/context generation
 // only ever happens after that anyway, so this is always set in time.
 app.whenReady().then(() => configureLocale(app.getLocale()));
+
+// A quit that skips before-quit (app.exit) still writes what's waiting.
+process.on("exit", () => flushPendingWrites());
 
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught exception", { error: String(err), stack: err.stack });

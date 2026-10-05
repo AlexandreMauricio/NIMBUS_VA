@@ -85,3 +85,56 @@ export function loadJsonOrSetAside(file: string): unknown {
     return null;
   }
 }
+
+/** Gathered saves not yet written — see DebouncedJsonFile. */
+const pendingFiles = new Set<DebouncedJsonFile>();
+
+/**
+ * Saves of one file, gathered: the first save after the file was written
+ * starts a short wait, every save during it only replaces the value, and
+ * then the latest one is written once. For state saved many times in a
+ * row — cooking a meal saves after each thing it changes — so the
+ * work is one write, not a dozen.
+ *
+ * A save waits at most `delayMs`, so a crash loses at most that much.
+ * `flushPendingWrites` writes every waiting file now: NIMBUS calls it
+ * when it quits and before it exports or imports data, so what's on disk
+ * is never behind what's in memory when it matters.
+ */
+export class DebouncedJsonFile {
+  private timer: NodeJS.Timeout | null = null;
+  private pending = false;
+  private value: unknown = undefined;
+
+  constructor(
+    private readonly file: () => string,
+    private readonly delayMs = 250
+  ) {}
+
+  save(value: unknown): void {
+    this.value = value;
+    this.pending = true;
+    pendingFiles.add(this);
+    if (this.timer) return;
+    this.timer = setTimeout(() => this.flush(), this.delayMs);
+    // Never the reason the process stays up; quitting flushes anyway.
+    this.timer.unref?.();
+  }
+
+  /** Writes the waiting value now, if there is one. */
+  flush(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    pendingFiles.delete(this);
+    if (!this.pending) return;
+    this.pending = false;
+    const value = this.value;
+    this.value = undefined;
+    saveJsonFile(this.file(), value);
+  }
+}
+
+/** Writes every gathered save that is still waiting. */
+export function flushPendingWrites(): void {
+  for (const file of [...pendingFiles]) file.flush();
+}

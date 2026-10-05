@@ -73,6 +73,7 @@ import { registerCoverProtocol } from "./coverStore";
 import { startUpdater } from "./updater";
 import { FileBookStore } from "./bookStore";
 import { FileMealStore } from "./mealStore";
+import { flushPendingWrites } from "./jsonFile";
 import { MealService } from "../meals/mealService";
 import { ActivityService, AppUsageTracker } from "../activity";
 import { assistantBridge } from "./assistantBridge";
@@ -1036,6 +1037,8 @@ export function startApp(): void {
     if (settings) {
       saveSettings(settings);
     }
+    // Last, after everything above has made its final saves.
+    flushPendingWrites();
     destroyTray();
     logger.info(`${APP_NAME} shutting down`);
   });
