@@ -20,6 +20,14 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.38 — 2026-10-05
+
+- **Tests for the shopping list and food names.** Optional recipe lines
+  are never bought, one food in two units asks to be checked, only the
+  days asked about count, and manual lines are priced when they can be;
+  names match through case, accents, punctuation and a plural "s", by
+  name or alias.
+
 ## 0.6.37 — 2026-10-05
 
 - **Every IPC channel is tested.** A new test loads all twelve IPC
