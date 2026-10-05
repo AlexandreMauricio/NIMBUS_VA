@@ -432,10 +432,14 @@ npm start
 ```
 
 Everything you configure lives in that machine's own
-`%APPDATA%\nimbus\`, so a second PC starts empty: re-enter your calendar
-feeds, email and Todoist accounts, stock positions, routines and
-activities, and connect Spotify again (its Client ID goes in `.env`).
-Nothing syncs between machines.
+`%APPDATA%\nimbus\`, so a second PC starts empty. To bring it over, use
+Settings → Your data → **Export my data…** on the first PC and **Import
+from a file…** on the second: settings (calendar feeds, accounts, stock
+positions, routines, activities and the rest), meals, books, cards, decks
+and memory move. Passwords and tokens don't — type them again on the new
+PC, and connect Spotify again (its Client ID goes in `.env`). Each import
+keeps a backup of what it replaced in `%APPDATA%\nimbus\backups\` (the
+newest ten). Nothing syncs between machines.
 
 ### Updating
 

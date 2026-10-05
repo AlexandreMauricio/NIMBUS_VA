@@ -20,6 +20,22 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.36 — 2026-10-05
+
+- **Your settings move too.** Export my data now has a **Settings** part:
+  routines, activities, stock positions (open and closed) and IRS codes,
+  calendar feeds, email and Todoist accounts, weather, Attention and the
+  rest of your preferences. Passwords and tokens never go in the file —
+  accounts arrive without them, to be typed again — and what belongs to
+  one PC stays: window size, zoom, startup, and your phone on this
+  network. Importing settings keeps this PC's own and replaces only the
+  preferences.
+- **The import backup keeps your credentials too** when settings are
+  imported, since the accounts it replaces lose their stored passwords.
+  It can only be restored on the same PC.
+- **Old import backups are cleared.** Only the newest ten
+  `backups/before-import-…` folders are kept.
+
 ## 0.6.35 — 2026-10-05
 
 - **Every window says it is sandboxed.** The main window, the suggestion

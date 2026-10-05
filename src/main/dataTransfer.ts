@@ -23,11 +23,16 @@ import {
   MAX_TRANSFER_BYTES,
   SECTIONS,
   SECTION_IDS,
+  SETTINGS_FILE,
   TRANSFER_FORMAT,
   TRANSFER_VERSION,
   allowedPath,
+  backupsToPrune,
+  mergeImportedSettings,
+  portableSettings,
   readBundle,
 } from "../transfer/bundle";
+import { writeFileAtomic } from "./jsonFile";
 import type {
   SectionId,
   SectionSpec,
@@ -38,14 +43,25 @@ import type {
 
 const userData = () => app.getPath("userData");
 
-/** The files of one section as they are on this PC now. */
-function sectionFiles(id: SectionId): TransferFile[] {
+/**
+ * The files of one section as they are on this PC now. For an export,
+ * settings.json is cut down to what may move (`portableSettings`); a
+ * backup keeps it whole.
+ */
+function sectionFiles(id: SectionId, purpose: "export" | "backup" = "export"): TransferFile[] {
   const spec: SectionSpec = SECTIONS[id];
   const files: TransferFile[] = [];
   for (const name of spec.files) {
     const full = path.join(userData(), name);
-    if (fs.existsSync(full))
-      files.push({ path: name, encoding: "utf8", data: fs.readFileSync(full, "utf-8") });
+    if (!fs.existsSync(full)) continue;
+    const text = fs.readFileSync(full, "utf-8");
+    if (name === SETTINGS_FILE && purpose === "export") {
+      try {
+        files.push({ path: name, encoding: "utf8", data: portableSettings(text) });
+      } catch (err) {
+        logger.warn("settings.json can't be exported — leaving it out", { error: String(err) });
+      }
+    } else files.push({ path: name, encoding: "utf8", data: text });
   }
   if (spec.folder) {
     const dir = path.join(userData(), spec.folder.name);
@@ -91,9 +107,20 @@ export async function exportData(parent: BrowserWindow | null): Promise<string |
     const files = sectionFiles(id);
     if (files.length) bundle.sections[id] = files;
   }
-  fs.writeFileSync(picked.filePath, JSON.stringify(bundle), "utf-8");
+  writeFileAtomic(picked.filePath, JSON.stringify(bundle));
   logger.info("Data exported", { sections: Object.keys(bundle.sections).length });
   return picked.filePath;
+}
+
+/** Removes import backups beyond the newest BACKUPS_KEPT. Best effort: a backup that stays is harmless. */
+function pruneBackups(): void {
+  const dir = path.join(userData(), "backups");
+  try {
+    for (const name of backupsToPrune(fs.readdirSync(dir)))
+      fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+  } catch (err) {
+    logger.warn("Could not remove old import backups", { error: String(err) });
+  }
 }
 
 /** An import file read and checked, waiting for you to choose what to take from it. */
@@ -125,7 +152,15 @@ export function cancelImport(): void {
 
 /**
  * Replaces the chosen sections with the pending import: backs this PC's
- * up first, writes the new files, and restarts NIMBUS.
+ * up first, writes the new files, and restarts NIMBUS. Only the newest
+ * BACKUPS_KEPT import backups are kept.
+ *
+ * Settings are merged, not replaced: the imported preferences go beside
+ * this PC's own window and startup settings. Their credentials stay
+ * behind, so the backup also keeps secrets.json — the accounts the import
+ * replaces lose their stored passwords at the next save, and this is
+ * where they can be restored from (on this PC only: it's encrypted to
+ * this Windows account).
  */
 export function applyImport(chosen: unknown): { backup: string } {
   if (!pending) throw new Error("Choose an export file first.");
@@ -141,10 +176,22 @@ export function applyImport(chosen: unknown): { backup: string } {
   for (const id of ids) {
     const spec: SectionSpec = SECTIONS[id];
     // This PC's copy, kept.
-    for (const file of sectionFiles(id)) {
+    for (const file of sectionFiles(id, "backup")) {
       const target = path.join(backup, ...file.path.split("/"));
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, Buffer.from(file.data, file.encoding === "utf8" ? "utf-8" : "base64"));
+    }
+    if (id === "settings") {
+      const secrets = path.join(userData(), "secrets.json");
+      if (fs.existsSync(secrets)) fs.copyFileSync(secrets, path.join(backup, "secrets.json"));
+      const local = path.join(userData(), SETTINGS_FILE);
+      const imported = pending.sections.settings?.find((file) => file.path === SETTINGS_FILE);
+      if (imported)
+        writeFileAtomic(
+          local,
+          mergeImportedSettings(fs.existsSync(local) ? fs.readFileSync(local, "utf-8") : null, imported.data)
+        );
+      continue;
     }
     // Replaced: data files, and the folder emptied of its own kind of file first.
     for (const name of spec.files) fs.rmSync(path.join(userData(), name), { force: true });
@@ -159,11 +206,10 @@ export function applyImport(chosen: unknown): { backup: string } {
       if (!allowedPath(id, file.path)) continue;
       const target = path.join(userData(), ...file.path.split("/"));
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      const temp = `${target}.importing`;
-      fs.writeFileSync(temp, Buffer.from(file.data, file.encoding === "utf8" ? "utf-8" : "base64"));
-      fs.renameSync(temp, target);
+      writeFileAtomic(target, Buffer.from(file.data, file.encoding === "utf8" ? "utf-8" : "base64"));
     }
   }
+  pruneBackups();
   logger.info("Data imported; restarting", { sections: ids.length });
   pending = null;
   // Restart in the same step: what's in memory now is the old data, and a

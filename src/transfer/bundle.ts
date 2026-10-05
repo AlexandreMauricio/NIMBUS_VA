@@ -5,9 +5,14 @@
  *
  * An export is one JSON file: each section's data files as text, and its
  * pictures (book covers, recipe photos) as base64. Only these sections, by
- * these names, ever go in or come out — settings, passwords, tokens and
- * things that belong to one PC (the comics vault's folder, usage history)
- * never do.
+ * these names, ever go in or come out — passwords, tokens and things that
+ * belong to one PC (window size, startup, the phone on this network, the
+ * comics vault's folder, usage history) never do.
+ *
+ * Settings are the one section that isn't moved file for file: only their
+ * `userPreferences` travel, with every credential blanked
+ * (`portableSettings`), and an import puts them into this PC's own
+ * settings.json beside its `windowsClient` (`mergeImportedSettings`).
  */
 
 export const TRANSFER_FORMAT = "nimbus-data";
@@ -25,8 +30,16 @@ export interface SectionSpec {
   folder: { name: string; pattern: RegExp } | null;
 }
 
+export const SETTINGS_FILE = "settings.json";
+
 /** Everything that moves, and nothing else. */
 export const SECTIONS = {
+  settings: {
+    label:
+      "Settings — routines, activities, stock positions, calendar feeds, accounts (without their passwords or tokens), weather and the rest",
+    files: [SETTINGS_FILE],
+    folder: null,
+  },
   meals: {
     label: "Meals — recipes, pantry, plan, shopping, purchases, prices (and recipe photos)",
     files: ["meals.json"],
@@ -98,6 +111,30 @@ function describe(text: string): string {
   }
 }
 
+/** "routines 3 · activities 2 · positions 12": what a settings export holds, counted. */
+function describeSettings(text: string): string {
+  try {
+    const prefs = asObject(asObject(JSON.parse(text))?.userPreferences) ?? {};
+    const count = (section: string, list: string, name: string): string | null => {
+      const value = asObject(prefs[section])?.[list];
+      return Array.isArray(value) && value.length ? `${name} ${value.length}` : null;
+    };
+    return [
+      count("routines", "routines", "routines"),
+      count("activity", "mappings", "activities"),
+      count("stocks", "positions", "positions"),
+      count("stocks", "closedPositions", "closed positions"),
+      count("calendar", "feeds", "calendar feeds"),
+      count("email", "accounts", "email accounts"),
+      count("tasks", "accounts", "task accounts"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Checks an import file — the format, every path against its section, every
  * data file as JSON — and says what's in it. Throws with a plain reason when
@@ -141,6 +178,7 @@ export function readBundle(text: string): { bundle: TransferBundle; summary: Sec
       if (f.encoding === "utf8") {
         try {
           JSON.parse(f.data);
+          if (f.path === SETTINGS_FILE) portableSettings(f.data);
         } catch {
           throw new Error(`${f.path} in that export is damaged.`);
         }
@@ -157,7 +195,9 @@ export function readBundle(text: string): { bundle: TransferBundle; summary: Sec
       id: id as SectionId,
       label: spec.label,
       detail: [
-        ...data.map((file) => describe(file.data)).filter(Boolean),
+        ...data
+          .map((file) => (file.path === SETTINGS_FILE ? describeSettings : describe)(file.data))
+          .filter(Boolean),
         pictures ? `${pictures} picture${pictures === 1 ? "" : "s"}` : null,
       ]
         .filter(Boolean)
@@ -167,4 +207,80 @@ export function readBundle(text: string): { bundle: TransferBundle; summary: Sec
   }
   if (!summary.length) throw new Error("That export has nothing in it to import.");
   return { bundle, summary };
+}
+
+type Json = Record<string, unknown>;
+
+function asObject(value: unknown): Json | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : null;
+}
+
+/** Each account in `list` with `field` blanked — an account moves, its credential never does. */
+function blankCredential(list: unknown, field: string): unknown {
+  if (!Array.isArray(list)) return list;
+  return list.map((entry) => {
+    const account = asObject(entry);
+    return account ? { ...account, [field]: "" } : entry;
+  });
+}
+
+/**
+ * settings.json as it is on disk → what goes in an export: the
+ * `userPreferences` alone, with every email password and task token
+ * blanked. settings.json written today holds none (they live in the
+ * encrypted secrets.json), but one written by an older NIMBUS may.
+ */
+export function portableSettings(text: string): string {
+  const parsed = asObject(JSON.parse(text));
+  const prefs = asObject(parsed?.userPreferences);
+  if (!prefs) throw new Error("settings.json has no preferences to export.");
+  const email = asObject(prefs.email);
+  const tasks = asObject(prefs.tasks);
+  return JSON.stringify(
+    {
+      userPreferences: {
+        ...prefs,
+        ...(email ? { email: { ...email, accounts: blankCredential(email.accounts, "password") } } : {}),
+        ...(tasks ? { tasks: { ...tasks, accounts: blankCredential(tasks.accounts, "apiToken") } } : {}),
+      },
+    },
+    null,
+    2
+  );
+}
+
+/**
+ * The settings.json an import writes: this PC's own (or nothing, on a PC
+ * that has none yet) with its `userPreferences` replaced by the imported
+ * ones. Only `userPreferences` is taken from the import, credentials
+ * blanked again, so a hand-made file can't carry window or startup
+ * settings in. Missing fields are filled from defaults when NIMBUS loads it.
+ */
+export function mergeImportedSettings(localText: string | null, importedText: string): string {
+  let local: Json = {};
+  if (localText !== null) {
+    try {
+      local = asObject(JSON.parse(localText)) ?? {};
+    } catch {
+      local = {};
+    }
+  }
+  const imported = JSON.parse(portableSettings(importedText)) as Json;
+  return JSON.stringify({ ...local, userPreferences: imported.userPreferences }, null, 2);
+}
+
+/** Import backups kept; older ones are removed after each import. */
+export const BACKUPS_KEPT = 10;
+
+/**
+ * Which of the folders in `<userData>/backups/` to remove: the
+ * `before-import-<time>` ones beyond the newest `keep`. Their names sort
+ * by time. Anything else in that folder is never touched.
+ */
+export function backupsToPrune(names: string[], keep: number = BACKUPS_KEPT): string[] {
+  return names
+    .filter((name) => /^before-import-[0-9TZ-]+$/.test(name))
+    .sort()
+    .reverse()
+    .slice(keep);
 }

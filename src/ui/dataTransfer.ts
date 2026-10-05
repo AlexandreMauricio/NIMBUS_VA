@@ -48,7 +48,7 @@ export function initDataTransfer(): void {
       make(
         "p",
         "setting-note",
-        "Move your meals, books, cards, decks and memory to NIMBUS on another PC: export them here to one file, then import that file there. Settings, passwords and tokens stay on each PC, and so does anything tied to one PC (the comics vault folder, usage history)."
+        "Move your settings, meals, books, cards, decks and memory to NIMBUS on another PC: export them here to one file, then import that file there. Passwords and tokens stay on each PC — your accounts move, and you type their passwords again there — and so does anything tied to one PC (window size, startup, your phone on this network, the comics vault folder, usage history)."
       )
     );
     const row = make("div", "settings-row data-transfer-actions");
