@@ -13,7 +13,9 @@ export function mergeKnown<T extends object>(current: T, partial: unknown): T {
   if (!partial || typeof partial !== "object" || Array.isArray(partial)) return current;
   const out: Record<string, unknown> = { ...(current as Record<string, unknown>) };
   for (const [key, value] of Object.entries(partial)) {
-    if (!(key in current)) continue;
+    // Own fields only: `in` would also let through `__proto__`, whose
+    // assignment below would swap the merged object's prototype.
+    if (!Object.prototype.hasOwnProperty.call(current, key)) continue;
     const existing = (current as Record<string, unknown>)[key];
     const sameKind =
       value === null ||

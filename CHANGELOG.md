@@ -20,6 +20,19 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.37 — 2026-10-05
+
+- **Every IPC channel is tested.** A new test loads all twelve IPC
+  modules without Electron and calls each of their channels: every one
+  refuses a page that isn't NIMBUS's, and none crashes on arguments of the
+  wrong kind (missing, null, numbers, text, lists, objects) — they narrow
+  them or refuse with a plain message, as `ipc/input.ts` asks. The input
+  helpers and `mergeKnown` have tests of their own too.
+- **Fixed: a settings update could carry `__proto__`.** `mergeKnown`
+  checked fields with `in`, which also matches inherited names, so a
+  `__proto__` key got through and replaced the merged object's prototype.
+  It now takes only a group's own fields.
+
 ## 0.6.36 — 2026-10-05
 
 - **Your settings move too.** Export my data now has a **Settings** part:
