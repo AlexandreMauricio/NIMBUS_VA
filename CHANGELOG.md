@@ -20,6 +20,17 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.39 — 2026-10-05
+
+- **The Meals service is split up.** `mealService.ts` was 2,494 lines.
+  Reading `meals.json` moved to `meals/parse.ts`, and the service is now
+  built in layers, each in its own file and using only the ones below:
+  `service/core.ts` (ingredients, recipes, pantry, leftovers,
+  preferences), `service/planning.ts` (the plan, cooking),
+  `service/shopping.ts` (shopping list, purchases, prices), and
+  `mealService.ts` itself (the planner, demo data) — none over 700 lines.
+  The move is mechanical: the same 74 methods, each line of code the same.
+
 ## 0.6.38 — 2026-10-05
 
 - **Tests for the shopping list and food names.** Optional recipe lines

@@ -216,12 +216,20 @@ src/
                                    pure, for typed, PDF and OCR text alike
     demoData.ts                  A demo kitchen, every entry recorded by id
                                    so it can be removed exactly — pure
-    mealService.ts               Validation, ingredient identity, CRUD and
-                                   cooking, over an injected store. Pantry
-                                   items keep a `startQuantity`, the
-                                   reference the "how much is left" bars
-                                   are drawn against — never used in
-                                   arithmetic
+    parse.ts                     meals.json checked entry by entry, and
+                                   the value checks for what is typed — pure
+    mealService.ts               Ingredient identity, CRUD and cooking,
+                                   over an injected store, built in layers
+                                   that each use only the ones below:
+      service/core.ts              state and saving; ingredients, recipes,
+                                   pantry, leftovers, preferences
+      service/planning.ts          the plan and cooking
+      service/shopping.ts          the shopping list, purchases, prices
+                                   (mealService.ts itself: the planner and
+                                   demo data). Pantry items keep a
+                                   `startQuantity`, the reference the "how
+                                   much is left" bars are drawn against —
+                                   never used in arithmetic
 
   summary/                  [1] Core — "Your week" on Home
     weeklySummary.ts             The last 7 days of sessions, app and site
