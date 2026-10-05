@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { app } from "electron";
+import { saveJsonFile } from "./jsonFile";
 import { logger } from "../logging/logger";
 import { RoutineRuntimeState, RoutineStateStore } from "../routines/types";
 
@@ -65,24 +66,6 @@ export class FileRoutineStateStore implements RoutineStateStore {
    * — precisely the spam cooldowns exist to prevent.
    */
   save(state: RoutineRuntimeState): void {
-    const filePath = stateFilePath();
-    const tempPath = `${filePath}.tmp`;
-    try {
-      const fd = fs.openSync(tempPath, "w");
-      try {
-        fs.writeFileSync(fd, JSON.stringify(state ?? EMPTY), "utf-8");
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tempPath, filePath);
-    } catch (err) {
-      logger.warn("Could not write routine-state.json", { error: String(err) });
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        // Best effort — the write already failed and was logged above.
-      }
-    }
+    saveJsonFile(stateFilePath(), state ?? EMPTY, "Could not write routine-state.json");
   }
 }

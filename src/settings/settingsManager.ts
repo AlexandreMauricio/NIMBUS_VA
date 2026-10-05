@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { app } from "electron";
 import { logger } from "../logging/logger";
+import { writeFileAtomic } from "../main/jsonFile";
 import { SecretStore } from "../main/secretStore";
 import {
   DEFAULT_SETTINGS,
@@ -150,8 +151,6 @@ export function hydrateCredentials(settings: NimbusSettings): NimbusSettings {
  */
 export function saveSettings(settings: NimbusSettings): void {
   const filePath = getSettingsFilePath();
-  const tempPath = `${filePath}.tmp`;
-
   // Credentials are peeled off here and never reach settings.json.
   const { sanitized, secrets } = extractSecrets(settings);
 
@@ -167,18 +166,7 @@ export function saveSettings(settings: NimbusSettings): void {
 
   try {
     const serialized = JSON.stringify(sanitized, null, 2);
-    // Written through an explicit fd so the contents can be fsync'd before
-    // the rename — without that, the rename can land ahead of the data on
-    // a crash, which produces exactly the empty/truncated file this is
-    // meant to prevent.
-    const fd = fs.openSync(tempPath, "w");
-    try {
-      fs.writeFileSync(fd, serialized, "utf-8");
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
-    }
-    fs.renameSync(tempPath, filePath);
+    writeFileAtomic(filePath, serialized);
     // Logged at debug so a normal session isn't noisy, but it names the
     // resolved path: "settings.json is stale" was impossible to diagnose
     // without knowing which settings.json the running app meant, and
@@ -186,11 +174,5 @@ export function saveSettings(settings: NimbusSettings): void {
     logger.debug("settings.json written", { path: filePath, bytes: serialized.length });
   } catch (err) {
     logger.error("Failed to write settings.json", { error: String(err) });
-    // Never leave a stray temp file behind to be mistaken for real state.
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch {
-      // Best effort — the write already failed and was logged above.
-    }
   }
 }

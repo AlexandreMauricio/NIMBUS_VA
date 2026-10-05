@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { BrowserWindow, app, dialog, nativeImage, protocol } from "electron";
 import { logger } from "../logging/logger";
+import { writeFileAtomic } from "./jsonFile";
 
 /**
  * Pictures you choose: covers for books and photos for recipes. The
@@ -52,9 +53,7 @@ export async function choosePictureFile(
   if (image.getSize().width > KINDS[kind].maxWidth)
     image = image.resize({ width: KINDS[kind].maxWidth, quality: "best" });
   fs.mkdirSync(folderOf(kind), { recursive: true });
-  const temp = `${target}.tmp`;
-  fs.writeFileSync(temp, image.toJPEG(85));
-  fs.renameSync(temp, target);
+  writeFileAtomic(target, image.toJPEG(85));
   logger.info("Picture chosen", { kind, id });
   return true;
 }

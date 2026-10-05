@@ -20,6 +20,16 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.34 — 2026-10-05
+
+- **One way to write state files.** The temp-file, fsync, rename write
+  was copied into fourteen places — settings, credentials, Spotify tokens,
+  meals, books, cards, decks, memory, the network list, routine and
+  activity state, app and site usage, and chosen pictures. It now lives
+  once, in `src/main/jsonFile.ts`, with the read that sets an unreadable
+  file aside instead of overwriting it, and tests of its own. The files
+  on disk are the same; chosen pictures are now fsynced like the rest.
+
 ## 0.6.33 — 2026-09-29
 
 - **Move your data to another PC.** Settings → Your data → **Export my

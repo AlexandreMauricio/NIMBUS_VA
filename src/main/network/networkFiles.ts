@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { app } from "electron";
+import { saveJsonFile } from "../jsonFile";
 import { logger } from "../../logging/logger";
 import { parseOuiCsv, vendorLookup } from "../../network/oui";
 import { NetworkStateStore, NetworkStoreState } from "../../network/types";
@@ -30,24 +31,7 @@ export class FileNetworkStore implements NetworkStateStore {
 
   /** Temp-file-then-rename, like the other state files. */
   save(state: NetworkStoreState): void {
-    const tempPath = `${this.filePath}.tmp`;
-    try {
-      const fd = fs.openSync(tempPath, "w");
-      try {
-        fs.writeFileSync(fd, JSON.stringify(state), "utf-8");
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tempPath, this.filePath);
-    } catch (err) {
-      logger.warn("Could not save network-devices.json", { error: String(err) });
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        // Best effort — the failure was already logged.
-      }
-    }
+    saveJsonFile(this.filePath, state, "Could not save network-devices.json");
   }
 }
 

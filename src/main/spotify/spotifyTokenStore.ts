@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { app, safeStorage } from "electron";
 import { logger } from "../../logging/logger";
+import { saveJsonFile } from "../jsonFile";
 
 /**
  * Persists Spotify OAuth tokens using the OS-level secure storage Electron
@@ -89,25 +90,7 @@ export class SpotifyTokenStore {
     // Temp file, fsync, rename — the same atomic write every other store
     // uses. A torn write here reads back as "disconnected", which means
     // going through the Spotify login again.
-    const filePath = tokenFilePath();
-    const tempPath = `${filePath}.tmp`;
-    try {
-      const fd = fs.openSync(tempPath, "w");
-      try {
-        fs.writeFileSync(fd, JSON.stringify(encrypted), "utf-8");
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tempPath, filePath);
-    } catch (err) {
-      logger.error("Failed to persist Spotify tokens", { error: String(err) });
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        // Best effort — the write already failed and was logged above.
-      }
-    }
+    saveJsonFile(tokenFilePath(), encrypted, "Failed to persist Spotify tokens", "error");
   }
 
   clear(): void {

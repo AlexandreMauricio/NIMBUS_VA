@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { app, safeStorage } from "electron";
 import { logger } from "../logging/logger";
+import { writeFileAtomic } from "./jsonFile";
 
 /**
  * A general key/value store for credentials, encrypted with the OS-level
@@ -171,26 +172,13 @@ export class SecretStore {
 
     // Same temp-file-then-rename dance as settings.json — a torn write
     // here would read back as "all credentials gone".
-    const tempPath = `${filePath}.tmp`;
     try {
-      const fd = fs.openSync(tempPath, "w");
-      try {
-        fs.writeFileSync(fd, JSON.stringify(encrypted), "utf-8");
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tempPath, filePath);
+      writeFileAtomic(filePath, JSON.stringify(encrypted));
       // A value the user has since replaced, or an account since removed,
       // is no longer owed a carry-over.
       this.unreadable = Object.fromEntries(carried.filter(([key]) => key in this.unreadable));
     } catch (err) {
       logger.error("Failed to persist credentials", { error: String(err) });
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        // Best effort — the write already failed and was logged above.
-      }
     }
   }
 }

@@ -282,6 +282,8 @@ src/
                                    shell-less spawn, and constant PowerShell
                                    scripts (user32, Core Audio) that receive
                                    values only as environment variables
+    jsonFile.ts                   The atomic write (temp, fsync, rename)
+                                   and set-aside read every store uses
     secretStore.ts                safeStorage-encrypted credentials
                                    (secrets.json)
     routineStateStore.ts          Cooldowns and owed wind-downs

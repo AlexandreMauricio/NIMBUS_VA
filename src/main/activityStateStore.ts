@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { app } from "electron";
+import { saveJsonFile } from "./jsonFile";
 import { logger } from "../logging/logger";
 import { ActivityHistoryState, ActivityStateStore } from "../activity/types";
 
@@ -47,24 +48,6 @@ export class FileActivityStateStore implements ActivityStateStore {
 
   /** Temp-file-then-rename, like the other state files: written often enough that a torn write is a real possibility. */
   save(state: ActivityHistoryState): void {
-    const filePath = stateFilePath();
-    const tempPath = `${filePath}.tmp`;
-    try {
-      const fd = fs.openSync(tempPath, "w");
-      try {
-        fs.writeFileSync(fd, JSON.stringify(state), "utf-8");
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tempPath, filePath);
-    } catch (err) {
-      logger.warn("Could not write activity-history.json", { error: String(err) });
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        // Best effort — the write already failed and was logged above.
-      }
-    }
+    saveJsonFile(stateFilePath(), state, "Could not write activity-history.json");
   }
 }
