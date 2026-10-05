@@ -20,6 +20,13 @@ Dates are the day the work landed.
 
 ---
 
+## 0.6.42 — 2026-10-05
+
+- **CLAUDE.md** sets down how this repo is worked on — the checks, a
+  version and changelog entry per change, the layers, and the rules the
+  code relies on (IPC arguments, paths and URLs, window settings, state
+  files, credentials) — so an AI assistant follows them from the start.
+
 ## 0.6.41 — 2026-10-05
 
 - **The main window's script is split up.** `renderer.ts` was 4,684
